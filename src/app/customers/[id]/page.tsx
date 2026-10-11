@@ -1,10 +1,13 @@
 import { notFound } from 'next/navigation';
+import { requireUser } from '@/lib/auth/currentUser';
 import { getLatestOpenPricingRound } from '@/lib/queries/pricing';
 import { getCustomerPriceSheet } from '@/lib/queries/customers';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { EmptyState } from '@/components/ui/EmptyState';
 import tableStyles from '@/components/ui/table.module.css';
+import { ApproveCustomerPriceForm } from './ApproveCustomerPriceForm';
+import { ApproveSheetButton } from './ApproveSheetButton';
 
 function fmt(n: number | null) {
   if (n == null) return '—';
@@ -13,7 +16,8 @@ function fmt(n: number | null) {
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const round = await getLatestOpenPricingRound();
+  const [user, round] = await Promise.all([requireUser(), getLatestOpenPricingRound()]);
+  const canApprove = user.role === 'PRICING';
   if (!round) {
     return (
       <>
@@ -36,6 +40,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         actions={
           sheet.status === 'APPROVED' ? (
             <StatusPill tone="success">อนุมัติแล้ว</StatusPill>
+          ) : canApprove && rows.length > 0 ? (
+            <ApproveSheetButton sheetId={sheet.id} />
           ) : (
             <StatusPill tone="neutral">รอตรวจสอบ</StatusPill>
           )
@@ -57,6 +63,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                 <th className={tableStyles.numeric}>ราคาอนุมัติ</th>
                 <th className={tableStyles.numeric}>มาร์จิ้น</th>
                 <th>สถานะ</th>
+                {canApprove && <th>การดำเนินการ</th>}
               </tr>
             </thead>
             <tbody>
@@ -81,6 +88,19 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                       <StatusPill tone="neutral">รอตรวจสอบ</StatusPill>
                     )}
                   </td>
+                  {canApprove && (
+                    <td>
+                      {r.status !== 'APPROVED' && (
+                        <ApproveCustomerPriceForm
+                          lineId={r.id}
+                          customerId={sheet.customerId}
+                          version={r.version}
+                          defaultPrice={r.approvedPrice ?? r.suggestedPrice}
+                          currentCost={r.currentCost}
+                        />
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
