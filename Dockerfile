@@ -30,4 +30,9 @@ COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 EXPOSE 3000
-CMD ["node", "server.js"]
+# Applies any pending migrations, then starts the server. Safe to run on
+# every boot (prisma migrate deploy is idempotent) — this is what makes a
+# plain `docker run`/"deploy this Dockerfile" on a host like Railway or
+# Render correct without that host needing to know about docker-compose's
+# separate command override.
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node server.js"]

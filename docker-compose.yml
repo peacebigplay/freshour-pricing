@@ -23,29 +23,29 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://freshour:freshour@db:5432/freshour?schema=public
+      DATABASE_URL: ${DATABASE_URL:-postgresql://freshour:freshour@db:5432/freshour?schema=public}
       AUTH_SECRET: ${AUTH_SECRET:?set a long random AUTH_SECRET in .env}
       SESSION_TTL_SECONDS: '28800'
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
       NODE_ENV: production
     ports:
       - '3000:3000'
-    command: sh -c "node_modules/.bin/prisma migrate deploy && node server.js"
 
   # One-off tooling image: the `app` service above is the pruned "standalone"
   # runtime (no tsx/dev deps, deliberately — see docs/DEPLOYMENT.md), so
   # seeding and the manual import pipeline run from the full `builder` stage
   # instead. Usage: `docker compose run --rm seed`.
+  # Override DATABASE_URL on the command line (e.g.
+  # `DATABASE_URL=<remote-url> docker compose run --rm seed`) to seed a
+  # remotely-hosted database (see docs/DEPLOYMENT.md "Deploying for your
+  # team") instead of the local `db` service.
   seed:
     build:
       context: .
       target: builder
     profiles: ['tools']
-    depends_on:
-      db:
-        condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://freshour:freshour@db:5432/freshour?schema=public
+      DATABASE_URL: ${DATABASE_URL:-postgresql://freshour:freshour@db:5432/freshour?schema=public}
       AUTH_SECRET: ${AUTH_SECRET:?set a long random AUTH_SECRET in .env}
     command: npx tsx prisma/seed.ts
 
