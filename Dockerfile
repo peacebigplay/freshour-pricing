@@ -15,19 +15,24 @@ ENV AUTH_SECRET="build-time-placeholder-not-used-at-runtime"
 RUN npx prisma generate
 RUN npm run build
 
-# Production runtime: only the pruned "standalone" server output + static
-# assets + the Prisma client/schema needed for `prisma migrate deploy` at
-# startup. Dev-only tooling (Playwright, ESLint, Vitest, the PGlite test
-# harness) never makes it into this image.
+# Production runtime. Copies the FULL node_modules from the builder stage
+# rather than hand-picking files: Prisma's CLI (prisma migrate deploy) loads
+# a WASM-compiled schema engine through its own internal module resolution,
+# and a prior attempt at selectively copying only node_modules/prisma +
+# node_modules/@prisma + the node_modules/.bin/prisma symlink missed a file
+# that resolution needs, causing an ENOENT crash loop in the real deploy
+# environment. Copying node_modules wholesale is the simple, reliably
+# correct trade: a larger image (dev tooling like Playwright/ESLint/Vitest
+# comes along for the ride) in exchange for not re-litigating Prisma's
+# internal file layout on every Prisma version bump.
 FROM base AS runner
 ENV NODE_ENV=production
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/next.config.mjs ./next.config.mjs
 
 EXPOSE 3000
 # Applies any pending migrations, then starts the server. Safe to run on
@@ -35,4 +40,4 @@ EXPOSE 3000
 # plain `docker run`/"deploy this Dockerfile" on a host like Railway or
 # Render correct without that host needing to know about docker-compose's
 # separate command override.
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npx next start -p 3000"]

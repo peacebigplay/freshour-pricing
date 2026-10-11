@@ -11,5 +11,6 @@ playwright-report/
 test-results/
 .env.local
 next-env.d.ts
+*.tsbuildinfo
 /prisma/*.db
 /prisma/*.db-journal

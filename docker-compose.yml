@@ -31,10 +31,9 @@ services:
     ports:
       - '3000:3000'
 
-  # One-off tooling image: the `app` service above is the pruned "standalone"
-  # runtime (no tsx/dev deps, deliberately — see docs/DEPLOYMENT.md), so
-  # seeding and the manual import pipeline run from the full `builder` stage
-  # instead. Usage: `docker compose run --rm seed`.
+  # One-off tooling: runs prisma/seed.ts (needs `tsx`, which the `app`
+  # service's CMD doesn't use) from the same `builder` stage the app image
+  # is built from. Usage: `docker compose run --rm seed`.
   # Override DATABASE_URL on the command line (e.g.
   # `DATABASE_URL=<remote-url> docker compose run --rm seed`) to seed a
   # remotely-hosted database (see docs/DEPLOYMENT.md "Deploying for your
