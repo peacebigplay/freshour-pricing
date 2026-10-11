@@ -44,7 +44,7 @@ export default async function CentralPricingPage() {
                 <th className={tableStyles.numeric}>ราคาแนะนำ (Guard)</th>
                 <th className={tableStyles.numeric}>มาร์จิ้นที่ได้</th>
                 <th>สถานะ</th>
-                <th>อนุมัติ</th>
+                <th>ทางเลือกตาม Goal / ยืนยัน</th>
               </tr>
             </thead>
             <tbody>
@@ -53,6 +53,14 @@ export default async function CentralPricingPage() {
                   <td>
                     <div style={{ fontWeight: 600 }}>{line.productName}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{line.unit}</div>
+                    <details style={{ marginTop: 4 }}>
+                      <summary style={{ fontSize: 10.5, color: 'var(--primary)', cursor: 'pointer' }}>Logic ราคาแนะนำ</summary>
+                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.6 }}>
+                        ทุนปัจจุบัน {fmt(line.currentCost)} ฿ · Margin Guard: Global ≥{line.globalFloorPct}% · หมวด {line.category} {line.effectiveTargetPctValue.toFixed(1)}%
+                        <br />
+                        Guard Price = ceil({fmt(line.currentCost)} ÷ (1 − {line.effectiveTargetPctValue.toFixed(1)}%)) = {fmt(line.guardPrice)} ฿
+                      </div>
+                    </details>
                   </td>
                   <td>{line.category}</td>
                   <td className={tableStyles.numeric}>{line.effectiveTargetPctValue.toFixed(1)}%</td>
@@ -77,7 +85,12 @@ export default async function CentralPricingPage() {
                   </td>
                   <td>
                     {line.status !== 'APPROVED' && (
-                      <ApproveForm lineId={line.id} version={line.version} defaultPrice={line.approvedPrice ?? (line.guardPrice || line.suggestedPrice)} />
+                      <ApproveForm
+                        lineId={line.id}
+                        version={line.version}
+                        defaultPrice={line.approvedPrice ?? (line.guardPrice || line.suggestedPrice)}
+                        goals={line.goals}
+                      />
                     )}
                   </td>
                 </tr>

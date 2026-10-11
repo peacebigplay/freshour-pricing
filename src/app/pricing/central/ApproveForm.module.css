@@ -1,0 +1,79 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.goalRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.goalBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 4px 3px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.goalBtn span {
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.goalBtn b {
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.goalBtn em {
+  font-style: normal;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.goalBtn:hover {
+  border-color: var(--primary-border);
+}
+
+.goalBtnOn {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.goalBtnOn span,
+.goalBtnOn em {
+  color: var(--primary-border);
+}
+
+.goalBtnOn b {
+  color: #fff;
+}
+
+.goalBtnWarn:not(.goalBtnOn) {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+}
+
+.confirmRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.priceInput {
+  width: 72px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { effectiveTargetPct, marginGuardPrice, marginPct, DEFAULT_GLOBAL_FLOOR_PCT } from '@/lib/domain/margin';
+import { suggestPricingGoals, type PricingGoalSuggestion } from '@/lib/domain/pricingGoals';
 
 export async function getLatestOpenPricingRound() {
   return prisma.pricingRound.findFirst({
@@ -21,15 +22,17 @@ export interface PricingReadiness {
   centralLinesException: number;
   customerSheetsTotal: number;
   customerSheetsApproved: number;
+  activeCustomers: number;
   marketStatus: string;
 }
 
 export async function getPricingReadiness(): Promise<PricingReadiness> {
   const round = await getLatestOpenPricingRound();
 
-  const [totalProducts, unresolvedMappings] = await Promise.all([
+  const [totalProducts, unresolvedMappings, activeCustomers] = await Promise.all([
     prisma.product.count({ where: { active: true } }),
     prisma.productMappingQueue.count({ where: { status: 'UNRESOLVED' } }),
+    prisma.customer.count({ where: { active: true } }),
   ]);
 
   if (!round) {
@@ -42,6 +45,7 @@ export async function getPricingReadiness(): Promise<PricingReadiness> {
       centralLinesException: 0,
       customerSheetsTotal: 0,
       customerSheetsApproved: 0,
+      activeCustomers,
       marketStatus: 'NOT_CONNECTED',
     };
   }
@@ -65,6 +69,7 @@ export async function getPricingReadiness(): Promise<PricingReadiness> {
     centralLinesException,
     customerSheetsTotal,
     customerSheetsApproved,
+    activeCustomers,
     marketStatus: marketSource?.status ?? 'NOT_CONFIGURED',
   };
 }
@@ -89,6 +94,7 @@ export interface CentralPriceRow {
   isException: boolean;
   exceptionReason: string | null;
   version: number;
+  goals: PricingGoalSuggestion[];
 }
 
 export async function getCentralPriceLines(pricingRoundId: string): Promise<CentralPriceRow[]> {
@@ -128,6 +134,18 @@ export async function getCentralPriceLines(pricingRoundId: string): Promise<Cent
     const currentCost = cost?.currentCost ?? 0;
     const price = line.approvedPrice ?? line.suggestedPrice;
 
+    // "Competitive" goal needs a real verified market reference price per
+    // SKU; no live Market Snapshot line-level data exists yet in this build
+    // (see docs/BUSINESS_RULES.md — market is NOT_CONNECTED by design), so
+    // it's correctly omitted rather than fabricated. Hold/Target/Protect
+    // are always computable from cost + margin policy alone.
+    const goals = currentCost > 0
+      ? suggestPricingGoals(
+          { currentCost, previousApprovedPrice: line.previousApprovedPrice, effectiveTargetPctValue: target, marketReferencePrice: null },
+          globalFloorPct,
+        )
+      : [];
+
     return {
       id: line.id,
       productId: line.productId,
@@ -148,6 +166,7 @@ export async function getCentralPriceLines(pricingRoundId: string): Promise<Cent
       isException: line.isException,
       exceptionReason: line.exceptionReason,
       version: line.version,
+      goals,
     };
   });
 }

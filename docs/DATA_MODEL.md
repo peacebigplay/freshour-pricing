@@ -84,6 +84,26 @@ Executive revenue/GP queries (`src/lib/queries/executive.ts`) only ever read
 `InvoiceLine` where the parent `Invoice.status === 'POSTED'` — never
 `Quote`, `ClosedDeal`, or a `STAGED` invoice.
 
+## Customer relationship / logistics / collections (V29 feature-parity pass)
+```
+Customer → Prospect (sales pipeline, owned by a User; stage/status)
+         → CustomerIssue (logged by Sales, severity LOW|MID|HIGH, OPEN|CLOSED)
+         → PriceRequest (a requested raise on one CustomerPriceLine;
+                          OPEN → APPROVED | REJECTED by Pricing)
+
+Carrier → Delivery (one per fulfilled ClosedDeal; promisedAt/actualAt/delayMinutes)
+       → CustomerIssue (optional carrier attribution, e.g. late delivery)
+```
+`PriceRequest.status = APPROVED` is the only path, besides the existing
+Central/Customer Pricing approval flow, that ever writes
+`CustomerPriceLine.approvedPrice` after the line's first approval — it goes
+through the same optimistic-locking `version` field.
+
+`Invoice.dueDate` (default `invoiceDate + 30 days`, or taken from the
+financial CSV import when present) backs the AR aging buckets on Executive
+(`getCashAndAr()`), bucketed off real `POSTED` invoices only — same
+POSTED-only rule as the rest of the financial queries below.
+
 ## Executive / audit / integrations
 `ExecutiveDecision` (the Attention Queue), `AuditEvent` (append-only, every
 mutating Server Action writes one), `IntegrationConfig` / `IntegrationRun`

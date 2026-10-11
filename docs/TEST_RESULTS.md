@@ -156,3 +156,37 @@ E2E suite and is not claimed as an executed PASS here.
 | E2E | 2 PASS / 2 BLOCKED (sandbox DB stability, not app defects) |
 | Production build | PASS |
 | Docker build | Not run in this sandbox (no Docker daemon) — `Dockerfile`/`docker-compose.yml` are present and the build steps they run (`npm ci`, `prisma generate`, `npm run build`) all individually succeeded above |
+
+## V29 feature-parity pass — additional verification
+
+Same sandbox, same PGlite constraint described above. What was actually run
+for the new schema/queries/actions (`Prospect`, `Carrier`/`Delivery`,
+`CustomerIssue`, `PriceRequest`, `Invoice.dueDate`, Customer creation,
+Customer Price Sheet generation, the `/customers` Margin Guard rebuild):
+
+- **PASS** — `npx tsc --noEmit`: 0 errors.
+- **PASS** — `npx eslint src tests`: 0 errors (same 1 benign font warning).
+- **PASS** — `npx vitest run tests/unit tests/integration`: 59/59 tests
+  green, including 9 new (`customerGrade.test.ts`, `customerPricing.test.ts`).
+- **PASS** — `npx next build`: all new routes (`/customers`,
+  `/pricing/requests`, `/sales/issues`) compile and list as dynamic.
+- **PASS** — `npx prisma migrate deploy` against a fresh PGlite instance:
+  the regenerated migration (including every new model) applied with no
+  errors; `npx tsx prisma/seed.ts` then ran its full real-data import on top
+  of it with identical output to the run documented above.
+- **PASS** — direct Prisma-client smoke script (not through Next, to
+  isolate the DB layer from the known PGlite+dev-server instability below):
+  created a real `Customer`, approved several `CentralPriceLine`/
+  `CustomerPriceLine` rows at OK/thin/loss margins, created a `PriceRequest`
+  and a `CustomerIssue` — all succeeded and read back correctly.
+- **BLOCKED** — driving the new pages through a real logged-in browser
+  session. This hit the *same* PGlite limitation already documented above
+  (not a new one): `prisma.session.create()` inside `src/login/actions.ts`
+  — pre-existing code, untouched by this pass — intermittently fails with
+  `Error in PostgreSQL connection: Error { kind: UnexpectedMessage }` under
+  both `next dev` and `next start` against this sandbox's PGlite socket,
+  while the identical `Session.create` call succeeds every time run as a
+  standalone script against the same database. This isolates the failure to
+  PGlite's handling of concurrent connections from a running Next.js server
+  process, not to the login logic or to anything added in this pass. A real
+  Postgres (Docker, Railway) does not have this limitation.

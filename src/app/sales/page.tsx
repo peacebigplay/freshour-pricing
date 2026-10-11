@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireUser } from '@/lib/auth/currentUser';
 import { getSalesDashboard, getApprovedCustomerSheetsReadyToSend } from '@/lib/queries/sales';
+import { listCustomerIssues } from '@/lib/queries/issues';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { KpiCard } from '@/components/ui/KpiCard';
 import { Card } from '@/components/ui/Card';
@@ -20,14 +21,26 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default async function SalesDashboardPage() {
   const user = await requireUser();
-  const [{ counts, myQuotes, openNegotiations }, readyToSend] = await Promise.all([
+  const [{ counts, myQuotes, openNegotiations }, readyToSend, issues] = await Promise.all([
     getSalesDashboard(user.id),
     getApprovedCustomerSheetsReadyToSend(),
+    listCustomerIssues(),
   ]);
+  const openIssueCount = issues.filter((i) => i.status === 'OPEN').length;
 
   return (
     <>
-      <PageHeader title="Sales" subtitle="คิวงานวันนี้ — ใครต้องติดต่อหรือดำเนินการต่อ" />
+      <PageHeader
+        title="Sales"
+        subtitle="คิวงานวันนี้ — ใครต้องติดต่อหรือดำเนินการต่อ"
+        actions={
+          <Link href="/sales/issues" style={{ textDecoration: 'none' }}>
+            <StatusPill tone={openIssueCount > 0 ? 'warning' : 'neutral'}>
+              ปัญหาลูกค้า {openIssueCount > 0 ? `· เปิดอยู่ ${openIssueCount}` : '· ไม่มีเคสเปิด'}
+            </StatusPill>
+          </Link>
+        }
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 24 }}>
         {Object.entries(STATUS_LABEL).map(([key, label]) => (

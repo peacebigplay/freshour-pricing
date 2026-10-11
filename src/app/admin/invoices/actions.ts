@@ -21,7 +21,10 @@ interface ParsedCsvRow {
   netSales: number;
   recognizedCost: number | null;
   invoiceDate: string;
+  dueDate: string | null;
 }
+
+const DEFAULT_CREDIT_TERM_DAYS = 30;
 
 function parseCsv(text: string): ParsedCsvRow[] {
   const lines = text.trim().split(/\r?\n/);
@@ -47,6 +50,7 @@ function parseCsv(text: string): ParsedCsvRow[] {
         netSales: Number(get('netSales')),
         recognizedCost: recognizedCostRaw === '' ? null : Number(recognizedCostRaw),
         invoiceDate: get('invoiceDate'),
+        dueDate: cols.includes('dueDate') && get('dueDate') !== '' ? get('dueDate') : null,
       };
     });
 }
@@ -102,12 +106,18 @@ export async function uploadInvoiceCsv(_prev: ActionResult, formData: FormData):
       continue;
     }
 
+    const invoiceDate = new Date(row.invoiceDate);
+    const dueDate = row.dueDate
+      ? new Date(row.dueDate)
+      : new Date(invoiceDate.getTime() + DEFAULT_CREDIT_TERM_DAYS * 24 * 60 * 60 * 1000);
+
     const invoice = await prisma.invoice.create({
       data: {
         importBatchId: batch.id,
         customerId: customer.id,
         invoiceNumber: row.invoiceNumber,
-        invoiceDate: new Date(row.invoiceDate),
+        invoiceDate,
+        dueDate,
         status: 'STAGED',
       },
     });

@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { AlertCard } from '@/components/ui/AlertCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusPill } from '@/components/ui/StatusPill';
+import { GenerateSheetsButton } from './GenerateSheetsButton';
 import sharedStyles from '@/components/ui/shared.module.css';
 
 export default async function PricingHomePage() {
@@ -39,16 +40,30 @@ export default async function PricingHomePage() {
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <KpiCard label="สินค้าใช้งาน" value={String(r.totalProducts)} caption="Product Master" />
+        <KpiCard icon="🧩" label="สินค้าใช้งาน" value={String(r.totalProducts)} caption="Product Master" />
         <KpiCard
+          icon="⏳"
           label="รอการจับคู่สินค้า"
           value={String(r.unresolvedMappings)}
-          deltaTone={r.unresolvedMappings > 0 ? 'down' : 'neutral'}
+          pill={r.unresolvedMappings > 0 ? 'รอตรวจ' : 'ครบแล้ว'}
+          pillTone={r.unresolvedMappings > 0 ? 'danger' : 'success'}
           caption="Mapping Queue"
+          href="/product-master"
         />
-        <KpiCard label="Central Pricing เสร็จแล้ว" value={`${centralPct}%`} caption={`${r.centralLinesApproved}/${r.centralLinesTotal} รายการ`} />
-        <KpiCard label="Customer Pricing เสร็จแล้ว" value={`${customerPct}%`} caption={`${r.customerSheetsApproved}/${r.customerSheetsTotal} ชีท`} />
+        <KpiCard icon="🧮" label="Central Pricing เสร็จแล้ว" value={`${centralPct}%`} caption={`${r.centralLinesApproved}/${r.centralLinesTotal} รายการ`} lead />
+        <KpiCard icon="👥" label="Customer Pricing เสร็จแล้ว" value={`${customerPct}%`} caption={`${r.customerSheetsApproved}/${r.customerSheetsTotal} ชีท`} />
       </div>
+
+      {r.activeCustomers > r.customerSheetsTotal && (
+        <div style={{ marginBottom: 16 }}>
+          <AlertCard
+            tone="warning"
+            title={`มีลูกค้า ${r.activeCustomers - r.customerSheetsTotal} เจ้าที่ยังไม่มีชีทราคาในรอบนี้`}
+            description="สร้างชีทราคาให้ลูกค้าที่ยังไม่มี — ไม่กระทบชีทหรือราคาที่อนุมัติไปแล้ว"
+            action={<GenerateSheetsButton pricingRoundId={r.round.id} />}
+          />
+        </div>
+      )}
 
       {r.unresolvedMappings > 0 && (
         <div style={{ marginBottom: 16 }}>

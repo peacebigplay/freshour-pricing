@@ -1,0 +1,273 @@
+.roleBanner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.roleBannerText {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.roleBannerPills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.priorityLabel {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin: 0 0 10px 2px;
+}
+
+.attentionGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.attentionRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--text-strong);
+}
+
+.attentionRow:hover {
+  border-color: var(--primary-border);
+  background: var(--primary-soft);
+}
+
+.attentionIcon {
+  font-size: 16px;
+}
+
+.attentionTitle {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+}
+
+@media (max-width: 1080px) {
+  .kpiGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 1080px) {
+  .row2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.actualKpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 11px;
+}
+
+@media (max-width: 760px) {
+  .actualKpis {
+    grid-template-columns: 1fr;
+  }
+}
+
+.actualKpis div {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 11px 13px;
+}
+
+.actualKpis span {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: block;
+}
+
+.actualKpis b {
+  font-size: 19px;
+  font-weight: 700;
+  display: block;
+  margin-top: 2px;
+}
+
+.actualKpis em {
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.miniTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 16px 0 8px;
+}
+
+.topSkuList {
+  display: flex;
+  flex-direction: column;
+}
+
+.topSkuRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12.5px;
+}
+
+.topSkuRow em {
+  font-style: normal;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.prospectStats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.prospectStats div {
+  text-align: center;
+}
+
+.prospectStats span {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  display: block;
+}
+
+.prospectStats b {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.prospectList {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prospectRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.linkCta {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.carrierGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 11px;
+}
+
+.carrierCard {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 13px;
+}
+
+.carrierOk {
+  background: var(--success-soft);
+  border-color: var(--success-border);
+}
+
+.carrierWarn {
+  background: var(--warning-soft);
+  border-color: var(--warning-border);
+}
+
+.carrierBad {
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+}
+
+.carrierTop {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.carrierMeta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.categoryRow {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.pipelineGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 10px;
+}
+
+.pipelineCell {
+  text-align: center;
+}
+
+.pipelineValue {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.pipelineLabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.healthGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  font-size: 13px;
+}

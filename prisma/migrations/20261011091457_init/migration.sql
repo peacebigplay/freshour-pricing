@@ -46,6 +46,21 @@ CREATE TYPE "DecisionStatus" AS ENUM ('OPEN', 'ASSIGNED', 'RESOLVED');
 -- CreateEnum
 CREATE TYPE "IntegrationStatus" AS ENUM ('CONNECTED', 'DEGRADED', 'BLOCKED', 'NOT_CONFIGURED');
 
+-- CreateEnum
+CREATE TYPE "ProspectStage" AS ENUM ('QUOTE_SENT', 'TRIAL', 'NEGOTIATING', 'MEETING_SET');
+
+-- CreateEnum
+CREATE TYPE "ProspectStatus" AS ENUM ('ACTIVE', 'WON', 'LOST');
+
+-- CreateEnum
+CREATE TYPE "IssueSeverity" AS ENUM ('LOW', 'MID', 'HIGH');
+
+-- CreateEnum
+CREATE TYPE "IssueStatus" AS ENUM ('OPEN', 'CLOSED');
+
+-- CreateEnum
+CREATE TYPE "PriceRequestStatus" AS ENUM ('OPEN', 'APPROVED', 'REJECTED');
+
 -- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL,
@@ -707,6 +722,82 @@ CREATE TABLE "IntegrityCheckResult" (
     CONSTRAINT "IntegrityCheckResult_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "Prospect" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "potentialValue" DOUBLE PRECISION NOT NULL,
+    "ownerUserId" TEXT NOT NULL,
+    "stage" "ProspectStage" NOT NULL DEFAULT 'QUOTE_SENT',
+    "status" "ProspectStatus" NOT NULL DEFAULT 'ACTIVE',
+    "lastContactAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Prospect_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Carrier" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Carrier_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Delivery" (
+    "id" TEXT NOT NULL,
+    "closedDealId" TEXT,
+    "customerId" TEXT NOT NULL,
+    "carrierId" TEXT NOT NULL,
+    "promisedAt" TIMESTAMP(3) NOT NULL,
+    "actualAt" TIMESTAMP(3),
+    "delayMinutes" INTEGER,
+    "podNote" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Delivery_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "CustomerIssue" (
+    "id" TEXT NOT NULL,
+    "customerId" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "severity" "IssueSeverity" NOT NULL DEFAULT 'MID',
+    "detail" TEXT NOT NULL,
+    "status" "IssueStatus" NOT NULL DEFAULT 'OPEN',
+    "carrierId" TEXT,
+    "reportedById" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "closedAt" TIMESTAMP(3),
+
+    CONSTRAINT "CustomerIssue_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PriceRequest" (
+    "id" TEXT NOT NULL,
+    "customerId" TEXT NOT NULL,
+    "productId" TEXT NOT NULL,
+    "requestedPrice" DOUBLE PRECISION NOT NULL,
+    "reason" TEXT,
+    "originalPrice" DOUBLE PRECISION NOT NULL,
+    "currentCost" DOUBLE PRECISION NOT NULL,
+    "targetPct" DOUBLE PRECISION NOT NULL,
+    "status" "PriceRequestStatus" NOT NULL DEFAULT 'OPEN',
+    "finalPrice" DOUBLE PRECISION,
+    "requestedById" TEXT NOT NULL,
+    "decidedById" TEXT,
+    "decidedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "PriceRequest_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -859,6 +950,33 @@ CREATE INDEX "JobRun_jobName_idx" ON "JobRun"("jobName");
 
 -- CreateIndex
 CREATE INDEX "IntegrityCheckResult_checkName_idx" ON "IntegrityCheckResult"("checkName");
+
+-- CreateIndex
+CREATE INDEX "Prospect_status_idx" ON "Prospect"("status");
+
+-- CreateIndex
+CREATE INDEX "Prospect_ownerUserId_idx" ON "Prospect"("ownerUserId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Carrier_name_key" ON "Carrier"("name");
+
+-- CreateIndex
+CREATE INDEX "Delivery_carrierId_idx" ON "Delivery"("carrierId");
+
+-- CreateIndex
+CREATE INDEX "Delivery_customerId_idx" ON "Delivery"("customerId");
+
+-- CreateIndex
+CREATE INDEX "CustomerIssue_customerId_idx" ON "CustomerIssue"("customerId");
+
+-- CreateIndex
+CREATE INDEX "CustomerIssue_status_idx" ON "CustomerIssue"("status");
+
+-- CreateIndex
+CREATE INDEX "PriceRequest_status_idx" ON "PriceRequest"("status");
+
+-- CreateIndex
+CREATE INDEX "PriceRequest_customerId_idx" ON "PriceRequest"("customerId");
 
 -- AddForeignKey
 ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1069,4 +1187,37 @@ ALTER TABLE "AuditEvent" ADD CONSTRAINT "AuditEvent_actorUserId_fkey" FOREIGN KE
 
 -- AddForeignKey
 ALTER TABLE "IntegrationRun" ADD CONSTRAINT "IntegrationRun_integrationConfigId_fkey" FOREIGN KEY ("integrationConfigId") REFERENCES "IntegrationConfig"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Prospect" ADD CONSTRAINT "Prospect_ownerUserId_fkey" FOREIGN KEY ("ownerUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Delivery" ADD CONSTRAINT "Delivery_closedDealId_fkey" FOREIGN KEY ("closedDealId") REFERENCES "ClosedDeal"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Delivery" ADD CONSTRAINT "Delivery_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Delivery" ADD CONSTRAINT "Delivery_carrierId_fkey" FOREIGN KEY ("carrierId") REFERENCES "Carrier"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CustomerIssue" ADD CONSTRAINT "CustomerIssue_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CustomerIssue" ADD CONSTRAINT "CustomerIssue_carrierId_fkey" FOREIGN KEY ("carrierId") REFERENCES "Carrier"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CustomerIssue" ADD CONSTRAINT "CustomerIssue_reportedById_fkey" FOREIGN KEY ("reportedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PriceRequest" ADD CONSTRAINT "PriceRequest_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PriceRequest" ADD CONSTRAINT "PriceRequest_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PriceRequest" ADD CONSTRAINT "PriceRequest_requestedById_fkey" FOREIGN KEY ("requestedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PriceRequest" ADD CONSTRAINT "PriceRequest_decidedById_fkey" FOREIGN KEY ("decidedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 

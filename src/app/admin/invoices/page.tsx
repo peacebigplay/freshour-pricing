@@ -28,7 +28,7 @@ export default async function AdminInvoicesPage() {
 
       <Card title="นำเข้า Invoice จาก CSV (fallback)">
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
-          คอลัมน์ที่ต้องมี: invoiceNumber, customerCode, productAlias, quantity, unit, netSales, recognizedCost (เว้นว่างได้), invoiceDate
+          คอลัมน์ที่ต้องมี: invoiceNumber, customerCode, productAlias, quantity, unit, netSales, recognizedCost (เว้นว่างได้), invoiceDate, dueDate (เว้นว่างได้ — ค่าเริ่มต้นคือ invoiceDate + 30 วัน)
         </p>
         <UploadCsvForm />
       </Card>

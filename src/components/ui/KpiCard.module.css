@@ -1,47 +1,116 @@
+.link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  padding: var(--space-4) var(--space-5);
-  box-shadow: var(--shadow-soft);
+  padding: 16px 17px;
+}
+
+.tap {
+  cursor: pointer;
+  transition: border-color 0.14s, transform 0.14s;
+}
+
+.tap:hover {
+  border-color: var(--primary-border);
+  transform: translateY(-1px);
+}
+
+.lead {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  box-shadow: 0 14px 30px -18px rgba(37, 99, 235, 0.9);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 11px;
+}
+
+.icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--surface-soft);
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  flex: 0 0 auto;
+}
+
+.lead .icon {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.pill {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.lead .pill {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .label {
   font-size: 12px;
   color: var(--text-muted);
-  margin-bottom: var(--space-2);
+  font-weight: 500;
+}
+
+.lead .label {
+  color: var(--primary-border);
 }
 
 .value {
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--text-strong);
-}
-
-.footer {
-  margin-top: var(--space-2);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 12px;
-}
-
-.delta {
+  font-size: 29px;
   font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.15;
+  margin-top: 3px;
+  color: var(--ink);
 }
 
-.up {
-  color: var(--success);
-}
-
-.down {
-  color: var(--danger);
-}
-
-.neutral {
-  color: var(--text-muted);
+.lead .value {
+  color: #fff;
 }
 
 .caption {
+  font-size: 11.5px;
   color: var(--text-muted);
+  margin-top: 5px;
+  line-height: 1.5;
+}
+
+.lead .caption {
+  color: var(--primary-border);
 }

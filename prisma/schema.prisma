@@ -46,6 +46,10 @@ model User {
   mappingReviews     ProductMappingQueue[]   @relation("MappingReviewedBy")
   closedDealsOwned   ClosedDeal[]            @relation("ClosedDealOwner")
   quoteOwner         Quote[]                 @relation("QuoteOwner")
+  prospectsOwned     Prospect[]
+  reportedIssues     CustomerIssue[]
+  priceRequestsMade  PriceRequest[]          @relation("PriceRequestRequestedBy")
+  priceRequestsDecided PriceRequest[]        @relation("PriceRequestDecidedBy")
 
   @@index([role])
 }
@@ -99,6 +103,7 @@ model Product {
   closedDealLines       ClosedDealLine[]
   invoiceLines          InvoiceLine[]
   mappingQueueEntries   ProductMappingQueue[]
+  priceRequests         PriceRequest[]
 
   @@index([canonicalName])
 }
@@ -455,6 +460,9 @@ model Customer {
   closedDeals    ClosedDeal[]
   invoices       Invoice[]
   payments       Payment[]
+  deliveries     Delivery[]
+  issues         CustomerIssue[]
+  priceRequests  PriceRequest[]
 }
 
 model CustomerProductCondition {
@@ -684,6 +692,7 @@ model ClosedDeal {
 
   lines         ClosedDealLine[]
   financialHandoff FinancialHandoff?
+  deliveries    Delivery[]
 }
 
 model ClosedDealLine {
@@ -748,6 +757,7 @@ model Invoice {
   customer        Customer           @relation(fields: [customerId], references: [id])
   invoiceNumber   String
   invoiceDate     DateTime
+  dueDate         DateTime
   status          InvoiceStatus      @default(STAGED)
   postedAt        DateTime?
 
@@ -899,4 +909,144 @@ model IntegrityCheckResult {
   runAt      DateTime @default(now())
 
   @@index([checkName])
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Sales pipeline (Prospects) — V29 Executive "Prospect Health" widget
+// ──────────────────────────────────────────────────────────────────
+
+enum ProspectStage {
+  QUOTE_SENT
+  TRIAL
+  NEGOTIATING
+  MEETING_SET
+}
+
+enum ProspectStatus {
+  ACTIVE
+  WON
+  LOST
+}
+
+model Prospect {
+  id             String         @id @default(cuid())
+  name           String
+  potentialValue Float
+  ownerUserId    String
+  owner          User           @relation(fields: [ownerUserId], references: [id])
+  stage          ProspectStage  @default(QUOTE_SENT)
+  status         ProspectStatus @default(ACTIVE)
+  lastContactAt  DateTime       @default(now())
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([status])
+  @@index([ownerUserId])
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Delivery / logistics — V29 Executive "Delivery Score" + carrier scorecards
+// ──────────────────────────────────────────────────────────────────
+
+model Carrier {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+
+  deliveries    Delivery[]
+  customerIssues CustomerIssue[]
+}
+
+model Delivery {
+  id           String     @id @default(cuid())
+  closedDealId String?
+  closedDeal   ClosedDeal? @relation(fields: [closedDealId], references: [id])
+  customerId   String
+  customer     Customer   @relation(fields: [customerId], references: [id])
+  carrierId    String
+  carrier      Carrier    @relation(fields: [carrierId], references: [id])
+  promisedAt   DateTime
+  actualAt     DateTime?
+  delayMinutes Int? // actualAt - promisedAt, computed at write time
+  podNote      String? // proof-of-delivery note
+  createdAt    DateTime   @default(now())
+
+  @@index([carrierId])
+  @@index([customerId])
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Customer issues — sales-logged, Executive reads read-only
+// (V29's "ServiceLog" and "CustomerIssue" are unified into one table
+// here, distinguished by an optional carrier link: an issue tied to a
+// delivery/carrier is an operations issue, one without is a general
+// sales-logged complaint — see docs/SOURCE_DATA_MAPPING.md equivalent
+// note in DATA_MODEL.md)
+// ──────────────────────────────────────────────────────────────────
+
+enum IssueSeverity {
+  LOW
+  MID
+  HIGH
+}
+
+enum IssueStatus {
+  OPEN
+  CLOSED
+}
+
+model CustomerIssue {
+  id           String        @id @default(cuid())
+  customerId   String
+  customer     Customer      @relation(fields: [customerId], references: [id])
+  type         String // ส่งช้า | คุณภาพสินค้า | ปริมาณ/ขาดส่ง | ราคา/ใบเสนอราคา | เอกสาร/Invoice | อื่นๆ
+  severity     IssueSeverity @default(MID)
+  detail       String
+  status       IssueStatus   @default(OPEN)
+  carrierId    String?
+  carrier      Carrier?      @relation(fields: [carrierId], references: [id])
+  reportedById String?
+  reportedBy   User?         @relation(fields: [reportedById], references: [id])
+  createdAt    DateTime      @default(now())
+  closedAt     DateTime?
+
+  @@index([customerId])
+  @@index([status])
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Price requests — the shared Sales <-> Pricing negotiation/contract-
+// adjustment queue (V29: "priceRequests" / "ขอปรับราคา" on an existing
+// locked contract line, distinct from a public-quote NegotiationCase).
+// ──────────────────────────────────────────────────────────────────
+
+enum PriceRequestStatus {
+  OPEN
+  APPROVED
+  REJECTED
+}
+
+model PriceRequest {
+  id             String              @id @default(cuid())
+  customerId     String
+  customer       Customer            @relation(fields: [customerId], references: [id])
+  productId      String
+  product        Product             @relation(fields: [productId], references: [id])
+  requestedPrice Float
+  reason         String?
+  originalPrice  Float
+  currentCost    Float
+  targetPct      Float
+  status         PriceRequestStatus  @default(OPEN)
+  finalPrice     Float?
+  requestedById  String
+  requestedBy    User                @relation("PriceRequestRequestedBy", fields: [requestedById], references: [id])
+  decidedById    String?
+  decidedBy      User?               @relation("PriceRequestDecidedBy", fields: [decidedById], references: [id])
+  decidedAt      DateTime?
+  createdAt      DateTime            @default(now())
+
+  @@index([status])
+  @@index([customerId])
 }

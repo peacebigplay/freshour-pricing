@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.0 — Full V29 feature-parity pass
+
+- Design system rebuilt to match V29's exact visual language (colors,
+  radii, icon-led sidebar, avatar "who" pill, float CTA cards, SVG donut/
+  bar/column/sparkline charts) while keeping every page DB-backed.
+- Executive dashboard rebuilt around V29's Priority 01–06 structure with
+  real Actual YTD performance, Cash/AR aging, Prospect health, Delivery/
+  carrier scorecards, and Customer Issues summary — all computed from real
+  rows, no fixture data.
+- New real, DB-backed features ported from V29 (see
+  `docs/V29_PRODUCTION_GAP_AUDIT.md` for the full table): `Prospect`,
+  `Carrier`/`Delivery`, `CustomerIssue` (Sales log/close UI at
+  `/sales/issues`), `PriceRequest` ("ขอปรับราคา" workflow: Sales/Pricing
+  request, Pricing approves/rejects at `/pricing/requests`), `Invoice.dueDate`
+  + AR aging buckets.
+- `/customers` rebuilt as a real Margin Guard contract view: per-customer
+  grade (A–F, computed from real margin states), loss/thin/ok banding,
+  grade filter, and the "ขอปรับราคา" action wired to a real `PriceRequest`.
+- Closed two real functional gaps the Margin Guard view exposed: there was
+  previously no way to create a `Customer` at all, and nothing ever
+  created a `CustomerPriceSheet`/`CustomerPriceLine` — both now have real
+  actions (`/customers` "+ ลูกค้าใหม่", `/pricing` "สร้าง/อัปเดตชีทราคาลูกค้า").
+- 9 new unit tests (customer grading, customer price suggestion) — 53
+  unit tests total, all green.
+
 ## 0.1.0 — Initial production build
 
 - Full PostgreSQL schema (60+ models) covering product master, cost/price

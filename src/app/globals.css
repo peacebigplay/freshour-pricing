@@ -1,27 +1,41 @@
 :root {
-  --app-bg: #f0f2f8;
+  /* Matched to the V29 reference's actual DESIGN-CSS :root tokens
+     (freshour_pricing_v29.html), not a reinterpretation. */
+  --app-bg: #eef1f7;
   --surface: #ffffff;
-  --surface-soft: #f7f8fc;
-  --primary: #4c54f4;
-  --primary-strong: #3046ee;
-  --primary-soft: #eef0ff;
+  --surface-soft: #f1f4f8;
 
-  --text-strong: #111318;
-  --text: #4b5262;
-  --text-muted: #9299aa;
+  --primary: #2563eb;
+  --primary-strong: #1d4ed8;
+  --primary-soft: #eff4ff;
+  --primary-border: #c7dafe;
 
-  --border: #e8eaf0;
+  --ink: #0f172a;
+  --text-strong: #1e293b;
+  --text: #475569;
+  --text-muted: #94a3b8;
 
-  --success: #36c96b;
-  --success-soft: #eaf9ef;
+  --border: #e7ebf0;
+  --border-soft: #f1f4f8;
 
-  --warning: #e7a82b;
-  --warning-soft: #fff7e5;
+  --success: #16a34a;
+  --success-soft: #f0fdf4;
+  --success-border: #bbf7d0;
 
-  --danger: #f04e4e;
-  --danger-soft: #fff0f0;
+  --warning: #d97706;
+  --warning-soft: #fffbeb;
+  --warning-border: #fde68a;
 
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --danger-border: #fbd5d5;
+
+  --gold: #d0a143;
+  --violet: #8b5cf6;
+
+  --radius-sm: 14px;
   --radius-card: 18px;
+  --radius-lg: 24px;
   --radius-control: 10px;
   --space-1: 4px;
   --space-2: 8px;
@@ -29,7 +43,7 @@
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
-  --shadow-soft: 0 1px 2px rgba(17, 19, 24, 0.04), 0 8px 24px -16px rgba(17, 19, 24, 0.12);
+  --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -16px rgba(15, 23, 42, 0.18);
 }
 
 * {
@@ -47,7 +61,7 @@ body {
   color: var(--text-strong);
   font-family: 'Prompt', system-ui, -apple-system, sans-serif;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -56,7 +70,7 @@ h2,
 h3,
 h4 {
   margin: 0;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text-strong);
 }
@@ -75,6 +89,7 @@ textarea {
 
 .tabular {
   font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 :focus-visible {

@@ -7,6 +7,7 @@ import styles from './AppShell.module.css';
 interface NavItem {
   href: string;
   labelTh: string;
+  icon: string;
 }
 
 export function SidebarNav({ items }: { items: NavItem[] }) {
@@ -19,7 +20,8 @@ export function SidebarNav({ items }: { items: NavItem[] }) {
           href={item.href}
           className={pathname.startsWith(item.href) ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
         >
-          {item.labelTh}
+          <span className={styles.navIcon}>{item.icon}</span>
+          <span className={styles.navTxt}>{item.labelTh}</span>
         </Link>
       ))}
     </>
