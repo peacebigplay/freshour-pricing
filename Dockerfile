@@ -40,4 +40,16 @@ EXPOSE 3000
 # plain `docker run`/"deploy this Dockerfile" on a host like Railway or
 # Render correct without that host needing to know about docker-compose's
 # separate command override.
-CMD ["sh", "-c", "npx prisma migrate deploy && npx next start -p 3000"]
+#
+# Calls Prisma's real entry file (node_modules/prisma/build/index.js)
+# directly instead of `npx prisma` / `node_modules/.bin/prisma`: on some
+# platforms (observed on a Docker build for linux/arm64) npm materializes
+# `.bin/prisma` as an actual copy of the bundled CLI instead of a symlink
+# into node_modules/prisma/build/. Prisma's CLI loads its WASM schema
+# engine from a path relative to its own file, so when `.bin/prisma` is a
+# copy rather than a symlink, that relative lookup lands in `.bin/` itself
+# — where the WASM file was never placed — and `migrate deploy` crashes
+# with ENOENT. Invoking the real file in node_modules/prisma/build/
+# directly sidesteps the .bin/ shim (and its symlink-vs-copy ambiguity)
+# entirely, regardless of host CPU architecture.
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && npx next start -p 3000"]
