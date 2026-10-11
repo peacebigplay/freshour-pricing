@@ -9,5 +9,7 @@ dist/
 coverage/
 playwright-report/
 test-results/
+.env.local
+next-env.d.ts
 /prisma/*.db
 /prisma/*.db-journal

@@ -9,8 +9,6 @@ import { readFileSync } from 'node:fs';
 import { PrismaClient, type MarginCategory } from '@prisma/client';
 import { cleanCanonicalName, normalizeNumericCell } from '../src/lib/domain/pdfNormalize';
 
-const prisma = new PrismaClient();
-
 interface SourceRow {
   source_document: string;
   source_page: number;
@@ -48,13 +46,7 @@ function guessCategory(name: string): MarginCategory {
   return 'OTHER';
 }
 
-async function main() {
-  const filePath = process.argv[2];
-  if (!filePath) {
-    console.error('Usage: tsx prisma/importSourceData.ts <path-to-source.json>');
-    process.exit(1);
-  }
-
+export async function importSourceData(prisma: PrismaClient, filePath: string) {
   const rows: SourceRow[] = JSON.parse(readFileSync(filePath, 'utf-8'));
   const productRows = rows.filter((r) => r.row_type === 'product');
   console.log(`Loaded ${rows.length} rows (${productRows.length} products) from ${filePath}`);
@@ -154,9 +146,12 @@ async function main() {
           category: guessCategory(raw.canonicalName),
           catalogSegment: raw.catalogSegment,
           dataOrigin: 'REAL_SOURCE',
-          aliases: { create: [{ alias: raw.sourceName, source: 'pdf_import' }, { alias: raw.canonicalName, source: 'pdf_import' }] },
         },
       });
+      const aliasNames = Array.from(new Set([raw.sourceName, raw.canonicalName]));
+      for (const alias of aliasNames) {
+        await prisma.productAlias.create({ data: { productId: product.id, alias, source: 'pdf_import' } });
+      }
     }
 
     productIdByRawRowId.set(raw.id, product.id);
@@ -217,9 +212,20 @@ async function main() {
   console.log(`Unresolved mapping queue entries: ${await prisma.productMappingQueue.count({ where: { status: 'UNRESOLVED' } })}`);
 }
 
-main()
-  .catch((err) => {
-    console.error(err);
+// CLI entrypoint: `npx tsx prisma/importSourceData.ts <path-to-source.json>`
+// (seed.ts instead calls importSourceData() directly, in-process, so it
+// shares one PrismaClient connection rather than spawning a second one).
+if (require.main === module) {
+  const filePath = process.argv[2];
+  if (!filePath) {
+    console.error('Usage: tsx prisma/importSourceData.ts <path-to-source.json>');
     process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+  }
+  const prisma = new PrismaClient();
+  importSourceData(prisma, filePath)
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    })
+    .finally(() => prisma.$disconnect());
+}

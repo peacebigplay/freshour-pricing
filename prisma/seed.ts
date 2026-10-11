@@ -7,10 +7,10 @@
 
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../src/lib/auth/password';
 import { DEFAULT_CATEGORY_TARGETS, DEFAULT_GLOBAL_FLOOR_PCT } from '../src/lib/domain/margin';
+import { importSourceData } from './importSourceData';
 
 const prisma = new PrismaClient();
 
@@ -107,7 +107,7 @@ async function importRealSourceDataIfPresent() {
   for (const file of files) {
     const fullPath = join(importsDir, file);
     console.log(`Importing real source data from ${fullPath} ...`);
-    execFileSync('npx', ['tsx', join(__dirname, 'importSourceData.ts'), fullPath], { stdio: 'inherit' });
+    await importSourceData(prisma, fullPath);
   }
 }
 

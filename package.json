@@ -30,6 +30,8 @@
     "zod": "3.23.8"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-socket": "0.2.11",
     "@playwright/test": "1.64.0",
     "@types/node": "20.17.6",
     "@types/react": "18.3.12",
