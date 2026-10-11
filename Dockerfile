@@ -15,14 +15,19 @@ ENV AUTH_SECRET="build-time-placeholder-not-used-at-runtime"
 RUN npx prisma generate
 RUN npm run build
 
+# Production runtime: only the pruned "standalone" server output + static
+# assets + the Prisma client/schema needed for `prisma migrate deploy` at
+# startup. Dev-only tooling (Playwright, ESLint, Vitest, the PGlite test
+# harness) never makes it into this image.
 FROM base AS runner
 ENV NODE_ENV=production
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/next.config.mjs ./next.config.mjs
+COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 EXPOSE 3000
-CMD ["npx", "next", "start", "-p", "3000"]
+CMD ["node", "server.js"]

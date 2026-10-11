@@ -30,10 +30,12 @@ docker compose up --build
 
 This starts PostgreSQL, runs `prisma migrate deploy`, and starts the app on
 `http://localhost:3000`. On a fresh database there is no seed data yet — run
-the bootstrap seed once the containers are up:
+the bootstrap seed once the containers are up. The `app` service is a
+pruned production image with no dev tooling in it, so seeding runs via the
+`seed` profile (built from the same Dockerfile's full `builder` stage):
 
 ```bash
-docker compose exec app npx tsx prisma/seed.ts
+docker compose run --rm seed
 ```
 
 The seed:

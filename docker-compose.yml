@@ -30,7 +30,24 @@ services:
       NODE_ENV: production
     ports:
       - '3000:3000'
-    command: sh -c "npx prisma migrate deploy && npx next start -p 3000"
+    command: sh -c "node_modules/.bin/prisma migrate deploy && node server.js"
+
+  # One-off tooling image: the `app` service above is the pruned "standalone"
+  # runtime (no tsx/dev deps, deliberately — see docs/DEPLOYMENT.md), so
+  # seeding and the manual import pipeline run from the full `builder` stage
+  # instead. Usage: `docker compose run --rm seed`.
+  seed:
+    build:
+      context: .
+      target: builder
+    profiles: ['tools']
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://freshour:freshour@db:5432/freshour?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:?set a long random AUTH_SECRET in .env}
+    command: npx tsx prisma/seed.ts
 
 volumes:
   freshour_db_data:
