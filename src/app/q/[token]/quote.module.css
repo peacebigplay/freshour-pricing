@@ -1,0 +1,133 @@
+.page {
+  min-height: 100vh;
+  background: var(--app-bg);
+  padding: var(--space-5) var(--space-4);
+  display: flex;
+  justify-content: center;
+}
+
+.card {
+  width: 100%;
+  max-width: 560px;
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-soft);
+  padding: var(--space-5);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+}
+
+.brand b {
+  display: block;
+}
+
+.brand span {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.line {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+  gap: var(--space-3);
+}
+
+.productName {
+  font-weight: 600;
+}
+
+.unit {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.priceCol {
+  text-align: right;
+}
+
+.price {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.respondedTag {
+  font-size: 11.5px;
+  color: var(--success);
+  margin-top: 4px;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.acceptButton {
+  background: var(--success);
+  color: #fff;
+  border: 0;
+  border-radius: var(--radius-control);
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.negotiateButton {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.negotiateForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.negotiateForm input {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 6px 8px;
+  font-size: 12.5px;
+  width: 160px;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 11px;
+}

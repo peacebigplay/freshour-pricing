@@ -1,0 +1,902 @@
+// Freshour Pricing — production data model.
+// See docs/DATA_MODEL.md for the narrative version of this schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Identity / RBAC
+// ──────────────────────────────────────────────────────────────────
+
+enum Role {
+  EXECUTIVE
+  PRICING
+  SALES
+  ADMIN
+}
+
+enum DataOrigin {
+  REAL_SOURCE
+  DEV_FIXTURE
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         Role
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastLoginAt  DateTime?
+
+  sessions           Session[]
+  auditEvents        AuditEvent[]
+  approvedCentral    CentralPriceLine[]      @relation("CentralApprovedBy")
+  approvedCustomer   CustomerPriceLine[]     @relation("CustomerApprovedBy")
+  executiveDecisions ExecutiveDecision[]
+  negotiationEvents  NegotiationEvent[]
+  mappingReviews     ProductMappingQueue[]   @relation("MappingReviewedBy")
+  closedDealsOwned   ClosedDeal[]            @relation("ClosedDealOwner")
+  quoteOwner         Quote[]                 @relation("QuoteOwner")
+
+  @@index([role])
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  ipAddress  String?
+  userAgent  String?
+
+  @@index([userId])
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Canonical Product Master
+// ──────────────────────────────────────────────────────────────────
+
+enum MarginCategory {
+  COMPETITIVE
+  POPULAR
+  OFFAL
+  OTHER
+}
+
+model Product {
+  id              String         @id @default(cuid())
+  canonicalName   String
+  defaultUnit     String
+  category        MarginCategory @default(OTHER)
+  catalogSegment  String         @default("bulk") // bulk | frozen | other
+  active          Boolean        @default(true)
+  dataOrigin      DataOrigin     @default(REAL_SOURCE)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  aliases              ProductAlias[]
+  marginOverride       SkuCategoryOverride?
+  costSnapshotLines     CostSnapshotLine[]
+  sourcePriceLines      SourcePriceSnapshotLine[]
+  marketMatchReviews    MarketMatchReview[]
+  centralPriceLines     CentralPriceLine[]
+  customerConditions    CustomerProductCondition[]
+  customerPriceLines    CustomerPriceLine[]
+  quoteLines            QuoteLine[]
+  negotiationCases      NegotiationCase[]
+  closedDealLines       ClosedDealLine[]
+  invoiceLines          InvoiceLine[]
+  mappingQueueEntries   ProductMappingQueue[]
+
+  @@index([canonicalName])
+}
+
+model ProductAlias {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  alias     String
+  source    String // e.g. "pdf_import", "manual"
+  createdAt DateTime @default(now())
+
+  @@unique([alias, source])
+  @@index([productId])
+}
+
+enum MappingStatus {
+  UNRESOLVED
+  RESOLVED
+  REJECTED
+}
+
+model ProductMappingQueue {
+  id              String        @id @default(cuid())
+  sourceRowRef    String // links back to CostRawRow.id or InvoiceRawRow.id
+  sourceName      String
+  specification   String?
+  unit            String?
+  suggestedProductId String?
+  product         Product?      @relation(fields: [resolvedProductId], references: [id])
+  resolvedProductId String?
+  status          MappingStatus @default(UNRESOLVED)
+  reviewedById    String?
+  reviewedBy      User?         @relation("MappingReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  notes           String?
+  createdAt       DateTime      @default(now())
+
+  @@index([status])
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Source documents + cost import pipeline
+// ──────────────────────────────────────────────────────────────────
+
+model SourceDocument {
+  id           String   @id @default(cuid())
+  filename     String
+  documentType String // "pdf_cost_price_sheet" | "csv" | "xlsx" | ...
+  storagePath  String // where the original file is kept for audit
+  uploadedAt   DateTime @default(now())
+  sourcePeriodLabel String // e.g. "01-07/10/69" preserved verbatim
+  effectivePeriodStart DateTime
+  effectivePeriodEnd   DateTime
+
+  importBatches CostImportBatch[]
+
+  @@index([documentType])
+}
+
+enum ImportBatchStatus {
+  STAGED
+  VALIDATED
+  PUBLISHED
+  REJECTED
+}
+
+model CostImportBatch {
+  id               String            @id @default(cuid())
+  sourceDocumentId String
+  sourceDocument   SourceDocument    @relation(fields: [sourceDocumentId], references: [id])
+  status           ImportBatchStatus @default(STAGED)
+  createdAt        DateTime          @default(now())
+  publishedAt      DateTime?
+
+  rawRows        CostRawRow[]
+  costSnapshot   CostSnapshot?
+  sourcePriceSnapshot SourcePriceSnapshot?
+}
+
+model CostRawRow {
+  id                String           @id @default(cuid())
+  importBatchId     String
+  importBatch       CostImportBatch  @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  sourcePage        Int
+  sourceRowNo       Int
+  sourceTable       String // "main" | "frozen_section"
+  rowType           String // "product" | "section_header"
+  sourceName        String
+  canonicalName     String
+  specification     String?
+  packQuantity       Float?
+  unit               String?
+  previousCost       Float?
+  currentCost        Float?
+  costDelta          Float?
+  retailAri          Float?
+  wholesale2kg        Float?
+  wholesale5kgOr4kg   Float?
+  wholesale10kg       Float?
+  customerPrice       Float?
+  catalogSegment      String
+  extractionStatus    String // "OK" | "NEEDS_SOURCE_REVIEW"
+  reviewNotes         String?
+  rawPayload          Json
+  matchedProductId    String?
+
+  @@index([importBatchId])
+  @@index([extractionStatus])
+}
+
+model CostSnapshot {
+  id               String           @id @default(cuid())
+  importBatchId    String           @unique
+  importBatch      CostImportBatch  @relation(fields: [importBatchId], references: [id])
+  effectivePeriodStart DateTime
+  effectivePeriodEnd   DateTime
+  publishedAt      DateTime         @default(now())
+  dataOrigin       DataOrigin       @default(REAL_SOURCE)
+
+  lines            CostSnapshotLine[]
+  pricingRounds    PricingRound[]
+}
+
+model CostSnapshotLine {
+  id              String       @id @default(cuid())
+  costSnapshotId  String
+  costSnapshot    CostSnapshot @relation(fields: [costSnapshotId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product      @relation(fields: [productId], references: [id])
+  previousCost    Float?
+  currentCost     Float
+  costDelta       Float?
+  unit            String
+  sourceRowNo     Int
+  sourcePage      Int
+
+  @@unique([costSnapshotId, productId])
+  @@index([productId])
+}
+
+model SourcePriceSnapshot {
+  id               String          @id @default(cuid())
+  importBatchId    String          @unique
+  importBatch      CostImportBatch @relation(fields: [importBatchId], references: [id])
+  publishedAt      DateTime        @default(now())
+  dataOrigin       DataOrigin      @default(REAL_SOURCE)
+
+  lines            SourcePriceSnapshotLine[]
+}
+
+model SourcePriceSnapshotLine {
+  id                    String              @id @default(cuid())
+  sourcePriceSnapshotId String
+  sourcePriceSnapshot   SourcePriceSnapshot @relation(fields: [sourcePriceSnapshotId], references: [id], onDelete: Cascade)
+  productId             String
+  product               Product             @relation(fields: [productId], references: [id])
+  retailAri             Float?
+  wholesale2kg          Float?
+  wholesale5kgOr4kg     Float?
+  wholesale10kg         Float?
+  customerPrice         Float?
+  sourcePage            Int
+  sourceRowNo           Int
+
+  @@unique([sourcePriceSnapshotId, productId])
+  @@index([productId])
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Market (competitor) data — never fabricated
+// ──────────────────────────────────────────────────────────────────
+
+enum MarketSourceStatus {
+  CONNECTED
+  DEGRADED
+  BLOCKED
+  NOT_CONFIGURED
+}
+
+model MarketSource {
+  id            String             @id @default(cuid())
+  name          String
+  kind          String // "connector" | "manual_csv" | "store_check"
+  status        MarketSourceStatus @default(NOT_CONFIGURED)
+  lastAttemptAt DateTime?
+  lastSuccessAt DateTime?
+  lastError     String?
+
+  observations  MarketRawObservation[]
+  snapshots     MarketSnapshot[]
+}
+
+model MarketRawObservation {
+  id             String       @id @default(cuid())
+  marketSourceId String
+  marketSource   MarketSource @relation(fields: [marketSourceId], references: [id])
+  observedAt     DateTime
+  competitorName String
+  productLabel   String
+  observedPrice  Float
+  confidence     Float? // 0..1
+  rawPayload     Json
+
+  matchReview    MarketMatchReview?
+}
+
+model MarketMatchReview {
+  id               String                @id @default(cuid())
+  observationId    String                @unique
+  observation      MarketRawObservation  @relation(fields: [observationId], references: [id])
+  productId        String?
+  product          Product?              @relation(fields: [productId], references: [id])
+  status           MappingStatus         @default(UNRESOLVED)
+  reviewedAt       DateTime?
+
+  @@index([status])
+}
+
+model MarketSnapshot {
+  id             String       @id @default(cuid())
+  marketSourceId String
+  marketSource   MarketSource @relation(fields: [marketSourceId], references: [id])
+  publishedAt    DateTime     @default(now())
+
+  pricingRounds  PricingRound[]
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Margin policy
+// ──────────────────────────────────────────────────────────────────
+
+model MarginPolicyVersion {
+  id            String   @id @default(cuid())
+  version       Int      @unique
+  globalFloorPct Float
+  effectiveFrom DateTime @default(now())
+  effectiveTo   DateTime?
+  notes         String?
+
+  categoryRules  MarginCategoryRule[]
+  skuOverrides   SkuCategoryOverride[]
+  pricingRounds  PricingRound[]
+
+  @@index([effectiveFrom])
+}
+
+model MarginCategoryRule {
+  id                     String               @id @default(cuid())
+  marginPolicyVersionId  String
+  marginPolicyVersion    MarginPolicyVersion  @relation(fields: [marginPolicyVersionId], references: [id], onDelete: Cascade)
+  category               MarginCategory
+  targetPct              Float
+
+  @@unique([marginPolicyVersionId, category])
+}
+
+model SkuCategoryOverride {
+  id                    String              @id @default(cuid())
+  marginPolicyVersionId String
+  marginPolicyVersion   MarginPolicyVersion @relation(fields: [marginPolicyVersionId], references: [id], onDelete: Cascade)
+  productId             String              @unique
+  product               Product             @relation(fields: [productId], references: [id])
+  targetPct             Float
+  reason                String?
+  createdAt             DateTime            @default(now())
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Pricing rounds / Central pricing
+// ──────────────────────────────────────────────────────────────────
+
+enum PricingRoundStatus {
+  OPEN
+  CENTRAL_APPROVED
+  CUSTOMER_APPROVED
+  CLOSED
+}
+
+model PricingRound {
+  id                    String              @id @default(cuid())
+  label                 String // e.g. "2026-W40"
+  status                PricingRoundStatus  @default(OPEN)
+  costSnapshotId        String
+  costSnapshot          CostSnapshot        @relation(fields: [costSnapshotId], references: [id])
+  marginPolicyVersionId String
+  marginPolicyVersion   MarginPolicyVersion @relation(fields: [marginPolicyVersionId], references: [id])
+  marketSnapshotId      String?
+  marketSnapshot        MarketSnapshot?     @relation(fields: [marketSnapshotId], references: [id])
+  createdAt             DateTime            @default(now())
+  closedAt              DateTime?
+
+  centralPriceLines     CentralPriceLine[]
+  customerPriceSheets   CustomerPriceSheet[]
+
+  @@index([status])
+}
+
+enum PricingGoal {
+  COMPETITIVE
+  HOLD
+  TARGET
+  PROTECT
+}
+
+enum ApprovalStatus {
+  SUGGESTED
+  APPROVED
+  REJECTED
+}
+
+model CentralPriceLine {
+  id               String         @id @default(cuid())
+  pricingRoundId   String
+  pricingRound     PricingRound   @relation(fields: [pricingRoundId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product        @relation(fields: [productId], references: [id])
+  previousApprovedPrice Float?
+  suggestedPrice   Float
+  pricingGoal      PricingGoal    @default(TARGET)
+  approvedPrice    Float?
+  resultingMarginPct Float?
+  status           ApprovalStatus @default(SUGGESTED)
+  isException      Boolean        @default(false)
+  exceptionReason  String?
+  approvedById     String?
+  approvedBy       User?          @relation("CentralApprovedBy", fields: [approvedById], references: [id])
+  approvedAt       DateTime?
+  version          Int            @default(1) // optimistic lock
+  updatedAt        DateTime       @updatedAt
+
+  customerPriceLines CustomerPriceLine[]
+
+  @@unique([pricingRoundId, productId])
+  @@index([status])
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Customers / Customer pricing
+// ──────────────────────────────────────────────────────────────────
+
+model Customer {
+  id         String   @id @default(cuid())
+  name       String
+  code       String   @unique
+  channel    String? // e.g. wholesale, modern trade, HORECA
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  conditions     CustomerProductCondition[]
+  priceSheets    CustomerPriceSheet[]
+  quotes         Quote[]
+  negotiations   NegotiationCase[]
+  closedDeals    ClosedDeal[]
+  invoices       Invoice[]
+  payments       Payment[]
+}
+
+model CustomerProductCondition {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  note        String?
+  minMarginPct Float?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([customerId, productId])
+}
+
+model CustomerPriceSheet {
+  id             String       @id @default(cuid())
+  pricingRoundId String
+  pricingRound   PricingRound @relation(fields: [pricingRoundId], references: [id])
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id])
+  status         ApprovalStatus @default(SUGGESTED)
+  createdAt      DateTime     @default(now())
+
+  lines          CustomerPriceLine[]
+  handoffs       PricingSalesHandoff[]
+
+  @@unique([pricingRoundId, customerId])
+}
+
+model CustomerPriceLine {
+  id                   String             @id @default(cuid())
+  customerPriceSheetId String
+  customerPriceSheet   CustomerPriceSheet @relation(fields: [customerPriceSheetId], references: [id], onDelete: Cascade)
+  centralPriceLineId   String
+  centralPriceLine     CentralPriceLine   @relation(fields: [centralPriceLineId], references: [id])
+  productId            String
+  product              Product            @relation(fields: [productId], references: [id])
+  previousCustomerPrice Float?
+  suggestedPrice       Float
+  approvedPrice        Float?
+  resultingMarginPct   Float?
+  status               ApprovalStatus     @default(SUGGESTED)
+  isException          Boolean            @default(false)
+  approvedById         String?
+  approvedBy           User?              @relation("CustomerApprovedBy", fields: [approvedById], references: [id])
+  approvedAt           DateTime?
+  version              Int                @default(1)
+  updatedAt            DateTime           @updatedAt
+
+  quoteLines           QuoteLine[]
+
+  @@unique([customerPriceSheetId, productId])
+}
+
+model PricingSalesHandoff {
+  id                   String             @id @default(cuid())
+  customerPriceSheetId String
+  customerPriceSheet   CustomerPriceSheet @relation(fields: [customerPriceSheetId], references: [id])
+  handedOffAt          DateTime           @default(now())
+  acknowledgedAt        DateTime?
+
+  @@index([customerPriceSheetId])
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Quotes / public tokens / negotiation
+// ──────────────────────────────────────────────────────────────────
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  CUSTOMER_RESPONDED
+  NEGOTIATING
+  ACCEPTED
+  CLOSED
+  EXPIRED
+}
+
+model Quote {
+  id          String      @id @default(cuid())
+  customerId  String
+  customer    Customer    @relation(fields: [customerId], references: [id])
+  ownerUserId String
+  owner       User        @relation("QuoteOwner", fields: [ownerUserId], references: [id])
+  status      QuoteStatus @default(DRAFT)
+  createdAt   DateTime    @default(now())
+
+  revisions     QuoteRevision[]
+  publicTokens  PublicQuoteToken[]
+  closedDeal    ClosedDeal?
+}
+
+model QuoteRevision {
+  id        String   @id @default(cuid())
+  quoteId   String
+  quote     Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  revision  Int
+  createdAt DateTime @default(now())
+  note      String?
+
+  lines     QuoteLine[]
+  responses QuoteResponse[]
+
+  @@unique([quoteId, revision])
+}
+
+model QuoteLine {
+  id                  String             @id @default(cuid())
+  quoteRevisionId     String
+  quoteRevision       QuoteRevision      @relation(fields: [quoteRevisionId], references: [id], onDelete: Cascade)
+  productId           String
+  product             Product            @relation(fields: [productId], references: [id])
+  customerPriceLineId String
+  customerPriceLine   CustomerPriceLine  @relation(fields: [customerPriceLineId], references: [id])
+  offeredPrice        Float
+  unit                String
+
+  closedDealLines      ClosedDealLine[]
+  responses            QuoteResponse[]
+}
+
+model PublicQuoteToken {
+  id          String    @id @default(cuid())
+  quoteId     String
+  quote       Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  lastUsedAt  DateTime?
+
+  responses   QuoteResponse[]
+
+  @@index([quoteId])
+}
+
+enum ResponseAction {
+  ACCEPT
+  NEGOTIATE
+}
+
+model QuoteResponse {
+  id               String         @id @default(cuid())
+  quoteRevisionId  String
+  quoteRevision    QuoteRevision  @relation(fields: [quoteRevisionId], references: [id])
+  quoteLineId      String
+  quoteLine        QuoteLine      @relation(fields: [quoteLineId], references: [id])
+  publicTokenId    String
+  publicToken      PublicQuoteToken @relation(fields: [publicTokenId], references: [id])
+  action           ResponseAction
+  requestedPrice   Float?
+  reason           String?
+  submittedAt      DateTime       @default(now())
+  ipAddress        String?
+
+  negotiationCase  NegotiationCase?
+
+  @@unique([quoteLineId])
+  @@index([quoteRevisionId])
+}
+
+enum NegotiationStatus {
+  OPEN
+  APPROVED
+  REJECTED
+  CLOSED
+}
+
+model NegotiationCase {
+  id                 String            @id @default(cuid())
+  customerId         String
+  customer           Customer          @relation(fields: [customerId], references: [id])
+  productId          String
+  product            Product           @relation(fields: [productId], references: [id])
+  quoteResponseId    String            @unique
+  quoteResponse      QuoteResponse     @relation(fields: [quoteResponseId], references: [id])
+  originalApprovedPrice Float
+  requestedPrice     Float
+  status             NegotiationStatus @default(OPEN)
+  finalPrice         Float?
+  supplierMaxCostTarget Float?
+  createdAt          DateTime          @default(now())
+  closedAt           DateTime?
+
+  events             NegotiationEvent[]
+  supplierNegotiations SupplierNegotiation[]
+
+  @@index([status])
+}
+
+model NegotiationEvent {
+  id                String          @id @default(cuid())
+  negotiationCaseId String
+  negotiationCase   NegotiationCase @relation(fields: [negotiationCaseId], references: [id], onDelete: Cascade)
+  actorUserId       String?
+  actor             User?           @relation(fields: [actorUserId], references: [id])
+  eventType         String // "comment" | "counter_offer" | "approve" | "reject"
+  payload           Json
+  createdAt         DateTime        @default(now())
+
+  @@index([negotiationCaseId])
+}
+
+model SupplierNegotiation {
+  id                String          @id @default(cuid())
+  negotiationCaseId String
+  negotiationCase   NegotiationCase @relation(fields: [negotiationCaseId], references: [id])
+  targetCost        Float
+  status            String // "proposed" | "accepted" | "declined"
+  createdAt         DateTime        @default(now())
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Closed deal / Financial handoff / Invoices / Payments
+// ──────────────────────────────────────────────────────────────────
+
+model ClosedDeal {
+  id            String   @id @default(cuid())
+  quoteId       String   @unique
+  quote         Quote    @relation(fields: [quoteId], references: [id])
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id])
+  ownerUserId   String
+  owner         User     @relation("ClosedDealOwner", fields: [ownerUserId], references: [id])
+  closedAt      DateTime @default(now())
+
+  lines         ClosedDealLine[]
+  financialHandoff FinancialHandoff?
+}
+
+model ClosedDealLine {
+  id            String      @id @default(cuid())
+  closedDealId  String
+  closedDeal    ClosedDeal  @relation(fields: [closedDealId], references: [id], onDelete: Cascade)
+  quoteLineId   String
+  quoteLine     QuoteLine   @relation(fields: [quoteLineId], references: [id])
+  productId     String
+  product       Product     @relation(fields: [productId], references: [id])
+  frozenPrice   Float // accepted selling price, frozen at close
+  unit          String
+}
+
+enum HandoffStatus {
+  PENDING
+  RECONCILED
+}
+
+model FinancialHandoff {
+  id           String        @id @default(cuid())
+  closedDealId String        @unique
+  closedDeal   ClosedDeal    @relation(fields: [closedDealId], references: [id])
+  status       HandoffStatus @default(PENDING)
+  createdAt    DateTime      @default(now())
+
+  reconciliationExceptions ReconciliationException[]
+}
+
+model InvoiceImportBatch {
+  id         String   @id @default(cuid())
+  source     String // "e_today_api" | "e_today_export" | "csv_fallback"
+  createdAt  DateTime @default(now())
+
+  rawRows    InvoiceRawRow[]
+  invoices   Invoice[]
+}
+
+model InvoiceRawRow {
+  id              String             @id @default(cuid())
+  importBatchId   String
+  importBatch     InvoiceImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  rawPayload      Json
+  duplicateOfId   String?
+  matchedProductId String?
+  matchedCustomerId String?
+
+  @@index([importBatchId])
+}
+
+enum InvoiceStatus {
+  STAGED
+  POSTED
+  VOID
+}
+
+model Invoice {
+  id              String             @id @default(cuid())
+  importBatchId   String
+  importBatch     InvoiceImportBatch @relation(fields: [importBatchId], references: [id])
+  customerId      String
+  customer        Customer           @relation(fields: [customerId], references: [id])
+  invoiceNumber   String
+  invoiceDate     DateTime
+  status          InvoiceStatus      @default(STAGED)
+  postedAt        DateTime?
+
+  lines           InvoiceLine[]
+  payments        PaymentAllocation[]
+  reconciliationExceptions ReconciliationException[]
+
+  @@unique([invoiceNumber])
+  @@index([status])
+}
+
+model InvoiceLine {
+  id              String   @id @default(cuid())
+  invoiceId       String
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id])
+  quantity        Float
+  unit            String
+  netSales        Float
+  recognizedCost  Float? // null => COST_PENDING
+  grossProfit     Float? // netSales - recognizedCost, null if cost pending
+
+  @@index([invoiceId])
+}
+
+model ReconciliationException {
+  id                 String            @id @default(cuid())
+  invoiceId          String?
+  invoice            Invoice?          @relation(fields: [invoiceId], references: [id])
+  financialHandoffId String?
+  financialHandoff   FinancialHandoff? @relation(fields: [financialHandoffId], references: [id])
+  kind               String // "unmatched_customer" | "unmatched_product" | "quantity_mismatch" | "duplicate"
+  detail             String
+  resolved           Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  amount      Float
+  receivedAt  DateTime
+  method      String?
+
+  allocations PaymentAllocation[]
+}
+
+model PaymentAllocation {
+  id        String  @id @default(cuid())
+  paymentId String
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  amount    Float
+
+  @@unique([paymentId, invoiceId])
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Executive / audit / integrations / jobs
+// ──────────────────────────────────────────────────────────────────
+
+enum DecisionStatus {
+  OPEN
+  ASSIGNED
+  RESOLVED
+}
+
+model ExecutiveDecision {
+  id             String         @id @default(cuid())
+  issue          String
+  businessImpact String
+  recordRef      String? // free-form pointer to the affected record
+  source         String
+  sourceTimestamp DateTime
+  severity       String // "low" | "medium" | "high"
+  status         DecisionStatus @default(OPEN)
+  ownerId        String?
+  owner          User?          @relation(fields: [ownerId], references: [id])
+  decisionNote   String?
+  followUpAt     DateTime?
+  createdAt      DateTime       @default(now())
+  resolvedAt     DateTime?
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  actorUserId String?
+  actor       User?   @relation(fields: [actorUserId], references: [id])
+  entityType String
+  entityId   String
+  action     String
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  DEGRADED
+  BLOCKED
+  NOT_CONFIGURED
+}
+
+model IntegrationConfig {
+  id              String            @id @default(cuid())
+  key             String            @unique // "e_today" | "market_connector" | "payment_gateway"
+  displayName     String
+  status          IntegrationStatus @default(NOT_CONFIGURED)
+  lastAttemptAt   DateTime?
+  lastSuccessAt   DateTime?
+  lastError       String?
+  fallbackAvailable Boolean         @default(false)
+
+  runs            IntegrationRun[]
+}
+
+model IntegrationRun {
+  id                  String            @id @default(cuid())
+  integrationConfigId String
+  integrationConfig   IntegrationConfig @relation(fields: [integrationConfigId], references: [id])
+  startedAt           DateTime          @default(now())
+  finishedAt          DateTime?
+  outcome             String // "success" | "failure"
+  detail              String?
+}
+
+model JobRun {
+  id         String    @id @default(cuid())
+  jobName    String
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  outcome    String? // "success" | "failure"
+  detail     String?
+
+  @@index([jobName])
+}
+
+model IntegrityCheckResult {
+  id         String   @id @default(cuid())
+  checkName  String
+  passed     Boolean
+  detail     String?
+  runAt      DateTime @default(now())
+
+  @@index([checkName])
+}
