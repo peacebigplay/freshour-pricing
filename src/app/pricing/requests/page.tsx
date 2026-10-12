@@ -2,7 +2,6 @@ import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusPill } from '@/components/ui/StatusPill';
-import tableStyles from '@/components/ui/table.module.css';
 import { DecideForm } from './DecideForm';
 
 function fmt(n: number) {
@@ -22,75 +21,75 @@ export default async function PriceRequestsPage() {
     <>
       <PageHeader title="คำขอปรับราคา" subtitle={`เปิดอยู่ ${open.length} คำขอ · ตัดสินใจแล้ว ${decided.length} คำขอ`} />
 
-      {open.length === 0 ? (
-        <EmptyState title="ไม่มีคำขอปรับราคาที่เปิดอยู่" />
-      ) : (
-        <div className={tableStyles.tableWrap}>
-          <table className={tableStyles.table}>
-            <thead>
-              <tr>
-                <th>ลูกค้า</th>
-                <th>สินค้า</th>
-                <th className={tableStyles.numeric}>ราคาเดิม</th>
-                <th className={tableStyles.numeric}>ทุนปัจจุบัน</th>
-                <th className={tableStyles.numeric}>เป้ามาร์จิ้น</th>
-                <th>เหตุผล</th>
-                <th>ขอโดย</th>
-                <th>ตัดสินใจ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {open.map((r) => (
-                <tr key={r.id}>
-                  <td style={{ fontWeight: 600 }}>{r.customer.name}</td>
-                  <td>{r.product.canonicalName}</td>
-                  <td className={tableStyles.numeric}>{fmt(r.originalPrice)}</td>
-                  <td className={tableStyles.numeric}>{fmt(r.currentCost)}</td>
-                  <td className={tableStyles.numeric}>{r.targetPct.toFixed(1)}%</td>
-                  <td style={{ maxWidth: 220, whiteSpace: 'normal' }}>{r.reason ?? '—'}</td>
-                  <td>{r.requestedBy.name}</td>
-                  <td>
-                    <DecideForm requestId={r.id} suggestedPrice={r.requestedPrice} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className={`todoalert${open.length > 1 ? ' stack' : ''}`}>
+        <div className="nah">
+          <span style={{ fontSize: 18 }}>💬</span>
+          <b>ลูกค้าต่อรองกลับ · ต้องทำราคาใหม่</b>
+          <span className="ncount">{open.length} เรื่อง</span>
         </div>
-      )}
-
-      <div style={{ height: 20 }} />
+        {open.length === 0 ? (
+          <EmptyState title="ไม่มีคำขอปรับราคาที่เปิดอยู่" />
+        ) : (
+          <div className="reqs">
+            {open.map((r) => (
+              <div className="rq" key={r.id}>
+                <div className="rqb">
+                  <b>{r.customer.name}</b>
+                  <span>{r.product.canonicalName}</span>
+                  <em>
+                    ลูกค้าขอ <b>{fmt(r.requestedPrice)} ฿</b> · ราคาเดิม {fmt(r.originalPrice)} ฿ · ทุน {fmt(r.currentCost)} ฿ · Target {r.targetPct.toFixed(1)}%
+                  </em>
+                  {r.reason && <i>&ldquo;{r.reason}&rdquo;</i>}
+                  <div style={{ fontSize: 10.5, color: 'var(--tx-3)', marginTop: 4 }}>ขอโดย {r.requestedBy.name}</div>
+                </div>
+                <div className="rqa">
+                  <DecideForm requestId={r.id} suggestedPrice={r.requestedPrice} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {decided.length > 0 && (
-        <div className={tableStyles.tableWrap}>
-          <table className={tableStyles.table}>
-            <thead>
-              <tr>
-                <th>ลูกค้า</th>
-                <th>สินค้า</th>
-                <th className={tableStyles.numeric}>ราคาที่อนุมัติ</th>
-                <th>สถานะ</th>
-                <th>ตัดสินใจโดย</th>
-              </tr>
-            </thead>
-            <tbody>
-              {decided.slice(0, 30).map((r) => (
-                <tr key={r.id}>
-                  <td>{r.customer.name}</td>
-                  <td>{r.product.canonicalName}</td>
-                  <td className={tableStyles.numeric}>{r.finalPrice != null ? fmt(r.finalPrice) : '—'}</td>
-                  <td>
-                    {r.status === 'APPROVED' ? (
-                      <StatusPill tone="success">อนุมัติแล้ว</StatusPill>
-                    ) : (
-                      <StatusPill tone="danger">ปฏิเสธ</StatusPill>
-                    )}
-                  </td>
-                  <td>{r.decidedBy?.name ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="row">
+          <div className="card">
+            <h3>
+              ตัดสินใจแล้ว <span className="sub">{decided.length} รายการ</span>
+            </h3>
+            <div className="tw2">
+              <div className="sc">
+                <table className="g">
+                  <thead>
+                    <tr>
+                      <th>ลูกค้า</th>
+                      <th>สินค้า</th>
+                      <th>ราคาที่อนุมัติ</th>
+                      <th>สถานะ</th>
+                      <th>ตัดสินใจโดย</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {decided.slice(0, 30).map((r) => (
+                      <tr key={r.id}>
+                        <td>{r.customer.name}</td>
+                        <td>{r.product.canonicalName}</td>
+                        <td>{r.finalPrice != null ? fmt(r.finalPrice) : '—'}</td>
+                        <td>
+                          {r.status === 'APPROVED' ? (
+                            <StatusPill tone="success">อนุมัติแล้ว</StatusPill>
+                          ) : (
+                            <StatusPill tone="danger">ปฏิเสธ</StatusPill>
+                          )}
+                        </td>
+                        <td>{r.decidedBy?.name ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </>

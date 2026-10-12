@@ -3,7 +3,6 @@
 import { useFormState, useFormStatus } from 'react-dom';
 import { useState } from 'react';
 import { requestPriceChange, type ActionResult } from './actions';
-import sharedStyles from '@/components/ui/shared.module.css';
 import styles from './customers.module.css';
 
 const initial: ActionResult = { ok: false };
@@ -11,7 +10,7 @@ const initial: ActionResult = { ok: false };
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" className={sharedStyles.primaryButton} disabled={pending} style={{ padding: '4px 10px', fontSize: 11.5 }}>
+    <button type="submit" className="btn pri" disabled={pending} style={{ padding: '4px 10px', fontSize: 11.5 }}>
       {pending ? '...' : 'ส่งคำขอ'}
     </button>
   );
@@ -45,7 +44,7 @@ export function RequestRaiseButton({
 
   if (!open) {
     return (
-      <button type="button" className={styles.askBtn} onClick={() => setOpen(true)}>
+      <button type="button" className="mini" onClick={() => setOpen(true)}>
         ขอปรับราคา
       </button>
     );

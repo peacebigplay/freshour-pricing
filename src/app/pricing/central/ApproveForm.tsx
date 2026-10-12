@@ -4,8 +4,6 @@ import { useFormState, useFormStatus } from 'react-dom';
 import { useState } from 'react';
 import { approveCentralPriceLine, type ApproveResult } from './actions';
 import type { PricingGoalSuggestion } from '@/lib/domain/pricingGoals';
-import sharedStyles from '@/components/ui/shared.module.css';
-import styles from './ApproveForm.module.css';
 
 const initial: ApproveResult = { ok: false };
 
@@ -19,7 +17,7 @@ const GOAL_LABEL: Record<string, string> = {
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" className={sharedStyles.primaryButton} disabled={pending} style={{ padding: '5px 12px', fontSize: 12 }}>
+    <button type="submit" className="confirmbtn" disabled={pending}>
       {pending ? '...' : '✓ ยืนยันราคานี้'}
     </button>
   );
@@ -41,30 +39,32 @@ export function ApproveForm({
   const [selectedGoal, setSelectedGoal] = useState<string | null>(null);
 
   return (
-    <form action={formAction} className={styles.wrap}>
+    <form action={formAction} style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 230 }}>
       <input type="hidden" name="lineId" value={lineId} />
       <input type="hidden" name="expectedVersion" value={version} />
 
-      <div className={styles.goalRow}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
         {goals.map((g) => (
           <button
             key={g.goal}
             type="button"
-            className={`${styles.goalBtn} ${selectedGoal === g.goal ? styles.goalBtnOn : ''} ${g.belowFloor ? styles.goalBtnWarn : ''}`}
+            className={`opt2${selectedGoal === g.goal ? ' on' : ''}`}
+            style={g.belowFloor && selectedGoal !== g.goal ? { borderColor: 'var(--red-b)', background: 'var(--red-l)' } : undefined}
             title={g.rationale}
             onClick={() => {
               setPrice(g.suggestedPrice);
               setSelectedGoal(g.goal);
             }}
           >
-            <span>{GOAL_LABEL[g.goal] ?? g.goal}</span>
             <b>{g.suggestedPrice.toLocaleString('th-TH')}</b>
-            <em>{g.resultingMarginPct.toFixed(1)}%</em>
+            <i>
+              {GOAL_LABEL[g.goal] ?? g.goal} · {g.resultingMarginPct.toFixed(1)}%
+            </i>
           </button>
         ))}
       </div>
 
-      <div className={styles.confirmRow}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <input
           type="number"
           name="approvedPrice"
@@ -75,11 +75,11 @@ export function ApproveForm({
             setPrice(Number(e.target.value));
             setSelectedGoal(null);
           }}
-          className={styles.priceInput}
+          className="pin"
         />
         <SubmitButton />
       </div>
-      {state.error && <span style={{ color: 'var(--danger)', fontSize: 11 }}>{state.error}</span>}
+      {state.error && <span style={{ color: 'var(--red)', fontSize: 11 }}>{state.error}</span>}
     </form>
   );
 }

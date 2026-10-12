@@ -6,7 +6,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import tableStyles from '@/components/ui/table.module.css';
 
 export default async function CostMarketPage() {
-  const [batches, marketSources] = await Promise.all([
+  const [batches, marketSources, totalProducts, latestSnapshot] = await Promise.all([
     prisma.costImportBatch.findMany({
       orderBy: { createdAt: 'desc' },
       take: 10,
@@ -18,11 +18,34 @@ export default async function CostMarketPage() {
       },
     }),
     prisma.marketSource.findMany({ orderBy: { name: 'asc' } }),
+    prisma.product.count({ where: { active: true } }),
+    prisma.costSnapshot.findFirst({ orderBy: { publishedAt: 'desc' }, include: { lines: true } }),
   ]);
+
+  const connectedSources = marketSources.filter((m) => m.status === 'CONNECTED').length;
+  const knownCost = latestSnapshot?.lines.length ?? 0;
 
   return (
     <>
-      <PageHeader title="Cost & Market" subtitle="ความพร้อมของข้อมูลต้นทุนและตลาด" />
+      <PageHeader title="รับทุนประจำสัปดาห์ & ราคาตลาด" subtitle="ความพร้อมของข้อมูลต้นทุนและตลาดก่อนเข้ารอบตั้งราคา" />
+
+      <div className="own">
+        <div className="oi">
+          <em>สินค้าใช้งาน</em>
+          <b>{totalProducts}</b>
+          <span>Product Master</span>
+        </div>
+        <div className="oi">
+          <em>ทุนที่รู้</em>
+          <b>{knownCost}</b>
+          <span>จาก Cost Snapshot ล่าสุด</span>
+        </div>
+        <div className="oi">
+          <em>แหล่งข้อมูลตลาด</em>
+          <b>{connectedSources}/{marketSources.length}</b>
+          <span>เชื่อมต่อแล้ว</span>
+        </div>
+      </div>
 
       <Card title="Market (คู่แข่ง)">
         {marketSources.length === 0 ? (
