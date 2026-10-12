@@ -23,17 +23,16 @@ async function getStageCounts() {
   ]);
 
   return [
-    { label: 'Cost', value: costPublished, caption: 'Cost Snapshots เผยแพร่แล้ว' },
-    { label: 'Market', value: marketConnected, caption: 'แหล่งข้อมูลตลาดที่เชื่อมต่อ' },
-    { label: 'Central Pricing', value: centralApproved, total: centralTotal, caption: 'รายการที่อนุมัติแล้ว' },
-    { label: 'Customer Pricing', value: customerApproved, total: customerTotal, caption: 'ชีทที่อนุมัติแล้ว' },
-    { label: 'Sales', value: quotesSent, caption: 'ใบเสนอราคาที่ส่งแล้ว' },
-    { label: 'Quote', value: quotesSent, caption: 'ใบเสนอราคาทั้งหมด' },
-    { label: 'Customer Response', value: responded, caption: 'ลูกค้าตอบกลับแล้ว' },
-    { label: 'Negotiation', value: negotiating, caption: 'กรณีเจรจาทั้งหมด' },
-    { label: 'Closed Deal', value: closedDeals, caption: 'ดีลที่ปิดแล้ว' },
-    { label: 'Invoice', value: postedInvoices, caption: 'ใบแจ้งหนี้ POSTED' },
-    { label: 'Executive', value: execDecisions, caption: 'รายการตัดสินใจของผู้บริหาร' },
+    { label: 'Cost', who: 'Pricing', where: '/cost-market', value: costPublished, caption: 'Cost Snapshots เผยแพร่แล้ว' },
+    { label: 'Market', who: 'Pricing', where: '/cost-market', value: marketConnected, caption: 'แหล่งข้อมูลตลาดที่เชื่อมต่อ' },
+    { label: 'Central Pricing', who: 'Pricing', where: '/pricing/central', value: centralApproved, total: centralTotal, caption: 'รายการที่อนุมัติแล้ว' },
+    { label: 'Customer Pricing', who: 'Pricing', where: '/customers', value: customerApproved, total: customerTotal, caption: 'ชีทที่อนุมัติแล้ว' },
+    { label: 'Quote', who: 'Sales', where: '/sales', value: quotesSent, caption: 'ใบเสนอราคาที่ส่งแล้ว' },
+    { label: 'Customer Response', who: 'ลูกค้า', where: '/sales', value: responded, caption: 'ลูกค้าตอบกลับแล้ว' },
+    { label: 'Negotiation', who: 'Sales + Pricing', where: '/pricing/requests', value: negotiating, caption: 'กรณีเจรจาทั้งหมด' },
+    { label: 'Closed Deal', who: 'Sales', where: '/sales', value: closedDeals, caption: 'ดีลที่ปิดแล้ว' },
+    { label: 'Invoice', who: 'Admin', where: '/admin/invoices', value: postedInvoices, caption: 'ใบแจ้งหนี้ POSTED' },
+    { label: 'Executive', who: 'Executive', where: '/exec', value: execDecisions, caption: 'รายการตัดสินใจของผู้บริหาร' },
   ];
 }
 
@@ -43,35 +42,52 @@ export default async function ProcessPage() {
 
   return (
     <>
-      <PageHeader title="Process" subtitle="ขั้นตอนงานตั้งแต่ต้นทุนจนถึงผู้บริหาร" />
+      <PageHeader title="เส้นทางราคา" subtitle="ขั้นตอนงานตั้งแต่ต้นทุนจนถึงผู้บริหาร — สีบอกว่าเดินได้/ค้าง/ตัน" />
 
       {!hasAnyData ? (
         <EmptyState title="ยังไม่มีข้อมูลในกระบวนการ" />
       ) : (
-        <div style={{ display: 'flex', overflowX: 'auto', gap: 0, paddingBottom: 10 }}>
-          {stages.map((s, i) => (
-            <div key={s.label} style={{ display: 'flex', alignItems: 'center' }}>
-              <div
-                style={{
-                  minWidth: 150,
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-card)',
-                  padding: 16,
-                  boxShadow: 'var(--shadow-soft)',
-                }}
-              >
-                <p style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{s.label}</p>
-                <p style={{ fontSize: 24, fontWeight: 700, marginTop: 4 }}>
+        <>
+          <div className="tape" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0,1fr))` }}>
+            {stages.map((s) => (
+              <a key={s.label} className={`tp${s.value === 0 ? ' watch' : ''}`} href={s.where}>
+                <span className="no">{s.label}</span>
+                <span className="nm">
                   {s.value}
-                  {s.total != null && <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>/{s.total}</span>}
-                </p>
-                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.caption}</p>
+                  {s.total != null ? `/${s.total}` : ''}
+                </span>
+              </a>
+            ))}
+          </div>
+
+          {stages.map((s, i) => (
+            <div key={s.label} className={`stn ${s.value === 0 ? 'watch' : 'ok'}`}>
+              <div className="sh">
+                <div className="sno">{i + 1}</div>
+                <div className="st">
+                  <h3>{s.label}</h3>
+                  <div className="wh">ใครทำ · {s.who}</div>
+                </div>
+                <div className="sr">
+                  <a className="btn" href={s.where}>
+                    เปิดหน้านี้ →
+                  </a>
+                </div>
               </div>
-              {i < stages.length - 1 && <div style={{ width: 20, height: 2, background: 'var(--border)' }} />}
+              <div className="sb">
+                <div className="sf">
+                  <div className="ff">
+                    <em>{s.caption}</em>
+                    <b>
+                      {s.value}
+                      {s.total != null && <small> /{s.total}</small>}
+                    </b>
+                  </div>
+                </div>
+              </div>
             </div>
           ))}
-        </div>
+        </>
       )}
     </>
   );

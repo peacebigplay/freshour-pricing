@@ -2,7 +2,6 @@ import { prisma } from '@/lib/db';
 import { getLatestOpenPricingRound } from '@/lib/queries/pricing';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
-import { StatusPill } from '@/components/ui/StatusPill';
 import { EmptyState } from '@/components/ui/EmptyState';
 
 export default async function SummaryPage() {
@@ -11,7 +10,7 @@ export default async function SummaryPage() {
   if (!round) {
     return (
       <>
-        <PageHeader title="Summary" subtitle="สถานะรอบงานปัจจุบัน" />
+        <PageHeader title="สรุปภาพรวม" subtitle="อยู่ตรงไหน แล้วไปไหนต่อ" />
         <EmptyState title="ยังไม่มีรอบตั้งราคาที่เปิดอยู่" description="นำเข้า Cost Snapshot เพื่อเริ่มต้นรอบใหม่" />
       </>
     );
@@ -35,41 +34,74 @@ export default async function SummaryPage() {
   if (openNegotiations > 0) blocked.push(`มีการเจรจาที่เปิดอยู่ ${openNegotiations} รายการรอ Pricing อนุมัติ`);
 
   let nextStep = 'ไม่มีขั้นตอนที่ต้องดำเนินการทันที';
-  if (unresolvedMappings > 0) nextStep = 'ไปที่ Product Master เพื่อจับคู่สินค้าที่ค้างอยู่';
-  else if (centralTotal > centralApproved) nextStep = `อนุมัติ Central Pricing ที่เหลือ ${centralTotal - centralApproved} รายการ`;
-  else if (customerTotal > customerApproved) nextStep = `อนุมัติ Customer Pricing ที่เหลือ ${customerTotal - customerApproved} ชีท`;
-  else if (pendingHandoffs > 0) nextStep = `ส่งมอบราคาที่อนุมัติแล้ว ${pendingHandoffs} ชีทให้ฝ่ายขาย`;
-  else if (openNegotiations > 0) nextStep = 'ตัดสินใจการเจรจาที่เปิดอยู่';
+  let nextHref = '/pricing';
+  if (unresolvedMappings > 0) {
+    nextStep = 'ไปที่ Product Master เพื่อจับคู่สินค้าที่ค้างอยู่';
+    nextHref = '/product-master';
+  } else if (centralTotal > centralApproved) {
+    nextStep = `อนุมัติ Central Pricing ที่เหลือ ${centralTotal - centralApproved} รายการ`;
+    nextHref = '/pricing/central';
+  } else if (customerTotal > customerApproved) {
+    nextStep = `อนุมัติ Customer Pricing ที่เหลือ ${customerTotal - customerApproved} ชีท`;
+    nextHref = '/customers';
+  } else if (pendingHandoffs > 0) {
+    nextStep = `ส่งมอบราคาที่อนุมัติแล้ว ${pendingHandoffs} ชีทให้ฝ่ายขาย`;
+    nextHref = '/sales';
+  } else if (openNegotiations > 0) {
+    nextStep = 'ตัดสินใจการเจรจาที่เปิดอยู่';
+    nextHref = '/pricing/requests';
+  }
 
   return (
     <>
-      <PageHeader title="Summary" subtitle={`รอบ ${round.label} · สถานะ ${round.status}`} />
+      <PageHeader title="อยู่ตรงไหน แล้วไปไหนต่อ" subtitle={`รอบ ${round.label} · สถานะ ${round.status} · ทุกตัวเลขคิดใหม่ทุกครั้งที่เปิดหน้า`} />
 
-      <Card title="เรากำลังอยู่ที่ไหนในรอบนี้">
-        <StatusPill tone="primary">{round.status}</StatusPill>
-        <p style={{ marginTop: 10, fontSize: 13 }}>
-          Central Pricing: {centralApproved}/{centralTotal} อนุมัติแล้ว · Customer Pricing: {customerApproved}/{customerTotal} ชีท
-        </p>
-      </Card>
+      <div className="road">
+        <div className="rd">
+          <div className="lb">เริ่มจาก</div>
+          <div className="big">{round.label}</div>
+          <p>เปิดรอบจาก Cost Snapshot</p>
+        </div>
+        <div className="ar">→</div>
+        <div className="rd">
+          <div className="lb">ตอนนี้</div>
+          <div className="big">
+            {centralApproved}
+            <span>/{centralTotal}</span>
+          </div>
+          <div className="hd2">Central Pricing อนุมัติแล้ว</div>
+          <p>
+            Customer Pricing {customerApproved}/{customerTotal} ชีท
+          </p>
+        </div>
+        <div className="ar">→</div>
+        <div className="rd next">
+          <div className="lb">ไปไหนต่อ</div>
+          <div className="act">{nextStep}</div>
+          <a className="gobtn" href={nextHref}>
+            ไปที่หน้านี้ →
+          </a>
+        </div>
+      </div>
 
-      <div style={{ height: 20 }} />
+      <div style={{ height: 6 }} />
 
-      <Card title="สิ่งที่ติดอยู่ (Blocked)">
+      <Card title="ด่านก่อนประกาศ" action={<span className="sub">{blocked.length === 0 ? 'ผ่านครบ' : `ยังติด ${blocked.length}`}</span>}>
         {blocked.length === 0 ? (
-          <p style={{ fontSize: 13, color: 'var(--success)' }}>ไม่มีสิ่งที่ติดอยู่ในตอนนี้</p>
+          <p className="hint">ผ่านด่านครบ พร้อมประกาศ</p>
         ) : (
-          <ul style={{ paddingLeft: 18, fontSize: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className="auto">
             {blocked.map((b, i) => (
-              <li key={i}>{b}</li>
+              <div className="ac off" key={i}>
+                <div className="st">
+                  <i />
+                  ยังประกาศไม่ได้
+                </div>
+                <span>{b}</span>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
-      </Card>
-
-      <div style={{ height: 20 }} />
-
-      <Card title="ขั้นตอนถัดไปที่แนะนำ">
-        <p style={{ fontSize: 14, fontWeight: 600 }}>{nextStep}</p>
       </Card>
     </>
   );

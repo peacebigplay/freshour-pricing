@@ -18,7 +18,7 @@ export default async function MarginGuardPage() {
   if (!policy) {
     return (
       <>
-        <PageHeader title="Margin Guard" />
+        <PageHeader title="Margin Guard & Category Mapping" />
         <EmptyState title="ยังไม่มี Margin Policy ที่ใช้งานอยู่" />
       </>
     );
@@ -26,26 +26,67 @@ export default async function MarginGuardPage() {
 
   return (
     <>
-      <PageHeader title="Margin Guard" subtitle={`Margin Policy v${policy.version} · มีผลตั้งแต่ ${policy.effectiveFrom.toLocaleDateString('th-TH')}`} />
+      <PageHeader
+        title="Margin Guard & Category Mapping"
+        subtitle={`Global Margin Floor ${policy.globalFloorPct}% ทุก SKU · ถ้า Target ของหมวดสูงกว่า ให้ใช้ค่าที่สูงกว่า`}
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <Card title="Global Floor">
-          <p style={{ fontSize: 28, fontWeight: 700 }}>{policy.globalFloorPct}%</p>
-          <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>มาร์จิ้นขั้นต่ำที่ยอมรับได้ทุกสินค้า</p>
-        </Card>
-        <Card title="หมวดสินค้า → เป้ามาร์จิ้น">
-          <table style={{ width: '100%', fontSize: 13 }}>
-            <tbody>
-              {policy.categoryRules.map((r) => (
-                <tr key={r.id}>
-                  <td style={{ padding: '4px 0' }}>{r.category}</td>
-                  <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: 600 }}>{r.targetPct}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="row c2">
+        <div className="card" style={{ background: 'var(--ink)', color: '#fff' }}>
+          <span style={{ fontSize: 10, letterSpacing: '0.1em', color: '#94A3B8', fontWeight: 600, textTransform: 'uppercase' }}>GLOBAL HARD FLOOR</span>
+          <div style={{ fontFamily: 'var(--fn)', fontSize: 38, fontWeight: 700, marginTop: 4 }}>{policy.globalFloorPct}%</div>
+          <p style={{ fontSize: 11.5, color: '#94A3B8', marginTop: 4 }}>ไม่มี SKU ใดที่ระบบแนะนำต่ำกว่านี้</p>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 12, fontSize: 10.5, color: '#C7DAFE' }}>
+            <span>SKU Master</span>
+            <span>→</span>
+            <span>Category Rule</span>
+            <span>→</span>
+            <span>Effective Target</span>
+            <span>→</span>
+            <span>Pricing</span>
+          </div>
+        </div>
+        <Card title="Source of truth">
+          <p className="hint">
+            Production เก็บ <b style={{ fontFamily: 'var(--fn)' }}>category_key</b> บน SKU Master โดยตรง · Keyword rule ใช้เป็น fallback ตอน SKU ใหม่ยังไม่ถูกจัดกลุ่ม
+          </p>
+          <div className="warn2">
+            <b>Effective Target = max({policy.globalFloorPct}%, Category Target)</b>
+            <br />
+            จึงไม่มีกรณี Target ของหมวดต่ำกว่า {policy.globalFloorPct}% แล้วทำให้ราคาแนะนำต่ำกว่า Global Floor
+          </div>
         </Card>
       </div>
+
+      <div style={{ height: 14 }} />
+
+      <Card title="Category Mapping Rules">
+        <p className="hint">หมวดสินค้าทั้งหมดที่ Pricing ใช้ตัดสิน Target Margin — Floor ขั้นต่ำยังคุมอยู่เสมอ</p>
+        <div className="tw2">
+          <div className="sc">
+            <table className="g" style={{ minWidth: 480 }}>
+              <thead>
+                <tr>
+                  <th>หมวด</th>
+                  <th>Target</th>
+                </tr>
+              </thead>
+              <tbody>
+                {policy.categoryRules.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ fontWeight: 600 }}>{r.category}</td>
+                    <td>
+                      <span className="pill2 b">{Math.max(policy.globalFloorPct, r.targetPct)}%</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </Card>
+
+      <div style={{ height: 14 }} />
 
       <Card title={`SKU Override (${policy.skuOverrides.length})`}>
         {policy.skuOverrides.length === 0 ? (
