@@ -3,7 +3,6 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { EmptyState } from '@/components/ui/EmptyState';
-import tableStyles from '@/components/ui/table.module.css';
 import { UploadCsvForm } from './UploadCsvForm';
 import { PostInvoiceButton } from './PostInvoiceButton';
 import { ResolveExceptionButton } from './ResolveExceptionButton';
@@ -38,27 +37,29 @@ export default async function AdminInvoicesPage() {
       {exceptions.length > 0 && (
         <>
           <Card title={`ข้อยกเว้นที่ยังไม่แก้ไข (${exceptions.length})`}>
-            <div className={tableStyles.tableWrap}>
-              <table className={tableStyles.table}>
-                <thead>
-                  <tr>
-                    <th>ประเภท</th>
-                    <th>รายละเอียด</th>
-                    <th>Invoice</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {exceptions.map((e) => (
-                    <tr key={e.id}>
-                      <td><StatusPill tone="danger">{e.kind}</StatusPill></td>
-                      <td>{e.detail}</td>
-                      <td>{e.invoice ? `${e.invoice.invoiceNumber} (${e.invoice.customer.name})` : '—'}</td>
-                      <td><ResolveExceptionButton exceptionId={e.id} /></td>
+            <div className="tw2">
+              <div className="sc">
+                <table className="g">
+                  <thead>
+                    <tr>
+                      <th>ประเภท</th>
+                      <th>รายละเอียด</th>
+                      <th>Invoice</th>
+                      <th></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {exceptions.map((e) => (
+                      <tr key={e.id}>
+                        <td><StatusPill tone="danger">{e.kind}</StatusPill></td>
+                        <td>{e.detail}</td>
+                        <td>{e.invoice ? `${e.invoice.invoiceNumber} (${e.invoice.customer.name})` : '—'}</td>
+                        <td><ResolveExceptionButton exceptionId={e.id} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </Card>
           <div style={{ height: 20 }} />
@@ -69,40 +70,42 @@ export default async function AdminInvoicesPage() {
         {invoices.length === 0 ? (
           <EmptyState title="ยังไม่มีใบแจ้งหนี้ในระบบ" />
         ) : (
-          <div className={tableStyles.tableWrap}>
-            <table className={tableStyles.table}>
-              <thead>
-                <tr>
-                  <th>เลขที่</th>
-                  <th>ลูกค้า</th>
-                  <th>วันที่</th>
-                  <th>สถานะ</th>
-                  <th className={tableStyles.numeric}>ยอดขายสุทธิ</th>
-                  <th className={tableStyles.numeric}>GP</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {invoices.map((inv) => {
-                  const netSales = inv.lines.reduce((s, l) => s + l.netSales, 0);
-                  const hasPending = inv.lines.some((l) => l.grossProfit == null);
-                  const gp = inv.lines.reduce((s, l) => s + (l.grossProfit ?? 0), 0);
-                  return (
-                    <tr key={inv.id}>
-                      <td style={{ fontWeight: 600 }}>{inv.invoiceNumber}</td>
-                      <td>{inv.customer.name}</td>
-                      <td>{inv.invoiceDate.toLocaleDateString('th-TH')}</td>
-                      <td>
-                        <StatusPill tone={inv.status === 'POSTED' ? 'success' : inv.status === 'VOID' ? 'danger' : 'neutral'}>{inv.status}</StatusPill>
-                      </td>
-                      <td className={tableStyles.numeric}>{netSales.toLocaleString('th-TH')}</td>
-                      <td className={tableStyles.numeric}>{hasPending ? 'COST_PENDING' : gp.toLocaleString('th-TH')}</td>
-                      <td>{inv.status === 'STAGED' && <PostInvoiceButton invoiceId={inv.id} />}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="tw2">
+            <div className="sc">
+              <table className="g">
+                <thead>
+                  <tr>
+                    <th>เลขที่</th>
+                    <th>ลูกค้า</th>
+                    <th>วันที่</th>
+                    <th>สถานะ</th>
+                    <th>ยอดขายสุทธิ</th>
+                    <th>GP</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoices.map((inv) => {
+                    const netSales = inv.lines.reduce((s, l) => s + l.netSales, 0);
+                    const hasPending = inv.lines.some((l) => l.grossProfit == null);
+                    const gp = inv.lines.reduce((s, l) => s + (l.grossProfit ?? 0), 0);
+                    return (
+                      <tr key={inv.id}>
+                        <td style={{ fontWeight: 600 }}>{inv.invoiceNumber}</td>
+                        <td>{inv.customer.name}</td>
+                        <td>{inv.invoiceDate.toLocaleDateString('th-TH')}</td>
+                        <td>
+                          <StatusPill tone={inv.status === 'POSTED' ? 'success' : inv.status === 'VOID' ? 'danger' : 'neutral'}>{inv.status}</StatusPill>
+                        </td>
+                        <td>{netSales.toLocaleString('th-TH')}</td>
+                        <td>{hasPending ? 'COST_PENDING' : gp.toLocaleString('th-TH')}</td>
+                        <td>{inv.status === 'STAGED' && <PostInvoiceButton invoiceId={inv.id} />}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </Card>

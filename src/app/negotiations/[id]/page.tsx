@@ -28,20 +28,33 @@ export default async function NegotiationCasePage({ params }: { params: Promise<
         actions={<StatusPill tone={negotiationCase.status === 'OPEN' ? 'warning' : negotiationCase.status === 'APPROVED' ? 'success' : 'danger'}>{negotiationCase.status}</StatusPill>}
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
-        <Card title="ราคาที่อนุมัติเดิม">
-          <p style={{ fontSize: 22, fontWeight: 700 }}>{negotiationCase.originalApprovedPrice.toLocaleString('th-TH')}</p>
-        </Card>
-        <Card title="ราคาที่ลูกค้าขอ">
-          <p style={{ fontSize: 22, fontWeight: 700 }}>{negotiationCase.requestedPrice.toLocaleString('th-TH')}</p>
-        </Card>
-        <Card title="ต้นทุนสูงสุดที่ยอมรับได้จากซัพพลายเออร์">
-          <p style={{ fontSize: 22, fontWeight: 700 }}>
-            {negotiationCase.supplierMaxCostTarget?.toLocaleString('th-TH', { maximumFractionDigits: 1 }) ?? '—'}
-          </p>
-          <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>คำนวณจากราคาที่ลูกค้าขอ ที่เป้ามาร์จิ้นปัจจุบัน</p>
-        </Card>
+      <div className="kpi">
+        <div className="k">
+          <div className="kt">
+            <span className="ic">💰</span>
+          </div>
+          <div className="lb">ราคาที่อนุมัติเดิม</div>
+          <div className="v">{negotiationCase.originalApprovedPrice.toLocaleString('th-TH')}</div>
+        </div>
+        <div className="k lead">
+          <div className="kt">
+            <span className="ic">🙋</span>
+            <span className="pill">ลูกค้าขอ</span>
+          </div>
+          <div className="lb">ราคาที่ลูกค้าขอ</div>
+          <div className="v">{negotiationCase.requestedPrice.toLocaleString('th-TH')}</div>
+        </div>
+        <div className="k">
+          <div className="kt">
+            <span className="ic">🏭</span>
+          </div>
+          <div className="lb">ทุนสูงสุดที่รับได้จากซัพพลายเออร์</div>
+          <div className="v">{negotiationCase.supplierMaxCostTarget?.toLocaleString('th-TH', { maximumFractionDigits: 1 }) ?? '—'}</div>
+          <div className="c">คำนวณจากราคาที่ลูกค้าขอ ที่เป้ามาร์จิ้นปัจจุบัน</div>
+        </div>
       </div>
+
+      <div style={{ height: 14 }} />
 
       {negotiationCase.quoteResponse.reason && (
         <Card title="เหตุผลจากลูกค้า">
@@ -53,14 +66,29 @@ export default async function NegotiationCasePage({ params }: { params: Promise<
 
       <Card title="ประวัติการเจรจา">
         {negotiationCase.events.length === 0 ? (
-          <p style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>ยังไม่มีกิจกรรม</p>
+          <p className="hint">ยังไม่มีกิจกรรม</p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {negotiationCase.events.map((e) => (
-              <div key={e.id} style={{ fontSize: 12.5, borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>
-                <b>{e.actor?.name ?? 'ระบบ'}</b> · {e.eventType} · {e.createdAt.toLocaleString('th-TH')}
-              </div>
-            ))}
+          <div className="tw2">
+            <div className="sc">
+              <table className="g">
+                <thead>
+                  <tr>
+                    <th>ผู้ดำเนินการ</th>
+                    <th>เหตุการณ์</th>
+                    <th>เวลา</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {negotiationCase.events.map((e) => (
+                    <tr key={e.id}>
+                      <td style={{ fontWeight: 600 }}>{e.actor?.name ?? 'ระบบ'}</td>
+                      <td>{e.eventType}</td>
+                      <td>{e.createdAt.toLocaleString('th-TH')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </Card>

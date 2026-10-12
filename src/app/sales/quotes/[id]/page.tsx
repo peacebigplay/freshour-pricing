@@ -3,7 +3,6 @@ import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { Card } from '@/components/ui/Card';
-import tableStyles from '@/components/ui/table.module.css';
 import { CloseDealButton } from './CloseDealButton';
 
 export default async function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -47,25 +46,27 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
       <div style={{ height: 20 }} />
 
       <Card title="รายการสินค้า">
-        <div className={tableStyles.tableWrap}>
-          <table className={tableStyles.table}>
-            <thead>
-              <tr>
-                <th>สินค้า</th>
-                <th>หน่วย</th>
-                <th className={tableStyles.numeric}>ราคาที่เสนอ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {latest?.lines.map((l) => (
-                <tr key={l.id}>
-                  <td>{l.product.canonicalName}</td>
-                  <td>{l.unit}</td>
-                  <td className={tableStyles.numeric}>{l.offeredPrice.toLocaleString('th-TH')}</td>
+        <div className="tw2">
+          <div className="sc">
+            <table className="g">
+              <thead>
+                <tr>
+                  <th>สินค้า</th>
+                  <th>หน่วย</th>
+                  <th>ราคาที่เสนอ</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {latest?.lines.map((l) => (
+                  <tr key={l.id}>
+                    <td style={{ fontWeight: 600 }}>{l.product.canonicalName}</td>
+                    <td>{l.unit}</td>
+                    <td>{l.offeredPrice.toLocaleString('th-TH')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </Card>
 

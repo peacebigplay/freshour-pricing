@@ -5,7 +5,6 @@ import { getCustomerPriceSheet } from '@/lib/queries/customers';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { EmptyState } from '@/components/ui/EmptyState';
-import tableStyles from '@/components/ui/table.module.css';
 import { ApproveCustomerPriceForm } from './ApproveCustomerPriceForm';
 import { ApproveSheetButton } from './ApproveSheetButton';
 
@@ -31,6 +30,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   if (!data) notFound();
 
   const { sheet, rows } = data;
+  const approvedCount = rows.filter((r) => r.status === 'APPROVED').length;
+  const exceptionCount = rows.filter((r) => r.isException).length;
 
   return (
     <>
@@ -48,63 +49,102 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         }
       />
 
+      <div className="kpi">
+        <div className="k">
+          <div className="kt">
+            <span className="ic">📦</span>
+          </div>
+          <div className="lb">สินค้าทั้งหมด</div>
+          <div className="v">{rows.length}</div>
+          <div className="c">รายการ</div>
+        </div>
+        <div className="k">
+          <div className="kt">
+            <span className="ic">✅</span>
+          </div>
+          <div className="lb">อนุมัติแล้ว</div>
+          <div className="v" style={{ color: 'var(--green)' }}>
+            {approvedCount}
+          </div>
+          <div className="c">จาก {rows.length} รายการ</div>
+        </div>
+        <div className="k">
+          <div className="kt">
+            <span className="ic">⚠️</span>
+          </div>
+          <div className="lb">ข้อยกเว้น</div>
+          <div className="v" style={{ color: exceptionCount > 0 ? 'var(--red)' : undefined }}>
+            {exceptionCount}
+          </div>
+          <div className="c">ต้องตรวจสอบ</div>
+        </div>
+      </div>
+
+      <div style={{ height: 14 }} />
+
       {rows.length === 0 ? (
         <EmptyState title="ยังไม่มีรายการราคาสำหรับลูกค้ารายนี้" />
       ) : (
-        <div className={tableStyles.tableWrap}>
-          <table className={tableStyles.table}>
-            <thead>
-              <tr>
-                <th>สินค้า</th>
-                <th className={tableStyles.numeric}>Central Price</th>
-                <th className={tableStyles.numeric}>ราคาลูกค้าเดิม</th>
-                <th className={tableStyles.numeric}>ทุนปัจจุบัน</th>
-                <th className={tableStyles.numeric}>ราคาแนะนำ</th>
-                <th className={tableStyles.numeric}>ราคาอนุมัติ</th>
-                <th className={tableStyles.numeric}>มาร์จิ้น</th>
-                <th>สถานะ</th>
-                {canApprove && <th>การดำเนินการ</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td style={{ fontWeight: 600 }}>
-                    {r.productName}
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>{r.unit}</div>
-                  </td>
-                  <td className={tableStyles.numeric}>{fmt(r.centralPrice)}</td>
-                  <td className={tableStyles.numeric}>{fmt(r.previousCustomerPrice)}</td>
-                  <td className={tableStyles.numeric}>{fmt(r.currentCost)}</td>
-                  <td className={tableStyles.numeric}>{fmt(r.suggestedPrice)}</td>
-                  <td className={tableStyles.numeric}>{fmt(r.approvedPrice)}</td>
-                  <td className={tableStyles.numeric}>{r.resultingMarginPct == null ? '—' : `${r.resultingMarginPct.toFixed(1)}%`}</td>
-                  <td>
-                    {r.isException ? (
-                      <StatusPill tone="danger">ข้อยกเว้น</StatusPill>
-                    ) : r.status === 'APPROVED' ? (
-                      <StatusPill tone="success">อนุมัติแล้ว</StatusPill>
-                    ) : (
-                      <StatusPill tone="neutral">รอตรวจสอบ</StatusPill>
-                    )}
-                  </td>
-                  {canApprove && (
+        <div className="tw2">
+          <div className="sc">
+            <table className="g">
+              <thead>
+                <tr>
+                  <th>สินค้า</th>
+                  <th>Central Price</th>
+                  <th>ราคาลูกค้าเดิม</th>
+                  <th>ทุนปัจจุบัน</th>
+                  <th>ราคาแนะนำ</th>
+                  <th>ราคาอนุมัติ</th>
+                  <th>มาร์จิ้น</th>
+                  <th>สถานะ</th>
+                  {canApprove && <th>การดำเนินการ</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ fontWeight: 600 }}>
+                      {r.productName}
+                      <div style={{ fontSize: 11, color: 'var(--tx-3)', fontWeight: 400 }}>{r.unit}</div>
+                    </td>
+                    <td>{fmt(r.centralPrice)}</td>
+                    <td>{fmt(r.previousCustomerPrice)}</td>
+                    <td>{fmt(r.currentCost)}</td>
+                    <td>{fmt(r.suggestedPrice)}</td>
+                    <td style={{ fontWeight: 700 }}>{fmt(r.approvedPrice)}</td>
                     <td>
-                      {r.status !== 'APPROVED' && (
-                        <ApproveCustomerPriceForm
-                          lineId={r.id}
-                          customerId={sheet.customerId}
-                          version={r.version}
-                          defaultPrice={r.approvedPrice ?? r.suggestedPrice}
-                          currentCost={r.currentCost}
-                        />
+                      <span className={`pill2 ${r.resultingMarginPct == null ? 'n' : r.resultingMarginPct < 0 ? 'r' : 'g'}`}>
+                        {r.resultingMarginPct == null ? '—' : `${r.resultingMarginPct.toFixed(1)}%`}
+                      </span>
+                    </td>
+                    <td>
+                      {r.isException ? (
+                        <StatusPill tone="danger">ข้อยกเว้น</StatusPill>
+                      ) : r.status === 'APPROVED' ? (
+                        <StatusPill tone="success">อนุมัติแล้ว</StatusPill>
+                      ) : (
+                        <StatusPill tone="neutral">รอตรวจสอบ</StatusPill>
                       )}
                     </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    {canApprove && (
+                      <td>
+                        {r.status !== 'APPROVED' && (
+                          <ApproveCustomerPriceForm
+                            lineId={r.id}
+                            customerId={sheet.customerId}
+                            version={r.version}
+                            defaultPrice={r.approvedPrice ?? r.suggestedPrice}
+                            currentCost={r.currentCost}
+                          />
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </>

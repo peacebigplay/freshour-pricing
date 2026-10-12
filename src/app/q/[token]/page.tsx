@@ -3,7 +3,6 @@ import { prisma } from '@/lib/db';
 import { hashToken } from '@/lib/auth/session';
 import { toPublicQuoteLine } from '@/lib/domain/publicQuoteDto';
 import { ResponseForm } from './ResponseForm';
-import styles from './quote.module.css';
 
 export default async function PublicQuotePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -48,30 +47,68 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ to
     response: responseByLineId.get(l.id) ?? null,
   }));
 
+  const allResponded = publicLines.length > 0 && publicLines.every((l) => l.response);
+
   return (
-    <div className={styles.page}>
-      <div className={styles.card}>
-        <div className={styles.brand}>
-          <span className={styles.mark}>F</span>
+    <div style={{ background: '#F5F7FB', minHeight: '100vh', padding: '28px 20px 48px' }}>
+      <div className="publicwrap">
+        <div className="publicbrand">
+          <span className="pmk">F</span>
           <div>
             <b>Freshour</b>
             <span>ใบเสนอราคาสำหรับ {publicToken.quote.customer.name}</span>
           </div>
         </div>
 
-        <div className={styles.lines}>
+        <div className="publichero">
+          <h1>ใบเสนอราคา #{publicToken.quote.id.slice(0, 8).toUpperCase()}</h1>
+          <p>กรุณาตรวจสอบรายการและราคาด้านล่าง — กดยอมรับ หรือขอเจรจาราคาเป็นรายสินค้า</p>
+          <div className="publicmeta">
+            <div>
+              <em>ลูกค้า</em>
+              <b>{publicToken.quote.customer.name}</b>
+            </div>
+            <div>
+              <em>จำนวนสินค้า</em>
+              <b>{publicLines.length} รายการ</b>
+            </div>
+            <div>
+              <em>หมดอายุ</em>
+              <b>{publicToken.expiresAt.toLocaleDateString('th-TH')}</b>
+            </div>
+          </div>
+        </div>
+
+        <div className="pubactions">
+          <span className="grow" />
+          <span className="pubnote">ลิงก์นี้ใช้ได้เฉพาะคุณเท่านั้น กรุณาอย่าส่งต่อ</span>
+        </div>
+
+        {allResponded && <div className="pubcomplete">✓ คุณได้ตอบกลับทุกรายการแล้ว ทีมขายจะติดต่อกลับเร็วๆ นี้</div>}
+
+        <div className="pubtable">
+          <div className="pubrow head">
+            <span>สินค้า</span>
+            <span>หน่วย</span>
+            <span>ราคา (บาท)</span>
+            <span>สถานะ</span>
+            <span>การตอบกลับ</span>
+          </div>
           {publicLines.map((line) => (
-            <div key={line.id} className={styles.line}>
-              <div>
-                <p className={styles.productName}>{line.productName}</p>
-                <p className={styles.unit}>{line.unit}</p>
-              </div>
-              <div className={styles.priceCol}>
-                <p className={styles.price}>{line.price.toLocaleString('th-TH')} บาท</p>
+            <div key={line.id} className="pubrow">
+              <span className="pn">{line.productName}</span>
+              <span className="num">{line.unit}</span>
+              <span className="num">{line.price.toLocaleString('th-TH')}</span>
+              <span className="num">
+                {line.response ? (line.response.action === 'ACCEPT' ? '✓' : '⋯') : '—'}
+              </span>
+              <div className="resp">
                 {line.response ? (
-                  <p className={styles.respondedTag}>
-                    {line.response.action === 'ACCEPT' ? 'คุณยอมรับราคานี้แล้ว' : `คุณขอเจรจาที่ ${line.response.requestedPrice?.toLocaleString('th-TH')} บาท`}
-                  </p>
+                  line.response.action === 'ACCEPT' ? (
+                    <span className="accepted">ยอมรับแล้ว</span>
+                  ) : (
+                    <span className="negotiated">ขอ {line.response.requestedPrice?.toLocaleString('th-TH')} บาท</span>
+                  )
                 ) : (
                   <ResponseForm token={token} quoteLineId={line.id} />
                 )}
