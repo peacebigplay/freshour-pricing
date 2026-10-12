@@ -3,7 +3,6 @@ import { requireUser } from '@/lib/auth/currentUser';
 import { getSalesDashboard, getApprovedCustomerSheetsReadyToSend } from '@/lib/queries/sales';
 import { listCustomerIssues } from '@/lib/queries/issues';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { KpiCard } from '@/components/ui/KpiCard';
 import { Card } from '@/components/ui/Card';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -27,25 +26,45 @@ export default async function SalesDashboardPage() {
     listCustomerIssues(),
   ]);
   const openIssueCount = issues.filter((i) => i.status === 'OPEN').length;
+  const urgent = (counts.NEGOTIATING ?? 0) + (counts.CUSTOMER_RESPONDED ?? 0);
+  const waiting = counts.SENT ?? 0;
+  const done = (counts.ACCEPTED ?? 0) + (counts.CLOSED ?? 0);
 
   return (
     <>
       <PageHeader
-        title="Sales"
+        title="Sales · ใบเสนอราคา & การต่อรอง"
         subtitle="คิวงานวันนี้ — ใครต้องติดต่อหรือดำเนินการต่อ"
         actions={
           <Link href="/sales/issues" style={{ textDecoration: 'none' }}>
             <StatusPill tone={openIssueCount > 0 ? 'warning' : 'neutral'}>
-              ปัญหาลูกค้า {openIssueCount > 0 ? `· เปิดอยู่ ${openIssueCount}` : '· ไม่มีเคสเปิด'}
+              ⚠ บันทึกปัญหาจากลูกค้า {openIssueCount > 0 ? `· เปิดอยู่ ${openIssueCount}` : ''}
             </StatusPill>
           </Link>
         }
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 24 }}>
-        {Object.entries(STATUS_LABEL).map(([key, label]) => (
-          <KpiCard key={key} label={label} value={String(counts[key] ?? 0)} />
-        ))}
+      <div className="sales-summary">
+        <div className="ss urgent">
+          <b>{urgent}</b>
+          <span>ต้องจัดการก่อน</span>
+          <em>ต่อรองกลับ / ใบที่มี exception</em>
+        </div>
+        <div className="ss ready">
+          <b>{readyToSend.length}</b>
+          <span>พร้อมส่ง Link</span>
+          <em>ตรวจราคาเสร็จแล้ว</em>
+        </div>
+        <div className="ss wait">
+          <b>{waiting}</b>
+          <span>รอลูกค้าตอบ</span>
+          <em>ส่ง Quotation Link แล้ว</em>
+        </div>
+        <div className="ss done">
+          <b>{done}</b>
+          <span>จบแล้ว</span>
+          <em>ลูกค้ายืนยันครบ / ปิดการต่อรอง</em>
+        </div>
       </div>
 
       <Card title={`พร้อมส่งราคาให้ลูกค้า (${readyToSend.length})`}>

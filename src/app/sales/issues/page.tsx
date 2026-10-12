@@ -5,7 +5,7 @@ import { StatusPill } from '@/components/ui/StatusPill';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LogIssueForm } from './LogIssueForm';
 import { CloseIssueButton } from './CloseIssueButton';
-import styles from './issues.module.css';
+import '@/components/ui/issue-dashboard.css';
 
 const SEVERITY_LABEL: Record<string, string> = { LOW: 'ต่ำ', MID: 'กลาง', HIGH: 'สูง' };
 const SEVERITY_TONE: Record<string, 'neutral' | 'warning' | 'danger'> = { LOW: 'neutral', MID: 'warning', HIGH: 'danger' };
@@ -19,9 +19,67 @@ export default async function CustomerIssuesPage() {
   const open = issues.filter((i) => i.status === 'OPEN');
   const closed = issues.filter((i) => i.status === 'CLOSED');
 
+  const byCustomerCount = new Map<string, number>();
+  for (const i of issues) byCustomerCount.set(i.customer.name, (byCustomerCount.get(i.customer.name) ?? 0) + 1);
+  const repeatCustomers = [...byCustomerCount.values()].filter((n) => n > 1).length;
+
+  const byType = new Map<string, number>();
+  for (const i of issues) byType.set(i.type, (byType.get(i.type) ?? 0) + 1);
+  const byTypeRows = [...byType.entries()].sort((a, b) => b[1] - a[1]);
+  const maxType = Math.max(...byTypeRows.map((r) => r[1]), 1);
+
+  const byCustomerRows = [...byCustomerCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 7);
+  const maxCustomer = Math.max(...byCustomerRows.map((r) => r[1]), 1);
+
   return (
     <>
-      <PageHeader title="ปัญหาลูกค้า (Customer Service)" subtitle={`เปิดอยู่ ${open.length} เคส · ปิดแล้ว ${closed.length} เคส`} />
+      <PageHeader title="บันทึกปัญหาจากลูกค้า" subtitle="แยกจากการออกราคา · เซลบันทึก → แดชบอร์ดผู้บริหารอัปเดตเอง" />
+
+      <div className="issk">
+        <div>
+          <span>ปัญหาทั้งหมด</span>
+          <b>{issues.length}</b>
+        </div>
+        <div>
+          <span>ยังเปิดอยู่</span>
+          <b style={{ color: '#DC2626' }}>{open.length}</b>
+        </div>
+        <div>
+          <span>ลูกค้าที่เกิดซ้ำ</span>
+          <b style={{ color: '#D97706' }}>{repeatCustomers}</b>
+        </div>
+      </div>
+
+      {issues.length > 0 && (
+        <div className="issg">
+          <div className="card">
+            <h3>ตามประเภทปัญหา</h3>
+            {byTypeRows.map(([type, count]) => (
+              <div className="isb" key={type}>
+                <span>{type}</span>
+                <i>
+                  <u style={{ width: `${(count / maxType) * 100}%`, background: '#2563EB' }} />
+                </i>
+                <b>{count}</b>
+              </div>
+            ))}
+          </div>
+          <div className="card">
+            <h3>ตามลูกค้า</h3>
+            {byCustomerRows.map(([name, count]) => (
+              <div className="isb" key={name}>
+                <span>{name}</span>
+                <i>
+                  <u style={{ width: `${(count / maxCustomer) * 100}%`, background: '#D97706' }} />
+                </i>
+                <b>{count}</b>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ height: 14 }} />
 
       <Card title="บันทึกปัญหาใหม่">
         <LogIssueForm customers={customers} />
@@ -33,26 +91,36 @@ export default async function CustomerIssuesPage() {
         {open.length === 0 ? (
           <EmptyState title="ไม่มีปัญหาที่เปิดอยู่" />
         ) : (
-          <div className={styles.list}>
-            {open.map((issue) => (
-              <div key={issue.id} className={styles.row}>
-                <div className={styles.rowMain}>
-                  <span className={styles.rowTitle}>
-                    {issue.customer.name} · {issue.type}
-                  </span>
-                  <span className={styles.rowMeta}>
-                    {timeAgo(issue.createdAt)} · รายงานโดย {issue.reportedBy?.name ?? '—'}
-                    {issue.carrier ? ` · ขนส่ง ${issue.carrier.name}` : ''}
-                  </span>
-                  <p className={styles.rowDetail}>{issue.detail}</p>
-                </div>
-                <div className={styles.rowSide}>
-                  <StatusPill tone={SEVERITY_TONE[issue.severity]}>{SEVERITY_LABEL[issue.severity]}</StatusPill>
-                  <CloseIssueButton issueId={issue.id} />
-                </div>
-              </div>
-            ))}
-          </div>
+          <table className="g" style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th>วันที่</th>
+                <th>ลูกค้า</th>
+                <th>ประเภท</th>
+                <th>รายละเอียด</th>
+                <th>สถานะ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {open.map((issue) => (
+                <tr key={issue.id}>
+                  <td style={{ whiteSpace: 'nowrap' }}>{timeAgo(issue.createdAt)}</td>
+                  <td style={{ fontWeight: 600 }}>{issue.customer.name}</td>
+                  <td>
+                    {issue.type}
+                    {issue.severity === 'HIGH' && ' 🔴'}
+                  </td>
+                  <td style={{ whiteSpace: 'normal', textAlign: 'left' }}>{issue.detail}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <StatusPill tone={SEVERITY_TONE[issue.severity]}>{SEVERITY_LABEL[issue.severity]}</StatusPill>
+                      <CloseIssueButton issueId={issue.id} />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </Card>
 
@@ -62,25 +130,28 @@ export default async function CustomerIssuesPage() {
         {closed.length === 0 ? (
           <EmptyState title="ยังไม่มีเคสที่ปิด" />
         ) : (
-          <div className={styles.list}>
-            {closed.slice(0, 20).map((issue) => (
-              <div key={issue.id} className={styles.row}>
-                <div className={styles.rowMain}>
-                  <span className={styles.rowTitle}>
-                    {issue.customer.name} · {issue.type}
-                  </span>
-                  <span className={styles.rowMeta}>
-                    เปิด {timeAgo(issue.createdAt)}
-                    {issue.closedAt ? ` · ปิด ${timeAgo(issue.closedAt)}` : ''}
-                  </span>
-                  <p className={styles.rowDetail}>{issue.detail}</p>
-                </div>
-                <div className={styles.rowSide}>
-                  <StatusPill tone="success">ปิดแล้ว</StatusPill>
-                </div>
-              </div>
-            ))}
-          </div>
+          <table className="g" style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th>ลูกค้า</th>
+                <th>ประเภท</th>
+                <th>รายละเอียด</th>
+                <th>สถานะ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {closed.slice(0, 20).map((issue) => (
+                <tr key={issue.id}>
+                  <td style={{ fontWeight: 600 }}>{issue.customer.name}</td>
+                  <td>{issue.type}</td>
+                  <td style={{ whiteSpace: 'normal', textAlign: 'left' }}>{issue.detail}</td>
+                  <td>
+                    <StatusPill tone="success">ปิดแล้ว</StatusPill>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </Card>
     </>
