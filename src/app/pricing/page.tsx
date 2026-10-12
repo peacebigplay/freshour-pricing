@@ -7,7 +7,6 @@ import { AlertCard } from '@/components/ui/AlertCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { GenerateSheetsButton } from './GenerateSheetsButton';
-import sharedStyles from '@/components/ui/shared.module.css';
 
 export default async function PricingHomePage() {
   const r = await getPricingReadiness();
@@ -33,7 +32,7 @@ export default async function PricingHomePage() {
         title="Pricing"
         subtitle={`รอบ ${r.round.label} · Cost Snapshot เผยแพร่ ${r.round.costSnapshot.publishedAt.toLocaleDateString('th-TH')}`}
         actions={
-          <Link href="/pricing/central" className={sharedStyles.primaryButton}>
+          <Link href="/pricing/central" className="btn pri">
             ไปที่ Central Pricing
           </Link>
         }
@@ -72,7 +71,7 @@ export default async function PricingHomePage() {
             title={`มีสินค้า ${r.unresolvedMappings} รายการรอจับคู่กับ Product Master`}
             description="สินค้าที่ยังไม่ได้จับคู่จะบล็อกการเผยแพร่ราคา — ต้องตรวจสอบก่อน"
             action={
-              <Link href="/product-master" className={sharedStyles.ghostButton}>
+              <Link href="/product-master" className="btn">
                 ไปที่ Mapping Queue
               </Link>
             }
@@ -87,7 +86,7 @@ export default async function PricingHomePage() {
             title={`มีข้อยกเว้นในรอบนี้ ${r.centralLinesException} รายการ`}
             description="ราคาต่ำกว่าเป้าหมายหรือต้นทุนเปลี่ยนแปลงผิดปกติ ต้องตรวจสอบก่อนอนุมัติ"
             action={
-              <Link href="/pricing/central?filter=exception" className={sharedStyles.ghostButton}>
+              <Link href="/pricing/central?filter=exception" className="btn">
                 ดูรายการ
               </Link>
             }

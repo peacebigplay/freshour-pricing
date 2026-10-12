@@ -1,32 +1,25 @@
+import Link from 'next/link';
 import type { Role } from '@/lib/domain/rbac';
-import styles from './AppShell.module.css';
 import { LogoutButton } from './LogoutButton';
-import { SidebarNav } from './SidebarNav';
-
-interface NavItem {
-  href: string;
-  label: string;
-  labelTh: string;
-  icon: string;
-}
+import { SidebarNav, type NavItem } from './SidebarNav';
 
 const MENU: NavItem[] = [
-  { href: '/exec', label: 'Executive', labelTh: 'ผู้บริหาร', icon: '🏠' },
-  { href: '/pricing', label: 'Pricing', labelTh: 'ตั้งราคา', icon: '🧮' },
-  { href: '/customers', label: 'Customers', labelTh: 'ลูกค้า', icon: '👥' },
-  { href: '/sales', label: 'Sales', labelTh: 'ฝ่ายขาย', icon: '📊' },
-  { href: '/cost-market', label: 'Cost & Market', labelTh: 'ต้นทุน & ตลาด', icon: '📦' },
+  { href: '/exec', labelTh: 'ผู้บริหาร', sub: 'ตัดสินใจ', icon: '🏠' },
+  { href: '/pricing', labelTh: 'ตั้งราคา', sub: 'พุธ · ใบละเจ้า', icon: '🧮' },
+  { href: '/customers', labelTh: 'ลูกค้า', sub: 'สัญญา + Margin Guard', icon: '👥' },
+  { href: '/sales', labelTh: 'Sales', sub: 'ประกาศราคา · ต่อรอง · ปิดการขาย', icon: '📊' },
+  { href: '/cost-market', labelTh: 'รับทุน & ตลาด', sub: 'อังคาร · ทุน + ราคาตลาด', icon: '📦' },
 ];
 
 const TOOLS: NavItem[] = [
-  { href: '/pricing/requests', label: 'Price Requests', labelTh: 'คำขอปรับราคา', icon: '📨' },
-  { href: '/product-master', label: 'Product Master', labelTh: 'ฐานข้อมูลสินค้า', icon: '🧩' },
-  { href: '/summary', label: 'Summary', labelTh: 'สรุปภาพรวม', icon: '🧠' },
-  { href: '/process', label: 'Process', labelTh: 'ขั้นตอนงาน', icon: '🛤️' },
-  { href: '/memory', label: 'Memory', labelTh: 'ประวัติ', icon: '🗂️' },
-  { href: '/principles', label: 'Principles', labelTh: 'หลักการ', icon: '📜' },
-  { href: '/margin-guard', label: 'Margin Guard', labelTh: 'การ์ดมาร์จิ้น', icon: '⚙️' },
-  { href: '/admin', label: 'Admin', labelTh: 'ผู้ดูแลระบบ', icon: '🛠️' },
+  { href: '/pricing/requests', labelTh: 'คำขอปรับราคา', sub: 'เจรจาราคาสัญญา', icon: '📨' },
+  { href: '/summary', labelTh: 'สรุป', sub: 'อยู่ตรงไหน ไปไหนต่อ', icon: '🧠' },
+  { href: '/process', labelTh: 'เส้นทาง', sub: 'ตันสถานีไหน', icon: '🛤️' },
+  { href: '/memory', labelTh: 'ความจำ', sub: 'ข้อมูลทุกอย่าง', icon: '🗂️' },
+  { href: '/principles', labelTh: 'หลักการ', sub: 'กฎที่ระบบใช้จริง', icon: '📜' },
+  { href: '/margin-guard', labelTh: 'ตั้งค่า Margin Guard', sub: 'Target รายหมวด + SKU override', icon: '⚙️' },
+  { href: '/product-master', labelTh: 'Product Master', sub: 'SKU · Mapping · Alias', icon: '🧩' },
+  { href: '/admin', labelTh: 'Admin', sub: 'ระบบ · สิทธิ์ · Audit', icon: '🛠️' },
 ];
 
 const ROLE_MENU_ACCESS: Record<Role, Set<string>> = {
@@ -47,7 +40,7 @@ export function AppShell({
   children,
 }: {
   user: { name: string; role: Role };
-  /** Optional sidebar CTA box, matching V29's `.float` pattern (e.g. "N tasks need attention"). */
+  /** V29's sidebar CTA box (`.float`) — e.g. "N tasks need attention". */
   floatCard?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -56,40 +49,36 @@ export function AppShell({
   const tools = TOOLS.filter((item) => allowed.has(item.href));
 
   return (
-    <div className={styles.shell}>
-      <aside className={styles.sidebar}>
-        <div className={styles.brand}>
-          <span className={styles.mark}>F</span>
-          <div>
+    <div className="app">
+      <aside className="side">
+        <Link className="brand" href="/">
+          <span className="mk">F</span>
+          <span>
             <b>Freshour</b>
-            <span>ระบบตั้งราคา</span>
-          </div>
-        </div>
+            <span>{user.name} · {user.role}</span>
+          </span>
+        </Link>
 
-        <nav className={styles.nav}>
-          <p className={styles.navLabel}>เมนูหลัก</p>
+        <div className="navs">
+          <div className="lb">MENU</div>
           <SidebarNav items={menu} />
 
           {tools.length > 0 && (
             <>
-              <p className={styles.navLabel}>เครื่องมือ</p>
+              <div className="lb">TOOLS</div>
               <SidebarNav items={tools} />
             </>
           )}
-        </nav>
-
-        {floatCard && <div className={styles.floatSlot}>{floatCard}</div>}
-
-        <div className={styles.userBox}>
-          <div className={styles.userMeta}>
-            <b>{user.name}</b>
-            <span>{user.role}</span>
-          </div>
-          <LogoutButton />
         </div>
+
+        {floatCard}
+
+        <LogoutButton />
       </aside>
 
-      <main className={styles.content}>{children}</main>
+      <main className="main" id="main">
+        {children}
+      </main>
     </div>
   );
 }

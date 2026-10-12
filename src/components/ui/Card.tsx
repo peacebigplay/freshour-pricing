@@ -1,5 +1,3 @@
-import styles from './Card.module.css';
-
 export function Card({
   title,
   action,
@@ -10,14 +8,14 @@ export function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className={styles.card}>
+    <div className="card">
       {(title || action) && (
-        <div className={styles.head}>
-          {title && <h2 className={styles.title}>{title}</h2>}
-          {action}
-        </div>
+        <h3>
+          {title}
+          {action && <span style={{ marginLeft: 'auto' }}>{action}</span>}
+        </h3>
       )}
       {children}
-    </section>
+    </div>
   );
 }

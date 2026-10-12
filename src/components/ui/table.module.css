@@ -1,45 +1,16 @@
+/* Thin wrapper matching V29's .tw2 > .sc > table.g pattern exactly (see globals.css). */
 .tableWrap {
-  overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
+  composes: tw2 from global;
 }
-
+.scroll {
+  composes: sc from global;
+}
 .table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12.5px;
-  white-space: nowrap;
+  composes: g from global;
 }
-
-.table thead th {
-  position: sticky;
-  top: 0;
-  background: var(--surface-soft);
-  text-align: left;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  z-index: 1;
-}
-
-.table td {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
-}
-
-.table tbody tr:hover {
-  background: var(--surface-soft);
-}
-
-.table tbody tr:last-child td {
-  border-bottom: none;
-}
-
 .numeric {
   text-align: right;
-  font-variant-numeric: tabular-nums;
+}
+.left {
+  text-align: left !important;
 }

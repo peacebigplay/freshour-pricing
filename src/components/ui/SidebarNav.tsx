@@ -2,28 +2,32 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import styles from './AppShell.module.css';
 
-interface NavItem {
+export interface NavItem {
   href: string;
   labelTh: string;
+  sub?: string;
   icon: string;
+  badge?: string;
 }
 
 export function SidebarNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
   return (
-    <>
-      {items.map((item) => (
-        <Link
-          key={item.href}
-          href={item.href}
-          className={pathname.startsWith(item.href) ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem}
-        >
-          <span className={styles.navIcon}>{item.icon}</span>
-          <span className={styles.navTxt}>{item.labelTh}</span>
-        </Link>
-      ))}
-    </>
+    <nav className="nav">
+      {items.map((item) => {
+        const on = pathname.startsWith(item.href);
+        return (
+          <Link key={item.href} href={item.href} className={on ? 'on' : undefined}>
+            <i>{item.icon}</i>
+            <span className="txt">
+              {item.labelTh}
+              {item.sub && <em>{item.sub}</em>}
+            </span>
+            {item.badge && <span className="bdg">{item.badge}</span>}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

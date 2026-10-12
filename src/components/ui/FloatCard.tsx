@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import styles from './FloatCard.module.css';
 
 export function FloatCard({
   icon,
@@ -15,11 +14,27 @@ export function FloatCard({
   href: string;
 }) {
   return (
-    <div className={styles.float}>
-      <div className={styles.icon}>{icon}</div>
+    <div className="float">
+      <div className="ic">{icon}</div>
       <b>{title}</b>
       <span>{subtitle}</span>
-      <Link href={href} className={styles.button}>
+      <Link
+        href={href}
+        style={{
+          display: 'block',
+          width: '100%',
+          background: 'var(--blue)',
+          color: '#fff',
+          border: 0,
+          borderRadius: 9,
+          padding: 9,
+          fontFamily: 'var(--ff)',
+          fontSize: 13,
+          fontWeight: 600,
+          textAlign: 'center',
+          textDecoration: 'none',
+        }}
+      >
         {actionLabel}
       </Link>
     </div>

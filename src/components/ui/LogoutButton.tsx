@@ -2,7 +2,6 @@
 
 import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import styles from './shared.module.css';
 
 export function LogoutButton() {
   const router = useRouter();
@@ -11,7 +10,8 @@ export function LogoutButton() {
   return (
     <button
       type="button"
-      className={styles.ghostButton}
+      className="out"
+      style={{ border: 0, width: '100%', background: 'none', cursor: 'pointer', font: 'inherit' }}
       disabled={pending}
       onClick={() => {
         start(async () => {
@@ -21,7 +21,7 @@ export function LogoutButton() {
         });
       }}
     >
-      ออก
+      ออกจากระบบ
     </button>
   );
 }

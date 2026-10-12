@@ -1,34 +1,13 @@
+/* Matches V29's .btn / .btn.pri exactly (see globals.css). */
 .ghostButton {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  border-radius: var(--radius-control);
-  padding: 6px 10px;
-  font-size: 12px;
-  cursor: pointer;
+  composes: btn from global;
 }
-
-.ghostButton:hover {
-  background: var(--surface-soft);
-}
-
 .primaryButton {
-  border: 1px solid var(--primary-strong);
-  background: var(--primary);
-  color: #fff;
-  border-radius: var(--radius-control);
-  padding: 9px 16px;
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
+  composes: btn from global;
+  composes: pri from global;
 }
-
-.primaryButton:hover {
-  background: var(--primary-strong);
-}
-
-.primaryButton:disabled,
-.ghostButton:disabled {
+.ghostButton:disabled,
+.primaryButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

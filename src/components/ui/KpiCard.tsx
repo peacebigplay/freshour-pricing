@@ -1,7 +1,13 @@
 import Link from 'next/link';
-import styles from './KpiCard.module.css';
 
 export type KpiPillTone = 'neutral' | 'success' | 'warning' | 'danger';
+
+const PILL_CLASS: Record<KpiPillTone, string> = {
+  neutral: 'pill',
+  success: 'pill g',
+  warning: 'pill a',
+  danger: 'pill r',
+};
 
 export function KpiCard({
   icon,
@@ -23,23 +29,19 @@ export function KpiCard({
   href?: string;
 }) {
   const card = (
-    <div className={`${styles.card} ${lead ? styles.lead : ''} ${href ? styles.tap : ''}`}>
-      <div className={styles.top}>
-        {icon && <span className={styles.icon}>{icon}</span>}
-        {pill && <span className={`${styles.pill} ${styles[pillTone]}`}>{pill}</span>}
+    <div className={`k${lead ? ' lead' : ''}${href ? ' tap' : ''}`}>
+      <div className="kt">
+        {icon && <div className="ic">{icon}</div>}
+        {pill && <span className={PILL_CLASS[pillTone]}>{pill}</span>}
       </div>
-      <p className={styles.label}>{label}</p>
-      <p className={`${styles.value} tabular`}>{value}</p>
-      {caption && <p className={styles.caption}>{caption}</p>}
+      <div className="lb">{label}</div>
+      <div className="v">{value}</div>
+      {caption && <div className="c">{caption}</div>}
     </div>
   );
 
   if (href) {
-    return (
-      <Link href={href} className={styles.link}>
-        {card}
-      </Link>
-    );
+    return <Link href={href} style={{ textDecoration: 'none', color: 'inherit' }}>{card}</Link>;
   }
   return card;
 }
