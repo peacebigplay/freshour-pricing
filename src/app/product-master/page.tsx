@@ -24,7 +24,12 @@ export default async function ProductMasterPage() {
 
   return (
     <>
-      <PageHeader title="Product Master" subtitle={`${products.length} สินค้าใช้งานอยู่ · ${mappingQueue.length} รอจับคู่`} />
+      <PageHeader title="Product Master & Mapping Queue" subtitle={`${products.length} สินค้าใช้งานอยู่ · ${mappingQueue.length} รอจับคู่`} />
+
+      <div className="pbnote">
+        <b>Production principle:</b> ห้ามใช้ชื่อสินค้าเป็น primary join — ทุกอย่างต้อง join ด้วย product_id
+        <span className="env">SINGLE SOURCE OF TRUTH</span>
+      </div>
 
       {mappingQueue.length > 0 && (
         <Card title={`Mapping Queue (${mappingQueue.length})`}>
