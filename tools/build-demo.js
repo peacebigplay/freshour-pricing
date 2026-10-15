@@ -13,7 +13,7 @@ const PAGES = JSON.parse(rd('data/pages.json'));
 const idx = JSON.parse(rd('data/fixtures/index.json'));
 const DOCS = {}; for (const k of Object.keys(idx)) DOCS[k] = fs.readFileSync(path.join(ROOT, 'data/fixtures', idx[k])).toString('base64');
 const PAGE_SRC = {}; for (const p of PAGES) PAGE_SRC[p.id] = gz(rd('public/' + p.id + '.html'));
-const ASSETS = {}; ['peach.css', 'peach.js', 'catmargin.js', 'dash.js', 'costimport.js'].forEach(f => { ASSETS['/' + f] = gz(rd('public/' + f)); });
+const ASSETS = {}; ['peach.css', 'peach.js', 'catmargin.js', 'dash.js', 'costimport.js', 'trend.js', 'intake.js'].forEach(f => { ASSETS['/' + f] = gz(rd('public/' + f)); });
 const FEED = fs.readFileSync(path.join(ROOT, 'data/market-feed-sample.json'), 'utf8');
 const stamp = new Date(Date.now() + 7 * 3600e3);
 const TH = `${stamp.getUTCDate()} ${['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][stamp.getUTCMonth()]} ${stamp.getUTCFullYear() + 543}`;
@@ -99,7 +99,7 @@ var FEED_B64=${JSON.stringify(gz(FEED))};
   function route(href){
     var a=document.createElement('a');a.href='https://x'+(href.charAt(0)==='/'?href:'/'+href);
     var p=a.pathname.replace(/\\.html$/,'').replace(/\\/+$/,'')||'/';
-    var MOVED={'/price':'/pricing','/market':'/costs','/index':'/'};p=MOVED[p]||p;
+    var MOVED={'/price':'/pricing','/market':'/costs','/trend':'/costs?tab=trend','/index':'/'};if(MOVED[p]){a.href='https://x'+MOVED[p];p=a.pathname;}
     if(p==='/logout'){ROLE=null;sessionStorage.removeItem(RS);who();p='/login';}
     if(p==='/')p=ROLE?HOME[ROLE]:'/login';
     var qm=p.match(/^\\/q\\/([A-Za-z0-9]+)$/);
@@ -114,9 +114,9 @@ var FEED_B64=${JSON.stringify(gz(FEED))};
     var q=d.fx,src=e.source,body={};
     try{body=q.body?JSON.parse(q.body):{};}catch(x){}
     var entry={method:q.method,url:q.url.replace(/^https?:\\/\\/[^/]+/,''),body:body,role:ROLE||'anon',origin:''};
-    var r=entry.url==='/api/market-feed-sample'?{status:200,body:window.__FEED||{rows:[]}}:STORE.handle(entry);
+    var r=entry.url==='/api/market-feed-sample'?{status:200,body:window.__FEED||{rows:[]}}:entry.url==='/api/connectors/test'?(function(){STORE.ext.sourceFail(body.competitor_id,'ไฟล์เดโมในเบราว์เซอร์ดึงข้ามโดเมนไม่ได้ — ของจริงให้ server ดึง');return {status:200,body:{ok:false,error:'เบราว์เซอร์ดึงข้ามโดเมนไม่ได้ (ต้องให้ server ดึง)'}};})():STORE.handle(entry);
     if('session' in r){ROLE=r.session;if(ROLE)sessionStorage.setItem(RS,ROLE);else sessionStorage.removeItem(RS);who();}
-    else if(q.method!=='GET'&&r.status<300)journal({method:entry.method,url:entry.url,body:body,role:entry.role,at:new Date().toISOString()});
+    else if(q.method!=='GET'&&r.status<300&&!/\\/(parse|connectors\\/test|log)$/.test(entry.url))journal({method:entry.method,url:entry.url,body:body,role:entry.role,at:new Date().toISOString()});
     if(q.id)src.postMessage({fxr:{id:q.id,s:r.status,t:JSON.stringify(r.body)}},'*');
   });
   /* แถบเลือกหน้า แยกตามคนที่ใช้ — กดแล้วสลับบทบาทให้ตรงหน้าโดยอัตโนมัติ (สะดวกตอนทดสอบ) */

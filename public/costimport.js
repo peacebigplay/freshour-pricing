@@ -19,7 +19,29 @@ window.CostImport = (function () {
     if (window.XLSX) return Promise.resolve(window.XLSX);
     return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = function () { ok(window.XLSX); }; s.onerror = function () { no(new Error('โหลดตัวอ่าน Excel ไม่ได้ — บันทึกไฟล์เป็น CSV แล้วลองใหม่')); }; document.head.appendChild(s); });
   }
+  /* PDF จากโรงงาน: อ่านข้อความทุกหน้า จัดกลุ่มเป็นบรรทัดตามแนวตั้ง → บรรทัดที่ลงท้ายด้วยตัวเลข = [ชื่อ, ทุน] */
+  function loadPDF() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'; s.onload = function () { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; ok(window.pdfjsLib); }; s.onerror = function () { no(new Error('โหลดตัวอ่าน PDF ไม่ได้ (ต้องต่อเน็ต) — ส่งเป็น Excel/CSV แทนได้')); }; document.head.appendChild(s); });
+  }
+  function pdfRows(pdf) {
+    var pages = []; for (var i = 1; i <= pdf.numPages; i++) pages.push(pdf.getPage(i).then(function (pg) { return pg.getTextContent(); }));
+    return Promise.all(pages).then(function (tcs) {
+      var out = [['สินค้า', 'ทุน']];
+      tcs.forEach(function (tc) {
+        var lines = {}; tc.items.forEach(function (it) { if (!it.str.trim()) return; var y = Math.round(it.transform[5] / 3) * 3; (lines[y] = lines[y] || []).push({ x: it.transform[4], s: it.str }); });
+        Object.keys(lines).map(Number).sort(function (a, b) { return b - a; }).forEach(function (y) {
+          var txt = lines[y].sort(function (a, b) { return a.x - b.x; }).map(function (t) { return t.s; }).join(' ').replace(/\s+/g, ' ').trim();
+          var m = txt.match(/^(.*?[ก-๙A-Za-z].*?)\s+(\d{1,4}(?:[.,]\d{1,2})?)(?:\s*(?:บาท|฿|\/กก\.?|บ\.))?\s*$/) || txt.match(/^(.*?[ก-๙A-Za-z].*?)\s+(\d{1,4}(?:[.,]\d{1,2})?)\s+\d/);
+          if (m && !/รวม|total|หน้า|page|วันที่|เลขที่/i.test(m[1])) out.push([m[1].replace(/^\d+[.)]\s*/, '').trim(), m[2].replace(',', '.')]);
+        });
+      });
+      if (out.length < 2) throw new Error('ไม่เจอบรรทัด "ชื่อสินค้า ตัวเลข" ใน PDF — ถ้าเป็น PDF สแกน ให้ถ่ายรูป/พิมพ์แทน');
+      return out;
+    });
+  }
   function readTable(file) {
+    if (/\.pdf$/i.test(file.name)) return loadPDF().then(function (L) { return file.arrayBuffer().then(function (b) { return L.getDocument({ data: b }).promise; }).then(pdfRows); });
     if (/\.(xlsx|xls)$/i.test(file.name)) return loadXLSX().then(function (X) { return file.arrayBuffer().then(function (b) { var wb = X.read(b, { type: 'array' }), ws = wb.Sheets[wb.SheetNames[0]]; return X.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' }); }); });
     return file.text().then(parseCSV);
   }
@@ -34,8 +56,8 @@ window.CostImport = (function () {
   function rowsFrom(map, hasHeader) { return (hasHeader ? TBL.slice(1) : TBL).map(function (r) { return { product: String(r[map.name] || '').trim(), cost: String(r[map.cost] || '').trim() }; }).filter(function (r) { return r.product; }); }
   function open() {
     TBL = null; REP = null;
-    var m = PX.modal({ title: 'นำเข้าไฟล์ทุน AL', sub: 'ไฟล์จากโรงงานที่พี่หมิงส่งมา (CSV / Excel) · ระบบจับคู่ชื่อกับสินค้าในระบบเอง และกันตัวเลขแปลกไว้ให้ตรวจก่อนใช้',
-      html: '<label class="fld"><span>ไฟล์</span><input type="file" id="ciFile" accept=".csv,.xlsx,.xls,text/csv"></label><div id="ciMap"></div><div id="ciRep"></div>' +
+    var m = PX.modal({ title: 'นำเข้าไฟล์ทุน AL', sub: 'ไฟล์จากโรงงานที่พี่หมิงส่งมา (PDF / Excel / CSV) · ระบบจับคู่ชื่อกับสินค้าในระบบเอง และกันตัวเลขแปลกไว้ให้ตรวจก่อนใช้',
+      html: '<label class="fld"><span>ไฟล์</span><input type="file" id="ciFile" accept=".csv,.xlsx,.xls,.pdf,text/csv,application/pdf"></label><div id="ciMap"></div><div id="ciRep"></div>' +
         '<p class="hint">ไม่มีไฟล์? <a href="#" class="lnk2" id="ciSample">ดาวน์โหลดแม่แบบ CSV</a> · หรือใช้ "วางทุนจาก Excel" สำหรับคัดลอก-วาง</p>',
       okText: 'ตรวจไฟล์', note: 'ตรวจก่อน ยังไม่เขียนอะไรจนกว่าจะกด "บันทึก"',
       onOk: function (v, close) {
@@ -45,7 +67,7 @@ window.CostImport = (function () {
         var rows = rowsFrom(map, hh), okBtn = m.el.querySelector('.mdl-o'), rep = m.el.querySelector('#ciRep'), src = (m.el.querySelector('#ciSrc') || {}).value || 'ไฟล์ทุน AL';
         var commit = REP && okBtn.dataset.mode === 'commit';
         okBtn.disabled = true; okBtn.textContent = commit ? 'กำลังบันทึก…' : 'กำลังตรวจ…';
-        PX.post('/api/import/costs', { rows: rows, commit: commit, source: src }).then(function (r) {
+        PX.post('/api/import/costs', { rows: rows, commit: commit, source: src, channel: /\.pdf$/i.test((m.el.querySelector('#ciFile').files[0] || {}).name || '') ? 'pdf' : 'upload' }).then(function (r) {
           okBtn.disabled = false; REP = r;
           if (commit) { close(); PX.toast('บันทึกทุน <b>' + r.applied + '</b> รายการ' + (r.flagged ? ' · กันไว้ตรวจ <b>' + r.flagged + '</b>' : '') + (r.problemCount ? ' · จับคู่ไม่ได้ ' + r.problemCount : '')); if (typeof reload === 'function') reload(); if (window.CostImport.onDone) window.CostImport.onDone(); return; }
           rep.innerHTML = report(r);

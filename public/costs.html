@@ -8,6 +8,8 @@
 </head><body>
 <script src="/peach.js"></script>
 <script src="/costimport.js"></script>
+<script src="/trend.js"></script>
+<script src="/intake.js"></script>
 <script>
 /* รับทุน & ตลาด — งานวันอังคาร
    หน้านี้ไม่ออกราคา มีหน้าที่เดียวคือรับตัวเลขเข้าระบบให้ครบและถูก */
@@ -22,16 +24,28 @@ var D = null, G = 'all', Q = '', PG = 0, PER = 20, ONLY = '';
   if (q.get('only')) ONLY = q.get('only');
 })();
 
+/* แท็บ: ทุน · แนวโน้มตลาด · แหล่งข้อมูล & สำรวจ — หน้าเดียว (รวม /trend เดิม) */
+var TAB = (function () { var q = new URLSearchParams(__NAV.search).get('tab') || (location.hash || '').slice(1); return ['cost', 'trend', 'sources'].indexOf(q) >= 0 ? q : 'cost'; })();
+function setTab(t) { TAB = t; try { history.replaceState(null, '', '/costs' + (t === 'cost' ? '' : '?tab=' + t)); } catch (e) {} draw(); window.scrollTo(0, 0); if (t === 'trend') Trend.load().then(draw); if (t === 'sources') Intake.load().then(draw); }
+window.redrawTab = function () { draw(); };
 PX.shell('cost',
   '<div class="float"><div class="ic">📦</div><b>ทุนเข้าครบหรือยัง</b>' +
   '<span id="floatSub">กำลังอ่าน…</span>' +
-  '<button onclick="CostImport.open()">นำเข้าไฟล์ทุน AL</button></div>');
+  '<button id="floatBtn" onclick="CostImport.open()">นำเข้าไฟล์ทุน AL</button></div>');
+function bindFloat() {
+  var b = document.getElementById('floatBtn'), fs = document.getElementById('floatSub'); if (!b) return;
+  if (TAB === 'trend') { b.textContent = 'ดึงราคาตอนนี้'; b.onclick = function () { Trend.syncNow(); }; var t = Trend.data(); if (fs && t) fs.textContent = t.warnings.filter(function (w) { return w.level === 'bad'; }).length + ' เรื่องต้องระวัง · เตือนถูก ' + (t.score.pct == null ? '—' : t.score.pct + '%'); }
+  else if (TAB === 'sources') { b.textContent = 'บันทึกการสำรวจ'; b.onclick = function () { var c = (D.comps || [])[0]; Intake.survey(c ? c.id : 'a'); }; if (fs) fs.textContent = 'สำรวจหน้าร้านสัปดาห์ละ 1 ครั้ง'; }
+  else { b.textContent = 'นำเข้าไฟล์ทุน AL'; b.onclick = function () { CostImport.open(); }; }
+}
 
 /* ── บันทึกจริงทุกช่อง ────────────────────────────────────────────
    ทุน/ปริมาณ → /api/products/:id · ราคาตลาด → /api/competitor-prices
    บันทึกทันทีที่ออกจากช่อง แล้วดึงข้อมูลใหม่ให้ตัวเลขสรุปข้างบนขยับตาม */
 function reload(msg) {
-  return PX.get('/api/pricelist').then(function (j) {
+  return CostImport.onDone = function () { Intake.load(true).then(draw); };
+Intake.load().catch(function () {}).then(function () { if (TAB === 'trend') return Trend.load().catch(function () {}); }).then(function () { if (document.getElementById('main') && D) draw(); });
+PX.get('/api/pricelist').then(function (j) {
     var v = {}; D.rows.forEach(function (r) { v[r.id] = r.vol; });
     D = j; D.rows.forEach(function (r) { r.vol = v[r.id] || 0; });
     return PX.get('/api/board').then(function (b) {
@@ -277,25 +291,19 @@ function draw() {
   var noMkt = D.rows.filter(function (r) {
     return !r.marks.some(function (m) { return m.price > 0 && m.state === 'ok'; }); }).length;
 
-  var h = PX.head('รับทุนประจำสัปดาห์ & ราคาตลาด',
-    'งานวันอังคาร — กรอกทุนจากโรงงาน และราคาที่ไปเห็นมาของเจ้าอื่น · ' +
-    'หน้านี้ไม่ออกราคา ราคาคิดจากเครื่องยนต์ตัวเดียว',
+  var h = PX.head('รับทุน & ตลาด',
+    'ทุนจากโรงงาน · ราคาตลาด (ออนไลน์ + สำรวจหน้าร้าน) · แนวโน้ม — หน้านี้ไม่ออกราคา ราคาคิดจากเครื่องยนต์ตัวเดียว',
     ['จุ๋ม', 'พี่จุ๋ม', 'ผู้ออกราคา']);
-
-  /* หน้านี้ใครรับผิดชอบ กรอกยังไง กรอกได้กี่ทาง — ต้องเขียนไว้บนหน้า
-     ไม่ใช่ความรู้ที่อยู่ในหัวคนเดียว คนใหม่เปิดมาต้องรู้ว่าต้องทำอะไร */
-  h += '<div class="own">' +
-    '<div class="oi"><em>ใครกรอก</em><b>พี่จุ๋ม</b>' +
-      '<span>ทุนมาจากโรงงานแม่พี่หมิงทางไลน์</span></div>' +
-    '<div class="oi"><em>เมื่อไร</em><b>ทุกวันอังคาร</b>' +
-      '<span>ก่อนออกราคาวันพุธ</span></div>' +
-    '<div class="oi"><em>ราคาตลาดใครหา</em><b>พี่จุ๋ม + ทีมขาย</b>' +
-      '<span>' + (D.comps || []).map(function (c) { return esc(c.label); }).join(' · ') + '</span></div>' +
-    '<div class="oi"><em>กรอกได้ 2 ทาง</em><b>หน้านี้ หรือ ไลน์</b>' +
-      '<span>พิมพ์ในไลน์ว่า <code>ทุน สันคอหมู 178</code> หรือ <code>ตลาด betagro สันคอหมู 191</code></span></div>' +
-    '</div>';
-
-  h += sourceHub();
+  /* mini dashboard ของระบบ (ทุกแท็บ) + แถบแท็บ */
+  h += Intake.perfStrip();
+  var noMktAll = D.rows.filter(function (r) { return !r.marks.some(function (m) { return m.price > 0 && m.state !== 'expired'; }); }).length;
+  var trW = Trend.data() ? Trend.data().warnings.filter(function (w) { return w.level === 'bad'; }).length : null;
+  h += '<div class="ctabs" role="tablist">' +
+    '<button class="' + (TAB === 'cost' ? 'on' : '') + '" onclick="setTab(\'cost\')">📦 ทุน<em>' + (D.rows.filter(function (r) { return !(r.cost > 0); }).length ? 'ยังไม่รู้ ' + D.rows.filter(function (r) { return !(r.cost > 0); }).length : 'ครบ') + '</em></button>' +
+    '<button class="' + (TAB === 'trend' ? 'on' : '') + '" onclick="setTab(\'trend\')">📈 แนวโน้มตลาด<em>' + (trW == null ? '' : trW ? 'ระวัง ' + trW : 'ปกติ') + '</em></button>' +
+    '<button class="' + (TAB === 'sources' ? 'on' : '') + '" onclick="setTab(\'sources\')">🔌 แหล่งข้อมูล & สำรวจ<em>ไม่รู้ตลาด ' + noMktAll + '</em></button></div>';
+  if (TAB === 'trend') { h += Trend.html(); document.getElementById('main').innerHTML = h; PX.bindTips(); bindFloat(); return; }
+  if (TAB === 'sources') { h += Intake.sourcesTab(D.comps); document.getElementById('main').innerHTML = h; PX.bindTips(); bindFloat(); return; }
 
   /* สรุปความครบของข้อมูลนำเข้า */
   h += '<div class="kpi">' +
@@ -396,7 +404,8 @@ function draw() {
     ' เพื่อดูผลก่อนประกาศ · <b>ทุกช่องในตารางบันทึกจริงทันทีที่ออกจากช่อง</b></p>';
 
   document.getElementById('main').innerHTML = h;
-  CostImport.mountFlags();   /* รายการจากไฟล์ที่ติดด่านตรวจ — ท้ายหน้า */
+  CostImport.mountFlags();   /* รายการจากไฟล์ที่ติดด่านตรวจ — ท้ายแท็บทุน */
+  bindFloat();
   var fs = document.getElementById('floatSub');
   if (fs) fs.textContent = noCost ? ('ยังไม่รู้ทุน ' + noCost + ' รายการ') : 'ทุนเข้าครบทุกรายการ';
   var q = document.getElementById('q');

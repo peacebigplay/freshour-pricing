@@ -132,3 +132,29 @@ test('6 Dashboard แยกตามคน', () => {
   assert.equal(sale.role, 'sale'); assert.ok(sale.customers.length >= 42); assert.ok(sale.customers.find(c => c.id === 'cd6f5').stage === 'won');
   const s = JSON.stringify(sale); assert.ok(!/"cost"|"margin"|"gp"/.test(s), 'dashboard เซลล์ต้องไม่มีทุน/margin');
 });
+
+test('รอบ 3 · แหล่งข้อมูล: สำรวจหน้าร้าน (พิมพ์/พูด/รูป) · โหมดสำรวจเมื่อดึงออนไลน์ไม่ได้ · LINE ทุน/ตลาด · mini dashboard', () => {
+  const pr = store.ext.parseSurvey('สามชั้น 189\nสันคอหมู 178 บาท\nกระดูกซุป 45/กก\nหมูยอ 90\n135 บาท สันนอก\nอะไรก็ไม่รู้');
+  assert.equal(pr.filter(r => r.ok).length, 4); assert.equal(pr.find(r => r.raw === 'หมูยอ 90').reason, 'จับคู่ SKU ไม่ได้'); assert.ok(pr.find(r => r.raw === 'หมูยอ 90').alts.length, 'เสนอตัวเลือกให้คนเลือก');
+  assert.equal(pr.find(r => /สันคอหมู/.test(r.raw)).how, 'exact');
+  const plan = okj(call('sale', 'GET', '/api/survey')); assert.equal(plan.stores.length, 3); assert.ok(plan.stores.every(s => s.targets.length <= 15)); assert.ok(plan.stores.find(s => s.competitor_id === 'c').mode === 'survey', 'Makro B2B ไม่มีออนไลน์ → ต้องสำรวจ');
+  const sub = okj(call('sale', 'POST', '/api/survey/submit', { store: 'c', mode: 'voice', branch: 'บางนา', rows: pr.filter(r => r.ok) }));
+  assert.equal(sub.n, 4);
+  const plan2 = okj(call('sale', 'GET', '/api/survey')); assert.ok(plan2.stores.find(s => s.competitor_id === 'c').submissions >= 1); assert.equal(plan2.recent[0].mode, 'voice');
+  const ob = okj(call('ops', 'GET', '/api/market-observations?sku=สันคอหมู')); assert.ok(ob.rows.find(o => o.via === 'survey' && o.competitor_id === 'c'), 'ราคาสำรวจเข้าตารางเดียวกับออนไลน์');
+  assert.equal(call('sale', 'POST', '/api/survey/submit', { store: 'c', rows: [{ raw: 'x', price: 5 }] }).status, 400);
+  /* ดึงออนไลน์ไม่ได้ 2 ครั้ง → สลับโหมดสำรวจ + alert */
+  okj(call('ops', 'POST', '/api/sources/fail', { competitor_id: 'a', why: 'HTTP 403' })); okj(call('ops', 'POST', '/api/sources/fail', { competitor_id: 'a', why: 'HTTP 403' }));
+  const src = okj(call('ops', 'GET', '/api/sources')); assert.equal(src.sources.find(s => s.id === 'a').mode, 'survey'); assert.ok(okj(call('ops', 'GET', '/api/health')).alerts.some(a => /โหมดสำรวจ/.test(a.title)));
+  /* LINE จากทีมงาน: ทุน / ตลาด */
+  const wh = okj(call('anon', 'POST', '/api/line/webhook', { events: [{ source: { userId: 'Ustaff9' }, message: { type: 'text', text: 'ทุน มันแข็งหมู 68' } }, { source: { userId: 'Ustaff9' }, message: { type: 'text', text: 'ตลาด Betagro สันคอหมู 191, สามชั้น 185' } }] }));
+  assert.ok(/cost 1/.test(wh.handled[0].result)); assert.ok(/survey 2/.test(wh.handled[1].result));
+  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === 'p046e65').cost, 68);
+  /* mini dashboard */
+  const pf = okj(call('ops', 'GET', '/api/intake-perf'));
+  assert.ok(pf.cost.entries30 > 0 && pf.cost.autoPct != null); assert.ok(pf.cost.match.pct != null); assert.ok(pf.cost.flags.total >= 2);
+  assert.ok(pf.market.survey7 >= 4 && pf.market.online7 > 0); assert.equal(pf.market.sources.length, 3); assert.ok(pf.market.score.pct != null);
+  assert.equal(call('sale', 'GET', '/api/intake-perf').status, 403);
+  const inbox = okj(call('ops', 'POST', '/api/import/costs', { rows: [{ product: 'มันแข็งหมู', cost: '69' }], commit: true, source: 'inbox: AL.csv', channel: 'inbox' })); assert.equal(inbox.applied, 1);
+  assert.equal(okj(call('ops', 'GET', '/api/cost-flags')).imports[0].channel, 'inbox');
+});

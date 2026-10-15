@@ -2,3 +2,5 @@ data/journal.jsonl
 node_modules/
 dist/
 .playwright/
+data/inbox/*
+!data/inbox/.gitkeep

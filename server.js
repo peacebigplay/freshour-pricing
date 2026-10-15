@@ -81,6 +81,46 @@ async function notifyAlerts() {
     console.error('[freshour] ALERT', a.title, '—', a.detail);
   }
 }
+/* ── กล่องรับไฟล์ทุนจากโรงงาน (อัตโนมัติ): วางไฟล์ .csv/.json ใน data/inbox (จาก email forwarder / LINE bot / shared folder)
+   ระบบอ่านทุก 20 วิ → เข้าด่านตรวจเดียวกับการอัปโหลด → ย้ายไป inbox/done · PDF/Excel ให้แปลงเป็น CSV ก่อน (หรืออัปโหลดในหน้าเว็บ ซึ่งอ่านได้ทั้งสองแบบ) ── */
+const INBOX = process.env.FH_INBOX_DIR || path.join(DATA, 'inbox');
+function parseCsv(text) {
+  const rows = [], t = text.replace(/^\uFEFF/, ''); let row = [], f = '', q = false;
+  for (let i = 0; i < t.length; i++) { const c = t[i];
+    if (q) { if (c === '"') { if (t[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true; else if (c === ',' || c === '\t') { row.push(f); f = ''; } else if (c === '\n' || c === '\r') { if (c === '\r' && t[i + 1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; } else f += c; }
+  if (f !== '' || row.length) { row.push(f); rows.push(row); }
+  return rows.filter(r => r.some(x => String(x).trim() !== ''));
+}
+function scanInbox() {
+  try { fs.mkdirSync(path.join(INBOX, 'done'), { recursive: true }); } catch (e) { return; }
+  for (const f of fs.readdirSync(INBOX)) {
+    const fp = path.join(INBOX, f); if (!fs.statSync(fp).isFile() || !/\.(csv|json|txt)$/i.test(f)) continue;
+    let rows = [], note = '';
+    try {
+      const txt = fs.readFileSync(fp, 'utf8');
+      if (/\.json$/i.test(f)) { const j = JSON.parse(txt); rows = (j.rows || j).map(r => ({ product: r.product || r.name || r.sku, cost: r.cost || r.price })); }
+      else { const t = parseCsv(txt); const head = t[0].map(x => String(x).toLowerCase()); let ni = head.findIndex(h => /สินค้า|รายการ|ชื่อ|product|item|sku/.test(h)), ci = head.findIndex(h => /ทุน|cost|ราคา|price/.test(h)); const hasHead = ni >= 0 || ci >= 0; if (ni < 0) ni = 0; if (ci < 0) ci = 1; rows = (hasHead ? t.slice(1) : t).map(r => ({ product: r[ni], cost: r[ci] })); }
+      const r = store.handle({ method: 'POST', url: '/api/import/costs', body: { rows, commit: true, source: 'inbox: ' + f, channel: 'inbox' }, role: 'system' });
+      note = r.status === 200 ? `ใช้ ${r.body.applied} · รอตรวจ ${r.body.flagged} · จับคู่ไม่ได้ ${r.body.problemCount}` : r.body.error;
+      journal({ method: 'POST', url: '/api/import/costs', body: { rows, commit: true, source: 'inbox: ' + f, channel: 'inbox' }, role: 'system', at: new Date().toISOString(), system: true });
+      store.handle({ method: 'POST', url: '/api/inbox/note', body: { file: f, status: r.status === 200 ? 'ok' : 'fail', detail: note }, role: 'system' });
+      fs.renameSync(fp, path.join(INBOX, 'done', Date.now() + '-' + f));
+      console.log('[freshour] inbox:', f, '→', note);
+    } catch (e) { store.ext.alert('bad', 'อ่านไฟล์ทุนจากกล่องรับไม่ได้: ' + f, e.message, 'cost-import'); try { fs.renameSync(fp, path.join(INBOX, 'done', 'FAILED-' + Date.now() + '-' + f)); } catch (x) {} }
+  }
+}
+/* ทดสอบว่าดึงราคาออนไลน์จากแหล่งนี้ได้ไหม — ดึงไม่ได้ 2 ครั้ง ระบบสลับเป็นโหมดสำรวจหน้าร้านเอง */
+async function testConnector(cid) {
+  const c = store.docs.pricelist.comps.find(x => x.id === cid); if (!c) return { ok: false, error: 'ไม่รู้จักแหล่ง' };
+  const url = /^https?:/.test(c.source || '') ? c.source : c.source ? 'https://' + c.source : '';
+  if (!url) { store.ext.sourceFail(cid, 'ยังไม่ระบุ URL ของแหล่งข้อมูล'); return { ok: false, error: 'ยังไม่ระบุ URL' }; }
+  try { const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 8000); const r = await fetch(url, { method: 'GET', signal: ac.signal, headers: { 'user-agent': 'freshour-pricing/0.1 (+market-connector)' } }); clearTimeout(t);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const ss = store.docs.source_status[cid] = store.docs.source_status[cid] || {}; ss.reachable = true; ss.last_try = new Date().toISOString(); ss.last_error = null;
+    return { ok: true, status: r.status, note: 'ติดต่อได้ — ขั้นต่อไปคือ parser/feed ที่ได้รับสิทธิ์ของแหล่งนี้' };
+  } catch (e) { const why = /abort/i.test(e.message) ? 'หมดเวลา 8 วินาที' : e.message.slice(0, 120); store.ext.sourceFail(cid, why); return { ok: false, error: why }; }
+}
 let draining = false;
 async function tick() {
   if (draining) return; draining = true;
@@ -89,6 +129,7 @@ async function tick() {
     if (n) journal({ method: 'POST', url: '/api/_drain', body: {}, role: 'system', at: new Date().toISOString(), system: true });
     const j = store.docs.jobs['market-sync'], age = j.last_run ? (Date.now() - Date.parse(j.last_run + '+07:00')) / 36e5 : 99;
     if (age > 24) await runMarketSync('ครบรอบ 24 ชม.');
+    scanInbox();
     await notifyAlerts();
   } finally { draining = false; }
 }
@@ -136,13 +177,14 @@ function journal(entry) {
   try { fs.appendFileSync(JOURNAL, JSON.stringify(entry) + '\n'); } catch (e) { console.error('[freshour] เขียน journal ไม่ได้', e.message); }
 }
 const HOME = { boss: '/exec', admin: '/exec', ops: '/pricing', sale: '/sales' };
-const MOVED = { '/price': '/pricing', '/market': '/costs', '/index': '/' };
+const MOVED = { '/price': '/pricing', '/market': '/costs', '/trend': '/costs?tab=trend', '/index': '/' };
 
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
   let p = u.pathname.replace(/\.html$/, '').replace(/\/+$/, '') || '/';
   const role = roleOf(req);
   try {
+    if (p === '/api/connectors/test' && req.method === 'POST') { if (!role || store.LVL[role] < 2) return json(res, { status: 403, body: { error: 'ไม่มีสิทธิ์' } }); const b = await readBody(req); const r = await testConnector(b.competitor_id); return json(res, { status: 200, body: r }); }
     if (p === '/api/market-feed-sample') { if (!roleOf(req)) return json(res, { status: 401, body: { error: 'กรุณาเข้าระบบ' } }); return send(res, 200, fs.readFileSync(path.join(DATA, 'market-feed-sample.json'))); }
     if (p.startsWith('/api/')) {
       const body = req.method === 'GET' || req.method === 'HEAD' ? {} : await readBody(req);
@@ -152,11 +194,11 @@ const server = http.createServer(async (req, res) => {
       if (p === '/api/health' && !r.body.ok) r.status = 503;
       if ('session' in r) setRole(res, r.session);
       if (p === '/api/line/webhook' && req.method === 'POST' && !verifyLine(req, body)) return json(res, { status: 401, body: { error: 'ลายเซ็น LINE ไม่ถูกต้อง' } });
-      if (req.method !== 'GET' && r.status < 300 && p !== '/api/login' && p !== '/api/logout') journal({ method: entry.method, url: entry.url, body, role: entry.role, at: new Date().toISOString() });
+      if (req.method !== 'GET' && r.status < 300 && !/\/api\/(login|logout|survey\/parse)$/.test(p)) journal({ method: entry.method, url: entry.url, body, role: entry.role, at: new Date().toISOString() });
       return json(res, r);
     }
     if (p === '/logout') { setRole(res, null); return redirect(res, '/login'); }
-    if (MOVED[p]) p = MOVED[p];
+    if (MOVED[p]) { if (MOVED[p].indexOf('?') >= 0) return redirect(res, MOVED[p]); p = MOVED[p]; }
     if (p === '/') return redirect(res, role ? HOME[role] || '/pricing' : '/login');
     const qm = p.match(/^\/q\/([A-Za-z0-9]+)$/);
     if (qm) return send(res, 200, QuotePage.render(store.publicQuote(qm[1]), qm[1]), MIME['.html']);

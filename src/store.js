@@ -239,6 +239,9 @@
       catItemDocs().forEach(function (c) { c.items.forEach(function (it) { if (it.id === pid) { it.cost = cost; it.price = P.w2; it.margin = mg(P.w2, cost); it.guard = floorPrice(cost, it.effective); } }); });
       D.brain.evidence.blind.forEach(function (b) { if (b.id === pid) { b.cost = cost; b.w2 = P.w2; b.formula = P.w2; } });
       D.pricelist.costUpdated = td; CFG.cost_updated = td; D.brain.control.cost_updated = td; D.pricelist.dirty = true; D.brain.now.dirty = true;
+      /* บันทึกว่าทุนตัวนี้เข้ามาทางไหน (ไฟล์/พิมพ์/ปรับทุกตัว/ตรวจแล้ว) — mini dashboard วัดว่าระบบช่วยรับทุนได้แค่ไหน */
+      (D.cost_entries = D.cost_entries || []).unshift({ at: stamp(), pid: pid, cost: cost, prev: prevCost, src: src, by: role || '' });
+      if (D.cost_entries.length > 5000) D.cost_entries.length = 5000;
       return true;
     }
 

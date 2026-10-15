@@ -19,7 +19,7 @@
 
     /* ── ตารางใหม่ (อยู่ใน D เพื่อให้ journal/เดโมเล่นซ้ำได้เหมือนเดิม) ── */
     D.events = D.events || []; D.alerts = D.alerts || []; D.outbox = D.outbox || []; D.market_obs = D.market_obs || [];
-    D.predictions = D.predictions || []; D.cost_imports = D.cost_imports || []; D.cost_flags = D.cost_flags || []; D.followups = D.followups || []; D.deals = D.deals || [];
+    D.predictions = D.predictions || []; D.cost_imports = D.cost_imports || []; D.surveys = D.surveys || []; D.source_status = D.source_status || {}; D.inbox = D.inbox || []; D.cost_flags = D.cost_flags || []; D.followups = D.followups || []; D.deals = D.deals || [];
     D.jobs = D.jobs || { 'market-sync': { label: 'ดึงราคาตลาด (ทุกวัน)', every_h: 24, last_run: null, status: 'never', detail: '', runs: 0 },
       'line-outbox': { label: 'ส่ง LINE', every_h: 0, last_run: null, status: 'never', detail: '', runs: 0 },
       'cost-import': { label: 'อ่านไฟล์ทุน AL', every_h: 0, last_run: null, status: 'never', detail: '', runs: 0 } };
@@ -130,7 +130,7 @@
           okRows.forEach(function (x) { if (x.changed && X.setCost(x.product_id, x.cost, source, role)) applied++; });
           flagged.forEach(function (x) { D.cost_flags.unshift({ id: nextId('cf'), at: stamp(), import_id: seq.ci + 1, product_id: x.product_id, name: x.name, raw: x.raw, prev: x.prev, cost: x.cost, reasons: x.checks.map(function (c) { return c.text; }), status: 'pending' }); });
           X.afterCosts();
-          var imp = { id: nextId('ci'), at: stamp(), by: role, source: source, rows: rows.length, matched: out.length, applied: applied, flagged: flagged.length, problems: problems.length };
+          var imp = { id: nextId('ci'), at: stamp(), by: role, source: source, channel: body.channel || 'upload', rows: rows.length, matched: out.length, applied: applied, flagged: flagged.length, problems: problems.length, exact: out.filter(function (x) { return x.how !== 'fuzzy'; }).length, fuzzy: out.filter(function (x) { return x.how === 'fuzzy'; }).length };
           D.cost_imports.unshift(imp); res.import_id = imp.id; res.applied = applied;
           jobDone('cost-import', 'นำเข้า ' + applied + ' รายการ · รอตรวจ ' + flagged.length + ' · จับคู่ไม่ได้ ' + problems.length);
           if (flagged.length) alert('warn', 'ทุนแปลก ' + flagged.length + ' รายการรอพี่จุ๋มตรวจ', flagged.slice(0, 3).map(function (x) { return x.name + ' ' + x.cost + ' ฿'; }).join(' · '), 'cost-import');
@@ -182,7 +182,8 @@
         if (!compOf(cid) || !(price > 0)) return;
         var m = matchProduct(o.sku || o.name); if (!m) { total.unmatched[o.sku || o.name] = 1; return; }
         var key = cid + '|' + m.p.id + '|' + at; if (keys[key]) return; keys[key] = 1;
-        D.market_obs.push({ id: nextId('ob'), key: key, competitor_id: cid, product_id: m.p.id, sku: o.sku || o.name, how: m.how, price: price, unit: o.unit || 'บาท/กก.', observed_at: at, source_url: o.source_url || (compOf(cid).source || ''), ingested_at: stamp() });
+        D.market_obs.push({ id: nextId('ob'), key: key, competitor_id: cid, product_id: m.p.id, sku: o.sku || o.name, how: m.how, price: price, unit: o.unit || 'บาท/กก.', observed_at: at, source_url: o.source_url || (compOf(cid).source || ''), ingested_at: stamp(), via: o.via || 'online', by: o.by || 'connector' });
+        if (!o.via || o.via === 'online') { var ss = D.source_status[cid] = D.source_status[cid] || {}; ss.mode = 'online'; ss.last_ok = stamp(); ss.fails = 0; }
         total.added++; total.matched[m.p.id] = 1;
         var lk = cid + '|' + m.p.id; if (!latest[lk] || latest[lk].at < at) latest[lk] = { pid: m.p.id, cid: cid, price: price, at: at };
       });
@@ -317,8 +318,13 @@
       evs.forEach(function (ev) {
         var uid = ev.source && ev.source.userId, text = ev.message && ev.message.text || '';
         var c = S.customers.filter(function (x) { return x.line_user_id && x.line_user_id === uid; })[0];
-        if (!c) { logEvent({ actor: 'customer', kind: 'customer', action: 'line-inbound', detail: 'ไม่รู้จัก LINE ' + uid + ': ' + text.slice(0, 80), status: 'warn' }); return handled.push({ uid: uid, result: 'unknown' }); }
+        if (!c) {
+          var mc = text.match(/^ทุน\s+(.+?)\s+(\d+(?:\.\d+)?)\s*$/), ms = text.match(/^ตลาด\s+(\S+)\s+(.+)$/);
+          if (mc) { var ic = importCosts('line', { rows: [{ product: mc[1], cost: mc[2] }], commit: true, source: 'LINE ทุน', channel: 'line' }); return handled.push({ uid: uid, result: ic.status === 200 ? 'cost ' + (ic.body.applied || 0) + (ic.body.flagged ? ' flagged ' + ic.body.flagged : '') : ic.body.error }); }
+          if (ms) { var st0 = D.pricelist.comps.filter(function (x) { return x.label.toLowerCase() === ms[1].toLowerCase() || x.id === ms[1]; })[0]; if (st0) { var pr0 = parseSurvey(ms[2], st0.id).filter(function (r) { return r.ok; }); var sr0 = surveySubmit('line', { store: st0.id, rows: pr0, mode: 'line' }); return handled.push({ uid: uid, result: sr0.status === 200 ? 'survey ' + pr0.length : sr0.body.error }); } }
+          logEvent({ actor: 'customer', kind: 'customer', action: 'line-inbound', detail: 'ไม่รู้จัก LINE ' + uid + ': ' + text.slice(0, 80), status: 'warn' }); return handled.push({ uid: uid, result: 'unknown' }); }
         var sh = sheetFor(c.id), res = 'noted';
+        var mk = text.match(/^ตลาด\s+(\S+)\s+(.+)$/); if (mk) { var st = D.pricelist.comps.filter(function (x) { return x.label.toLowerCase() === mk[1].toLowerCase() || x.id === mk[1]; })[0]; if (st) { var pr = parseSurvey(mk[2], st.id).filter(function (r) { return r.ok; }); var sr2 = surveySubmit('line', { store: st.id, rows: pr, mode: 'line' }); res = sr2.status === 200 ? 'survey ' + pr.length : sr2.body.error; } }
         if (/^(ยืนยัน|ตกลง|โอเค|ok|รับ)/i.test(text.trim()) && sh && sh.sent) { var r = X.quoteResponse('customer', { customer_id: c.id, kind: 'accept', all: true }); res = r.status === 200 ? 'accepted ' + r.body.n : r.body.error; }
         else { var m = text.match(/ขอ\s*(.+?)\s*(\d+)\s*(บาท|฿)?/); if (m && sh) { var mp = matchProduct(m[1]); if (mp) { var rr = X.priceRequest('customer', { customer_id: c.id, product_id: mp.p.id, want: Number(m[2]), reason: 'ขอผ่าน LINE: ' + text.slice(0, 60) }); res = rr.status === 200 ? 'request ' + mp.p.name + ' ' + m[2] : rr.body.error; } } }
         var sr = sendRow(c.id); if (sr && !sr.opened) sr.opened = stamp();
@@ -428,6 +434,86 @@
         invoices: { n: inv.invoices || 0, revenue: inv.revenue || 0, gp: inv.gp || 0, margin: inv.margin || 0 }, ar: { outstanding: D.ar.outstanding, overdue: D.ar.overdue }, ops: ops, followupDue: b.followupDue, lineMissing: b.lineMissing }));
     }
 
+    /* ════════ 2b · แหล่งข้อมูล: สถานะ connector · สำรวจหน้าร้านรายสัปดาห์ (พิมพ์/พูด/ถ่ายรูป) ════════ */
+    function sourceFail(cid, why) { var ss = D.source_status[cid] = D.source_status[cid] || {}; ss.fails = (ss.fails || 0) + 1; ss.last_error = why; ss.last_try = stamp(); if (ss.fails >= 2) ss.mode = 'survey'; if (ss.fails === 2) alert('warn', 'ดึงราคาออนไลน์ ' + (compOf(cid) || {}).label + ' ไม่ได้ — สลับเป็นโหมดสำรวจหน้าร้าน', why, 'market-sync'); return ss; }
+    function sourceStatus() {
+      return D.pricelist.comps.map(function (c) { var ss = D.source_status[c.id] || {}, obs = D.market_obs.filter(function (o) { return o.competitor_id === c.id; });
+        var lastOnline = obs.filter(function (o) { return o.via !== 'survey'; }).reduce(function (a, o) { return o.observed_at > a ? o.observed_at : a; }, ''), lastSurvey = obs.filter(function (o) { return o.via === 'survey'; }).reduce(function (a, o) { return o.observed_at > a ? o.observed_at : a; }, '');
+        var mode = ss.mode || (lastOnline ? 'online' : 'survey');
+        return { id: c.id, label: c.label, tier: c.tier, source: c.source || '', mode: mode, fails: ss.fails || 0, last_error: ss.last_error || null, lastOnline: lastOnline || null, lastSurvey: lastSurvey || null, onlineAge: ageDays(lastOnline), surveyAge: ageDays(lastSurvey), skus: Object.keys(obs.reduce(function (m, o) { m[o.product_id] = 1; return m; }, {})).length }; });
+    }
+    function weekKey(d) { return (function (x) { var dt = new Date(x + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() - dt.getUTCDay()); return dt.toISOString().slice(0, 10); })(d || today()); }
+    /* แผนสำรวจสัปดาห์นี้: ร้านละไม่เกิน 15 SKU — ไม่เคยรู้ราคา (ขายเยอะก่อน) → ราคาเก่าเกิน 7 วัน → ตัวที่ตลาดขยับแรง */
+    function surveyPlan() {
+      var wk = weekKey(), vol = {}; (D.board.lines || []).forEach(function (l) { vol[l.id] = l.vol || 0; });
+      var subs = D.surveys.filter(function (s) { return s.week === wk; });
+      var stores = sourceStatus().map(function (src) {
+        var seen = {}; D.market_obs.forEach(function (o) { if (o.competitor_id === src.id) { if (!seen[o.product_id] || seen[o.product_id] < o.observed_at) seen[o.product_id] = o.observed_at; } });
+        var cands = D.pricelist.rows.filter(function (r) { return r.cost > 0; }).map(function (r) { var last = seen[r.id] || null, age = ageDays(last);
+          var why = !last ? 'ไม่เคยรู้ราคา' : age > 7 ? 'ราคาเก่า ' + age + ' วัน' : null; return { id: r.id, name: r.name, grp: r.grp, vol: vol[r.id] || 0, lastSeen: last, age: age, why: why }; })
+          .filter(function (x) { return x.why; }).sort(function (a, b) { return (a.lastSeen ? 1 : 0) - (b.lastSeen ? 1 : 0) || b.vol - a.vol; }).slice(0, 15);
+        var done = {}; subs.filter(function (s) { return s.store === src.id; }).forEach(function (s) { s.rows.forEach(function (r) { done[r.product_id] = r.price; }); });
+        cands.forEach(function (c) { c.done = done[c.id] || null; });
+        var due = new Date(wk + 'T00:00:00Z'); due.setUTCDate(due.getUTCDate() + 6);
+        return { competitor_id: src.id, label: src.label, tier: src.tier, mode: src.mode, needed: src.mode !== 'online' || !cands.length ? src.mode !== 'online' : false, assignee: src.tier === 'r' ? 'เซลล์' : 'แอดมิน', due: due.toISOString().slice(0, 10), targets: cands, total: cands.length, done: cands.filter(function (c) { return c.done; }).length, submissions: subs.filter(function (s) { return s.store === src.id; }).length };
+      });
+      return { week: wk, today: today(), stores: stores, recent: D.surveys.slice(0, 20), rules: { per: 'สัปดาห์ละ 1 ครั้ง', due: 'ภายในวันเสาร์ ก่อนรอบทุนวันอังคาร', modes: ['พิมพ์', 'พูด', 'ถ่ายรูปป้าย'] } };
+    }
+    /* แปลงข้อความอิสระ (พิมพ์/เสียง/OCR) → รายการ [สินค้า, ราคา] แล้วจับคู่ SKU ให้มากที่สุด */
+    function parseSurvey(text, store) {
+      var lines = String(text || '').replace(/[,·;|]/g, '\n').split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean), out = [];
+      lines.forEach(function (ln) {
+        var m = ln.match(/^(.*?)[\s:=]*(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:บาท|฿|บ\.?|b)?\s*(?:\/|ต่อ)?\s*(?:กก\.?|กิโล|kg|โล)?\s*\.?$/i) || ln.match(/^(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:บาท|฿)?\s+(.+)$/);
+        if (!m) return out.push({ raw: ln, ok: false, reason: 'ไม่เจอราคา' });
+        var name = (m[2] && /^\d/.test(m[1]) ? m[2] : m[1]).replace(/^(ราคา|ตลาด|makro|betagro|แม็คโคร|เบทาโกร)\s*/i, '').trim(), price = num(String(/^\d/.test(m[1]) ? m[1] : m[2]).replace(',', '.'));
+        if (!name || !(price > 0)) return out.push({ raw: ln, ok: false, reason: 'ไม่เจอชื่อสินค้า' });
+        var mt = matchProduct(name);
+        if (!mt) { var alts = D.pricelist.rows.filter(function (r) { return r.name.indexOf(name.slice(0, 3)) >= 0; }).slice(0, 4).map(function (r) { return { id: r.id, name: r.name }; }); return out.push({ raw: ln, name: name, price: price, ok: false, reason: 'จับคู่ SKU ไม่ได้', alts: alts }); }
+        var P = mt.p, sane = P.w2 ? price > P.w2 * 0.4 && price < P.w2 * 2.5 : true;
+        out.push({ raw: ln, name: name, price: price, ok: true, product_id: P.id, product: P.name, grp: P.grp, how: mt.how, score: mt.score, our: P.w2, warn: sane ? null : 'ราคาห่างจากของเรา (' + P.w2 + ' ฿) ผิดปกติ — ตรวจหน่วย/ทศนิยม' });
+      });
+      return out;
+    }
+    function surveySubmit(role, body) {
+      var store = body.store, c = compOf(store); if (!c) return err(400, 'ไม่รู้จักร้าน ' + store);
+      var rows = Array.isArray(body.rows) ? body.rows : [], td = String(body.observed_at || today()).slice(0, 10), okRows = [], bad = [];
+      rows.forEach(function (r) { var P = r.product_id && product(r.product_id), price = num(r.price); if (!P || !(price > 0)) return bad.push(r.raw || r.name || '?'); okRows.push({ product_id: P.id, name: P.name, price: price, raw: r.raw || '' }); });
+      if (!okRows.length) return err(400, 'ไม่มีรายการที่จับคู่ SKU ได้ — แก้ชื่อหรือเลือกสินค้าจากรายการก่อน');
+      var total = { added: 0, matched: {}, unmatched: {} };
+      ingest(okRows.map(function (r) { return { competitor: store, sku: r.name, price: r.price, observed_at: td, source_url: 'survey:' + (body.branch || c.label), via: 'survey', by: role }; }), td, total);
+      var sub = { id: nextId('ob2'), at: stamp(), week: weekKey(td), store: store, label: c.label, branch: body.branch || '', by: role, mode: body.mode || 'type', photos: Number(body.photos) || 0, note: body.note || '', rows: okRows, n: okRows.length, unmatched: bad };
+      D.surveys.unshift(sub); if (D.surveys.length > 500) D.surveys.length = 500;
+      var ss = D.source_status[store] = D.source_status[store] || {}; ss.last_survey = stamp();
+      computeTrend(true);
+      X.audit(role, 'survey', c.label + ' · ' + okRows.length + ' รายการ (' + (body.mode || 'พิมพ์') + ')');
+      return ok({ ok: true, id: sub.id, added: total.added, n: okRows.length, unmatched: bad });
+    }
+    /* ════════ mini dashboard: ระบบช่วยรับทุน/อ่านตลาดได้แค่ไหน ════════ */
+    function intakePerf() {
+      var td = today(), d30 = (function () { var d = new Date(td + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - 30); return d.toISOString().slice(0, 10); })(), d7 = (function () { var d = new Date(td + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - 7); return d.toISOString().slice(0, 10); })();
+      var ent = (D.cost_entries || []).filter(function (e) { return e.at >= d30; });
+      var ch = function (e) { return /ไฟล์|inbox|AL|pdf|excel/i.test(e.src) ? 'file' : /ตรวจแล้ว/.test(e.src) ? 'flag' : /ปรับทุกตัว/.test(e.src) ? 'bulk' : /LINE|ไลน์/i.test(e.src) ? 'line' : 'manual'; };
+      var by = { file: 0, manual: 0, bulk: 0, flag: 0, line: 0 }; ent.forEach(function (e) { by[ch(e)]++; });
+      var auto = by.file + by.flag + by.line, flags = D.cost_flags, decided = flags.filter(function (f) { return f.status !== 'pending'; });
+      var caught = decided.filter(function (f) { return f.status === 'rejected' || (f.status === 'approved' && f.final !== f.cost); }).length;
+      var imps = D.cost_imports, exact = imps.reduce(function (a, i) { return a + (i.exact || 0); }, 0), fuzzy = imps.reduce(function (a, i) { return a + (i.fuzzy || 0); }, 0), unm = imps.reduce(function (a, i) { return a + (i.problems || 0); }, 0);
+      var noCost = D.pricelist.rows.filter(function (r) { return !(r.cost > 0); }).length, oldCost = S.products.filter(function (p) { return p.cost > 0 && (!p.cost_src_at || ageDays(p.cost_src_at) > 7); }).length;
+      var op = D['ops-perf'] || {}, stepNow = ((op.summary || {}).steps || []).filter(function (s) { return s.key === 'cost'; })[0] || {};
+      var obs30 = D.market_obs.filter(function (o) { return o.observed_at >= d30; }), obs7 = D.market_obs.filter(function (o) { return o.observed_at >= d7; });
+      var known = {}, fresh = {}; D.market_obs.forEach(function (o) { known[o.product_id] = 1; if (o.observed_at >= d7) fresh[o.product_id] = 1; });
+      var ages = Object.keys(known).map(function (pid) { var l = obsByProduct(pid); return ageDays(l[l.length - 1].observed_at); }).sort(function (a, b) { return a - b; });
+      var tr = computeTrend(false), plan = surveyPlan(), wkSubs = D.surveys.filter(function (s) { return s.week === plan.week; });
+      var survRows = wkSubs.reduce(function (a, s) { return a + s.n; }, 0), survUnm = wkSubs.reduce(function (a, s) { return a + s.unmatched.length; }, 0);
+      var alerts30 = D.events.filter(function (e) { return e.action === 'alert' && e.at >= d30; }).length;
+      return { today: td,
+        cost: { entries30: ent.length, byChannel: by, autoPct: ent.length ? Math.round(auto / ent.length * 100) : null, imports: imps.length, lastImport: imps[0] || null,
+          match: { exact: exact, fuzzy: fuzzy, unmatched: unm, pct: exact + fuzzy + unm ? Math.round((exact + fuzzy) / (exact + fuzzy + unm) * 100) : null },
+          flags: { total: flags.length, pending: flags.length - decided.length, decided: decided.length, caught: caught, precision: decided.length ? Math.round(caught / decided.length * 100) : null },
+          noCost: noCost, oldCost: oldCost, total: D.pricelist.rows.length, minutesNow: stepNow.now == null ? null : stepNow.now, minutesBefore: stepNow.before == null ? null : stepNow.before, inbox: D.inbox.slice(0, 5), job: D.jobs['cost-import'] },
+        market: { coverage: tr.coverage, fresh7: Object.keys(fresh).length, medianAge: ages.length ? ages[Math.floor(ages.length / 2)] : null, obs7: obs7.length, obs30: obs30.length, online7: obs7.filter(function (o) { return o.via !== 'survey'; }).length, survey7: obs7.filter(function (o) { return o.via === 'survey'; }).length,
+          sources: sourceStatus(), survey: { week: plan.week, stores: plan.stores.map(function (s) { return { label: s.label, mode: s.mode, done: s.done, total: s.total, due: s.due }; }), rows: survRows, unmatched: survUnm, matchPct: survRows + survUnm ? Math.round(survRows / (survRows + survUnm) * 100) : null },
+          score: tr.score, warnings: tr.warnings.length, alerts30: alerts30, job: D.jobs['market-sync'] } };
+    }
     /* ── เส้นทางของส่วนขยาย — คืน undefined ถ้าไม่ใช่ของตัวเอง ── */
     function route(method, path, q, body, role, need, req) {
       var cm = path.match(/^\/api\/customers\/([^/]+)$/);
@@ -449,9 +535,16 @@
         case '/api/market-trend': need(2); return marketTrend();
         case '/api/market-observations': need(2); return marketObservations(q);
         case '/api/market-sync/status': need(2); return ok(D.jobs['market-sync']);
+        case '/api/intake-perf': need(2); return ok(intakePerf());
+        case '/api/sources': need(1); return ok({ sources: sourceStatus(), inbox: D.inbox.slice(0, 30), imports: D.cost_imports.slice(0, 10) });
+        case '/api/survey': need(1); return ok(surveyPlan());
       }
       else switch (path) {
         case '/api/import/costs': need(2); return importCosts(role, body);
+        case '/api/survey/parse': need(1); return ok({ rows: parseSurvey(body.text, body.store) });
+        case '/api/survey/submit': need(1); return surveySubmit(role, body);
+        case '/api/sources/fail': need(2); return ok(sourceFail(body.competitor_id, body.why || 'ดึงไม่ได้'));
+        case '/api/inbox/note': need(2); D.inbox.unshift({ at: stamp(), file: body.file, status: body.status || 'ok', detail: body.detail || '' }); if (D.inbox.length > 200) D.inbox.length = 200; return ok();
         case '/api/cost-flags/decide': need(2); return decideFlag(role, body);
         case '/api/market-sync/run': need(2); return marketSync(role, body);
         case '/api/line/send': need(1); body.origin = req.origin; return lineSend(role, body);
@@ -465,6 +558,6 @@
       }
       return undefined;
     }
-    return { route: route, logEvent: logEvent, alert: alert, health: health, drainOutbox: drainOutbox, marketSync: marketSync, computeTrend: computeTrend, stageOf: stageOf, board: board, matchProduct: matchProduct, costChecks: costChecks, STAGES: STAGES };
+    return { route: route, logEvent: logEvent, alert: alert, health: health, drainOutbox: drainOutbox, marketSync: marketSync, computeTrend: computeTrend, stageOf: stageOf, board: board, matchProduct: matchProduct, costChecks: costChecks, STAGES: STAGES, parseSurvey: parseSurvey, sourceFail: sourceFail, intakePerf: intakePerf };
   };
 });

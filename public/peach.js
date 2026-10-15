@@ -24,7 +24,7 @@ window.PX = (function () {
     { id: 'pricing', href: '/pricing', ic: '🧮', t: 'ตั้งราคา', s: 'พุธ · ใบละเจ้า', badge: 'work' },
     { id: 'cust', href: '/customers', ic: '👥', t: 'ลูกค้า',       s: 'สัญญา + Margin Guard', badge: 'low' },
     { id: 'sale', href: '/sales', ic: '📊', t: 'Sales',        s: 'ประกาศราคา' },
-    { id: 'cost', href: '/costs', ic: '📦', t: 'รับทุน & ตลาด', s: 'อังคาร · ทุน + ราคาตลาด' }
+    { id: 'cost', href: '/costs', ic: '📦', t: 'รับทุน & ตลาด', s: 'ทุน · แนวโน้ม · แหล่งข้อมูล' }
   ];
   /* TOOLS = ของที่ไม่ได้ใช้ทุกวัน · บนมือถือยุบเป็นปุ่มเดียวเปิดเป็นแผงแทน
      เดิม 11 ปุ่มเรียงในแถบล่าง กดพลาดตลอด */
@@ -35,7 +35,7 @@ window.PX = (function () {
     { id: 'logic', href: '/logic', ic: '📜', t: 'หลักการ', s: 'กฎที่ระบบใช้จริง' },
     { id: 'guard', href: '/guard', ic: '⚙️', t: 'ตั้งค่า Margin Guard', s: 'เกณฑ์ + เพดานต่อรอง' },
     { id: 'wire', href: '/wiring', ic: '🔌', t: 'การต่อ', s: 'ต่อติดจริงไหม' },
-    { id: 'trend', href: '/trend', ic: '📈', t: 'แนวโน้มตลาด', s: 'ดึงเองทุกวัน · เตือนถูกกี่ครั้ง' },
+    { id: 'trend', href: '/costs?tab=trend', ic: '📈', t: 'แนวโน้มตลาด', s: 'ดึงเองทุกวัน · เตือนถูกกี่ครั้ง' },
     { id: 'log', href: '/log', ic: '🧾', t: 'บันทึกเหตุการณ์', s: 'คน + ระบบ · ล้มแล้วรู้' }
   ];
 
