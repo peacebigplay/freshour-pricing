@@ -14,7 +14,7 @@ window.Dash = (function () {
 
   var CSS = '<style id="fhDashCss">' +
     '.fhd{margin:0 0 16px}.fhd h2{font-size:15px;margin:0 0 2px}.fhd .sub{font-size:11.5px;color:var(--tx-3);margin:0 0 10px}' +
-    '.fhd .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.fhd .grid.c3{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}' +
+    '.fhd .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.fhd .grid.c3{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}@media(max-width:1000px){.fhd .grid.c3{grid-template-columns:1fr 1fr !important}}@media(max-width:640px){.fhd .grid.c3{grid-template-columns:1fr !important}}' +
     '.fhd .k{cursor:default}.fhd .k.tap{cursor:pointer}.fhd .k .v{font-size:26px}.fhd .k .v.sm{font-size:18px}' +
     '.fhd .fun{display:flex;gap:4px;margin:10px 0 4px;flex-wrap:wrap}.fhd .fun button{font-family:var(--ff);font-size:11.5px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 10px;cursor:pointer;color:var(--tx-2)}' +
     '.fhd .fun button b{font-family:var(--fn);margin-left:5px;color:var(--ink)}.fhd .fun button.on{background:var(--ink);color:#fff;border-color:var(--ink)}.fhd .fun button.on b{color:#fff}' +
@@ -68,23 +68,45 @@ window.Dash = (function () {
       '<div class="fun">' + stages.map(function (s) { return '<button type="button" class="' + (FILTER === s.key ? 'on' : '') + '" onclick="Dash.filter(' + jsq(s.key) + ')" style="border-left:4px solid ' + col[s.key] + '">' + esc(s.label) + '<b>' + s.n + '</b></button>'; }).join('') + '</div></div>';
   }
 
-  /* ── พี่จุ๋ม ── */
+  /* ── พี่จุ๋ม: Pricing Home — เห็นภาพรอบนี้ใน 5 วินาที (ตามเรฟ: การ์ดใหญ่สีน้ำเงิน + กราฟ) ── */
   function opsHtml(d) {
-    var st = d.stale, cc = d.central || {}, blocks = [
-      [cc.need || 0, 'ราคากลางยังไม่ยืนยัน (Step 1)', '/pricing', 'r'], [cc.stale || 0, 'ราคากลางที่ทุนเปลี่ยนหลังยืนยัน', '/pricing', 'a'],
-      [d.sheetsOpen, 'ใบรายเจ้าที่ยังไม่จบ', '/pricing', 'a'], [d.requestsOpen, 'คำขอต่อรองรอตอบ', '/pricing', 'r'],
-      [d.flagsPending, 'ทุนแปลกจากไฟล์ AL รอตรวจ', '/costs#flags', 'r'], [d.board ? d.board.followupDue : 0, 'ลูกค้าเงียบที่เซลล์ต้องตาม', '/sales', 'a']];
-    var blocked = blocks.filter(function (b) { return b[0] > 0; });
-    var sc = d.trendScore || {};
-    return '<section class="fhd card" id="fhDash"><h2>งานติดตรงไหน · ข้อมูลไหนเก่า</h2><p class="sub">รอบ ' + esc(d.round) + ' · อ่านสดจากฐานข้อมูล ' + esc(d.today) + '</p>' +
-      '<div class="grid c3">' +
-      '<div class="k ' + (blocked.length ? '' : 'lead') + '"><div class="kt"><span class="ic">🚧</span>' + pill(blocked.length ? 'r' : 'g', blocked.length ? 'ติด ' + blocked.length + ' จุด' : 'ไม่ติดอะไร') + '</div><div class="lb">งานที่ติดอยู่</div>' +
-        (blocked.length ? '<ul class="blk" style="margin-top:6px">' + blocked.map(function (b) { return '<li><b style="color:var(--' + (b[3] === 'r' ? 'red' : 'amber') + ')">' + b[0] + '</b>' + esc(b[1]) + '<a href="' + b[2] + '">ไปทำ →</a></li>'; }).join('') + '</ul>' : '<div class="v">✓</div><div class="c">ราคากลางครบ ใบรายเจ้าจบ ไม่มีคำขอค้าง</div>') + '</div>' +
-      '<div class="k"><div class="kt"><span class="ic">📦</span>' + pill(st.costOld || st.noCost ? 'a' : 'g', 'ทุนล่าสุด ' + (st.lastCost ? ago(st.lastCost) : '—')) + '</div><div class="lb">ทุนที่เก่า / ไม่รู้</div><div class="v">' + st.costOld + '<small>เก่ากว่า ' + st.costOldDays + ' วัน</small></div><div class="c">ยังไม่รู้ทุน ' + st.noCost + ' รายการ · นำเข้าล่าสุด ' + (d.lastImport ? ago(d.lastImport.at) + ' (' + d.lastImport.applied + ' รายการ · รอตรวจ ' + d.lastImport.flagged + ')' : 'ยังไม่เคยใช้ไฟล์ AL') + ' · <a href="/costs" style="color:var(--blue)">นำเข้าไฟล์ →</a></div></div>' +
-      '<div class="k"><div class="kt"><span class="ic">📈</span>' + pill(st.marketFresh > st.total / 3 ? 'g' : 'a', 'ตลาดล่าสุด ' + (st.lastMarket ? ago(st.lastMarket) : 'ยังไม่เคยดึง')) + '</div><div class="lb">ราคาตลาดที่ยังใช้ได้</div><div class="v">' + st.marketFresh + '<small>/' + st.total + '</small></div><div class="c">เก่าเกิน ' + (st.marketOld) + ' · ไม่รู้เลย ' + st.marketBlind + ' · ระบบดึงเองทุกวัน · เตือนถูก ' + (sc.pct == null ? '— (ยังไม่มีผลตรวจ)' : sc.hits + '/' + sc.resolved + ' = ' + sc.pct + '%') + ' · <a href="/trend" style="color:var(--blue)">ดูแนวโน้ม →</a></div></div>' +
+    var st = d.stale, cc = d.central || {}, ps = d.priceSheets || { total: 0, done: 0, handed: 0 }, sc = d.trendScore || {};
+    var totalCosted = (cc.approved || 0) + (cc.stale || 0) + (cc.need || 0), pctC = totalCosted ? Math.round((cc.approved || 0) / totalCosted * 100) : 0, pctS = ps.total ? Math.round(ps.done / ps.total * 100) : 0;
+    var blocks = [[cc.need || 0, 'ราคากลางยังไม่ยืนยัน (Step 1)', '/pricing', 'r'], [cc.stale || 0, 'ราคากลางที่ทุนเปลี่ยนหลังยืนยัน', '/pricing', 'a'], [d.sheetsOpen, 'ใบรายเจ้าที่ยังไม่จบ', '/pricing', 'a'], [d.requestsOpen, 'คำขอต่อรองรอตอบ', '/pricing', 'r'], [d.flagsPending, 'ทุนแปลกจากไฟล์ AL รอตรวจ', '/costs#flags', 'r'], [d.board ? d.board.followupDue : 0, 'ลูกค้าเงียบที่เซลล์ต้องตาม', '/sales', 'a']].filter(function (b) { return b[0] > 0; });
+    var next = cc.need ? ['ยืนยันราคากลาง ' + cc.need + ' รายการ', '/pricing'] : d.flagsPending ? ['ตรวจทุนแปลก ' + d.flagsPending + ' รายการ', '/costs#flags'] : d.sheetsOpen ? ['ทำใบรายเจ้าที่เหลือ ' + d.sheetsOpen + ' ใบ', '/pricing'] : d.requestsOpen ? ['ตอบคำขอต่อรอง ' + d.requestsOpen + ' รายการ', '/pricing'] : ['รอบนี้เรียบร้อย — ดูแนวโน้มตลาดก่อนรอบหน้า', '/costs?tab=trend'];
+    var hist = d.history || [], last = hist[hist.length - 1], prev = hist[hist.length - 2], dCost = last && prev ? Math.round((last.cost_avg - prev.cost_avg) * 10) / 10 : null;
+    var cats = (d.categories || []).filter(function (c) { return c.margin != null; });
+    var marketItems = [{ label: 'สด ≤7 วัน', value: st.marketFresh, color: Charts.CAT[2] }, { label: 'เก่า / ใช้คาดการณ์', value: st.marketOld, color: Charts.CAT[4] }, { label: 'ไม่เคยเห็น', value: st.marketBlind, color: '#CBD5E1' }];
+    return '<section class="fhd" id="fhDash">' +
+      '<div class="grid c3" style="grid-template-columns:1.2fr 1fr 1fr 1fr">' +
+      /* hero */
+      '<div class="k lead" style="display:flex;flex-direction:column;gap:8px"><div class="kt"><span class="ic">🧮</span><span class="pill">รอบ ' + esc(d.round) + ' · ทุนล่าสุด ' + (st.lastCost ? ago(st.lastCost) : '—') + '</span></div>' +
+        '<div class="lb">ความคืบหน้ารอบนี้</div>' +
+        '<div style="font-size:12px"><div style="display:flex;justify-content:space-between"><span>Step 1 · ราคากลาง</span><b style="font-family:var(--fn)">' + (cc.approved || 0) + '/' + totalCosted + '</b></div><div class="bar" style="background:rgba(255,255,255,.25);margin:4px 0 8px"><i style="width:' + pctC + '%;background:#fff"></i></div>' +
+        '<div style="display:flex;justify-content:space-between"><span>Step 2 · ใบรายเจ้า</span><b style="font-family:var(--fn)">' + ps.done + '/' + ps.total + '</b></div><div class="bar" style="background:rgba(255,255,255,.25);margin:4px 0 8px"><i style="width:' + pctS + '%;background:#fff"></i></div>' +
+        '<div style="display:flex;justify-content:space-between"><span>Step 3 · ส่ง Sales แล้ว</span><b style="font-family:var(--fn)">' + ps.handed + '/' + ps.total + '</b></div><div class="bar" style="background:rgba(255,255,255,.25);margin:4px 0 2px"><i style="width:' + (ps.total ? Math.round(ps.handed / ps.total * 100) : 0) + '%;background:#fff"></i></div></div>' +
+        '<a href="' + next[1] + '" style="margin-top:auto;display:block;background:#fff;color:var(--blue);text-decoration:none;font-weight:600;font-size:12.5px;padding:8px 12px;border-radius:10px;text-align:center">' + esc(next[0]) + ' →</a></div>' +
+      /* ทุนเฉลี่ยรายรอบ */
+      '<div class="k"><div class="kt"><span class="ic">📦</span>' + (dCost != null ? pill(dCost > 0 ? 'r' : dCost < 0 ? 'g' : 'n', (dCost > 0 ? '+' : '') + dCost + ' ฿ จากรอบก่อน') : '') + '</div><div class="lb">ทุนเฉลี่ยรายรอบ (฿/กก.)</div><div class="v sm">' + (last ? last.cost_avg : '—') + '</div>' +
+        Charts.line({ w: 320, labels: hist.map(function (h) { return h.label; }), series: [{ name: 'ทุนเฉลี่ย', values: hist.map(function (h) { return h.cost_avg; }), color: Charts.CAT[0] }], h: 90, area: true }) +
+        '<div class="c">ทุนเก่ากว่า 7 วัน ' + st.costOld + ' · ไม่รู้ทุน ' + st.noCost + ' จาก ' + st.total + ' SKU · <a href="/costs" style="color:var(--blue)">รับทุน →</a></div></div>' +
+      /* margin ตามหมวดเป้า */
+      '<div class="k"><div class="kt"><span class="ic">🎯</span>' + pill(cats.some(function (c) { return c.state === 'bad'; }) ? 'r' : 'g', cats.filter(function (c) { return c.state === 'bad'; }).length + ' หมวดต่ำกว่าเป้า') + '</div><div class="lb">margin จริง vs เป้ารายหมวด</div>' +
+        Charts.bars({ w: 320, items: cats.map(function (c) { return { label: c.name.replace('ชิ้นส่วน', '').replace('สินค้า', ''), value: c.margin, sub: 'เป้า ' + c.target + '%', color: c.state === 'bad' ? '#DC2626' : c.state === 'warn' ? '#D97706' : Charts.CAT[0] }; }), h: 110, unit: '%', labelAll: true }) +
+        '<div class="c">แท่งแดง = ต่ำกว่าเป้าหมวด · <a href="/guard" style="color:var(--blue)">แก้เป้า →</a></div></div>' +
+      /* ตลาด */
+      '<div class="k"><div class="kt"><span class="ic">📈</span>' + pill(sc.pct == null ? 'n' : sc.pct >= 60 ? 'g' : 'a', 'เตือนถูก ' + (sc.pct == null ? '—' : sc.pct + '%')) + '</div><div class="lb">ราคาตลาดที่ใช้ตัดสินได้</div>' +
+        Charts.donut({ items: marketItems, size: 96, center: { big: String(st.marketFresh), small: 'จาก ' + st.total } }) +
+        '<div class="c" style="margin-top:6px">' + (d.trendWarnings && d.trendWarnings[0] ? esc(d.trendWarnings[0].text.slice(0, 70)) + '… ' : '') + '<a href="/costs?tab=trend" style="color:var(--blue)">แนวโน้ม →</a></div></div>' +
       '</div>' +
-      (d.trendWarnings && d.trendWarnings.length ? '<ul class="blk" style="margin-top:10px">' + d.trendWarnings.map(function (w) { return '<li>' + pill(w.level === 'bad' ? 'r' : w.level === 'good' ? 'g' : 'a', w.grp || 'ระบบ') + '<span>' + esc(w.text) + '</span></li>'; }).join('') + '</ul>' : '') +
-      (d.flags && d.flags.length ? '<div style="margin-top:10px"><b style="font-size:12.5px">ทุนแปลกรอตรวจ</b><div class="list" style="margin-top:6px">' + d.flags.map(function (f) { return '<div class="row"><div><b>' + esc(f.name) + '</b><small>' + esc(f.raw !== f.name ? 'ในไฟล์: ' + f.raw : '') + '</small></div><div>' + (f.prev || '—') + ' → <b style="color:var(--red)">' + f.cost + ' ฿</b></div><div style="font-size:11px;color:var(--tx-2)">' + esc(f.reasons.join(' · ')) + '</div><div class="act"><button class="pri" onclick="Dash.flag(' + f.id + ',true)">ใช้ค่านี้</button><button onclick="Dash.flag(' + f.id + ',false)">ไม่ใช้</button></div></div>'; }).join('') + '</div></div>' : '') +
+      /* แถว 2: งานที่ติด + ทุนแปลก + ระบบ */
+      '<div class="grid c3" style="margin-top:10px;grid-template-columns:1fr 1.4fr">' +
+      '<div class="k"><div class="kt"><span class="ic">🚧</span>' + pill(blocks.length ? 'r' : 'g', blocks.length ? 'ติด ' + blocks.length + ' จุด' : 'ไม่ติดอะไร') + '</div><div class="lb">งานที่ติดอยู่ · กดไปทำ</div>' +
+        (blocks.length ? '<ul class="blk" style="margin-top:6px">' + blocks.map(function (b) { return '<li><b style="color:var(--' + (b[3] === 'r' ? 'red' : 'amber') + ')">' + b[0] + '</b>' + esc(b[1]) + '<a href="' + b[2] + '">ไปทำ →</a></li>'; }).join('') + '</ul>' : '<div class="v">✓</div><div class="c">ราคากลางครบ ใบรายเจ้าจบ ไม่มีคำขอค้าง</div>') + '</div>' +
+      '<div class="k"><div class="kt"><span class="ic">🧪</span>' + pill(d.flagsPending ? 'r' : 'g', d.flagsPending ? 'รอตรวจ ' + d.flagsPending : 'ไม่มีค้าง') + '</div><div class="lb">ทุนแปลกจากไฟล์ที่ระบบกันไว้ · คนตัดสิน</div>' +
+        (d.flags && d.flags.length ? '<div class="list" style="margin-top:6px">' + d.flags.slice(0, 4).map(function (f) { return '<div class="row"><div><b>' + esc(f.name) + '</b><small>' + esc(f.raw !== f.name ? 'ในไฟล์: ' + f.raw : '') + '</small></div><div>' + (f.prev || '—') + ' → <b style="color:var(--red)">' + f.cost + ' ฿</b></div><div style="font-size:11px;color:var(--tx-2)">' + esc(f.reasons.join(' · ')) + '</div><div class="act"><button class="pri" onclick="Dash.flag(' + f.id + ',true)">ใช้ค่านี้</button><button onclick="Dash.flag(' + f.id + ',false)">ไม่ใช้</button></div></div>'; }).join('') + (d.flags.length > 4 ? '<a href="/costs#flags" style="font-size:12px;color:var(--blue)">ดูทั้งหมด ' + d.flagsPending + ' →</a>' : '') + '</div>' : '<div class="c" style="margin-top:6px">ด่านตรวจ: ทุน ≤10 · กระโดด ≥30% · สูงกว่าราคาขาย · ต่ำกว่าครึ่งหมวด — ไฟล์รอบล่าสุดไม่มีตัวแปลก</div>') + '</div>' +
+      '</div>' +
+      (d.trendWarnings && d.trendWarnings.length > 1 ? '<ul class="blk" style="margin-top:10px">' + d.trendWarnings.slice(1, 4).map(function (w) { return '<li>' + pill(w.level === 'bad' ? 'r' : w.level === 'good' ? 'g' : 'a', w.grp || 'ระบบ') + '<span>' + esc(w.text) + '</span></li>'; }).join('') + '</ul>' : '') +
       '<div style="margin-top:10px">' + sysRow(d.health) + alerts(d.alerts) + '</div></section>';
   }
 
@@ -171,6 +193,7 @@ window.Dash = (function () {
     var html = DATA.role === 'boss' ? bossHtml(DATA) : DATA.role === 'ops' ? opsHtml(DATA) : saleHtml(DATA);
     a.el.insertAdjacentHTML(a.where, html);
     if (!document.getElementById('fhDashCss')) document.head.insertAdjacentHTML('beforeend', CSS);
+    if (window.Charts) Charts.bind(document.getElementById('fhDash'));
   }
   function mount(page) {
     PAGE = page;

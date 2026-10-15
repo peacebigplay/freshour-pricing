@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/peach.css">
 </head><body>
 <script src="/peach.js"></script>
+<script src="/charts.js"></script>
 <script src="/dash.js"></script>
 <script src="/catmargin.js"></script>
 <script>
@@ -829,6 +830,8 @@ function desk() {
         '<td class="zc z3'+(z.mk?'':' blank')+'">'+z.z3+'</td>' +
         '<td class="zc z4"><input class="pin" data-id="'+r.id+'" value="'+z.p+'" inputmode="numeric"'+(v.goals?'':' disabled')+'>' +
           '<em style="color:'+mgc+'">กำไร '+z.m.toFixed(1)+'%</em>' +
+          /* ราคาทุกระดับตามใบราคา: ปลีก = ⌈ทุน×1.6⌉ · 5kg = 2kg−3 · 10kg = 2kg−4 — คิดจากราคา 2kg ที่กำลังจะออก */
+          (r.cost>0?'<em style="color:var(--tx-3)" title="ปลีก (หน้าร้านอารีย์) · ส่ง 5kg · ส่ง 10kg">ปลีก '+(v.tiers&&v.tiers.retail||r.retail||Math.ceil(r.cost*1.6))+' · 5kg '+(z.p-3)+' · 10kg '+(z.p-4)+(r.unit&&r.unit!=='1 กก.'&&r.unit!=='กก.'?' · '+esc(r.unit):'')+'</em>':'') +
           (gd?'<em style="color:'+(z.p<gd?'var(--red)':'var(--tx-3)')+'">ขั้นต่ำ '+gd+' ฿ · '+esc((v.category||{}).name||'')+' '+eff+'%</em>':'') +
           (!CUST&&v.central?'<em style="color:'+(v.central.state==='approved'?'var(--green)':'var(--amber)')+'">'+(v.central.state==='approved'?'✓ ยืนยันไว้ '+Math.round(v.central.price)+' ฿':'⚠ ทุนเปลี่ยน ยืนยันใหม่')+'</em>':'') +
           (CUST&&v.saved?'<em style="color:var(--green)">✓ บันทึกรอบนี้ '+Math.round(v.saved.price)+' ฿</em>':'') +

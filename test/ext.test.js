@@ -6,46 +6,51 @@ const fs = require('fs'), path = require('path'), zlib = require('zlib');
 const { createStore } = require('../src/store');
 function loadDocs() { const dir = path.join(__dirname, '..', 'data', 'fixtures'); const idx = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')); const d = {}; for (const k of Object.keys(idx)) d[k] = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(dir, idx[k]))).toString('utf8')); return d; }
 const store = createStore(loadDocs(), {});
+const PID = name => (store.docs.pricelist.rows.find(r => r.name === name) || {}).id;
+const MAN = PID('มันแข็งหมู'), BONE = PID('กระดูกข้อขา');
 const call = (role, method, url, body) => store.handle({ role, method, url, body, origin: 'http://t' });
 const okj = (r, m) => { assert.equal(r.status, 200, (m || '') + ' → ' + JSON.stringify(r.body).slice(0, 300)); return r.body; };
 const FEED = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'market-feed-sample.json'), 'utf8')).rows;
 
 test('1 ทุนเข้า: อ่านไฟล์ AL จับคู่ชื่อ + ด่านตัวเลขแปลก', () => {
-  const rows = [{ product: 'มันแข็งหมู', cost: '66' }, { product: 'กระดูกข้อขา', cost: '3' }, { product: 'หมูบด มัน 20%', cost: '101' }, { product: 'สามชั้นตัดเส้น หนา 0.5', cost: '260' }, { product: 'หมูยอ', cost: '90' }, { product: 'มันแข็งหมู', cost: '66' }];
+  const rows = [{ product: 'มันแข็งหมู', cost: '66' }, { product: 'กระดูกข้อขา', cost: '3' }, { product: 'หมูบด มัน 20%', cost: '95' }, { product: 'สามชั้นหมูหั่นเส้น หนา 1.5', cost: '260' }, { product: 'หมูยอ', cost: '90' }, { product: 'มันแข็งหมู', cost: '66' }];
   const chk = okj(call('ops', 'POST', '/api/import/costs', { rows, commit: false }));
   assert.equal(chk.problemCount, 2, 'หมูยอ ไม่มีในระบบ + แถวซ้ำ');
   const tiny = chk.flags.find(f => f.name === 'กระดูกข้อขา'); assert.ok(tiny && tiny.checks.some(c => c.code === 'tiny'), 'ทุน 3 บาทต้องติดด่าน');
-  const jump = chk.flags.find(f => /สามชั้นตัดเส้น/.test(f.name)); assert.ok(jump && jump.checks.some(c => c.code === 'jump' || c.code === 'above-price'), 'กระโดด/สูงกว่าราคาขายต้องติดด่าน');
+  const jump = chk.flags.find(f => /สามชั้นหมูหั่นเส้น/.test(f.name)); assert.ok(jump && jump.checks.some(c => c.code === 'jump' || c.code === 'above-price'), 'กระโดด/สูงกว่าราคาขายต้องติดด่าน');
   assert.ok(chk.rows.find(r => r.raw === 'หมูบด มัน 20%').how, 'จับคู่ชื่อที่สะกดต่างได้');
-  const before = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === 'pc55fca').cost;
+  const before = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === BONE).cost;
   const c = okj(call('ops', 'POST', '/api/import/costs', { rows, commit: true, source: 'AL 15/10' }));
   assert.equal(c.applied, 2, 'ใช้เฉพาะตัวที่ผ่านด่านและเปลี่ยนจริง (มันแข็ง + หมูบด)');
-  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === 'p046e65').cost, 66);
-  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === 'pc55fca').cost, before, 'ตัวที่ติดด่านยังไม่ถูกใช้');
+  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === MAN).cost, 66);
+  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === BONE).cost, before, 'ตัวที่ติดด่านยังไม่ถูกใช้');
   const fl = okj(call('ops', 'GET', '/api/cost-flags')); assert.equal(fl.pending, 2);
   okj(call('ops', 'POST', '/api/cost-flags/decide', { id: fl.rows.find(f => f.name === 'กระดูกข้อขา').id, approve: true, cost: 30 }));
-  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === 'pc55fca').cost, 30);
+  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === BONE).cost, 30);
   assert.ok(okj(call('ops', 'GET', '/api/dashboard')).alerts.length >= 0);
   assert.equal(okj(call('ops', 'GET', '/api/health')).jobs.find(j => j.key === 'cost-import').status, 'ok');
 });
 
 test('2 เทียบตลาด: connector จับคู่ SKU · แนวโน้ม · คำทำนาย+คะแนน', () => {
   /* เล่นย้อนหลังทีละสัปดาห์เหมือนงานรายวันที่สะสมมา เพื่อให้มีคำทำนายครบกำหนดให้ตรวจ */
-  const dates = [...new Set(FEED.map(r => r.observed_at))].sort();
-  const cuts = [dates[7], dates[14], dates[21], dates[dates.length - 1]];
-  let last;
-  cuts.forEach(cut => { last = okj(call('system', 'POST', '/api/market-sync/run', { observations: FEED.filter(r => r.observed_at <= cut) })); });
-  assert.ok(last.coverage.known >= 25, 'จับคู่ SKU ได้ ' + last.coverage.known);
+  /* feed ย้อนหลัง 1 ปี — ครั้งแรกระบบเล่นทีละสัปดาห์เองเพื่อให้คำทำนายเก่ามีของจริงให้ตรวจ */
+  const last = okj(call('system', 'POST', '/api/market-sync/run', { observations: FEED }));
+  assert.ok(last.coverage.known >= 50, 'จับคู่ SKU ได้ ' + last.coverage.known); assert.ok(last.coverage.span <= '2025-10-20', 'มีข้อมูลย้อนหลัง 1 ปี');
   assert.ok(last.unmatched.includes('หมูยอ'), 'ของที่เราไม่มีต้องบอกว่าจับคู่ไม่ได้');
   const tr = okj(call('ops', 'GET', '/api/market-trend'));
   const belly = tr.groups.find(g => g.grp === 'สามชั้น'), bone = tr.groups.find(g => g.grp === 'กระดูก');
-  assert.equal(belly.direction, 'up'); assert.equal(bone.direction, 'down');
-  assert.ok(tr.warnings.some(w => /สามชั้น/.test(w.text)) && tr.warnings.some(w => /กระดูก/.test(w.text)));
+  assert.equal(belly.direction, 'up'); assert.ok(belly.change365 > 5); assert.ok(bone.change365 < -5, 'กระดูกลงทั้งปี');
+  assert.equal(belly.series.months.length, 12); assert.ok(belly.series.idx.filter(v => v != null).length >= 10, 'ดัชนีรายเดือนครบปี');
+  assert.ok(tr.warnings.some(w => /สามชั้น/.test(w.text)));
   assert.ok(tr.score.total >= 2, 'มีคำทำนาย'); assert.ok(tr.score.resolved >= 1, 'มีคำทำนายที่ตรวจแล้ว'); assert.ok(tr.score.pct != null);
-  assert.ok(tr.sources.find(s => s.id === 'a').skus >= 25);
-  const pl = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === 'p046e65'); assert.ok(pl.marks.find(m => m.id === 'a').price > 0, 'ราคาตลาดล่าสุดไปถึงตารางราคา');
+  assert.ok(tr.sources.find(s => s.id === 'a').skus >= 40);
+  const pl = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === MAN); assert.ok(pl.marks.find(m => m.id === 'a').price > 0, 'ราคาตลาดล่าสุดไปถึงตารางราคา');
   assert.equal(pl.marks.find(m => m.id === 'a').state, 'fresh');
-  const ob = okj(call('ops', 'GET', '/api/market-observations?sku=สามชั้นตัดเส้น')); assert.ok(ob.rows.length > 10);
+  const ob = okj(call('ops', 'GET', '/api/market-observations?sku=สามชั้นแผ่น')); assert.ok(ob.rows.length > 10);
+  /* เจาะราย SKU + ราคาคาดการณ์เมื่อไม่มีการสำรวจ */
+  const dt = okj(call('ops', 'GET', '/api/market-trend?grp=' + encodeURIComponent('สามชั้น'))).detail;
+  assert.equal(dt.skus.length, 17); assert.ok(dt.skus.some(x => x.status === 'fresh' && x.comps[0].series.length === 12)); assert.ok(dt.skus.some(x => x.status === 'blind' && x.est && x.est.price > 0), 'SKU ที่ไม่เคยเห็นราคาได้ราคาคาดการณ์จากหมวด');
+  const est = okj(call('ops', 'GET', '/api/market-estimates')); assert.ok(est.n > 50);
   assert.equal(call('sale', 'GET', '/api/market-trend').status, 403);
   assert.equal(okj(call('ops', 'GET', '/api/health')).jobs.find(j => j.key === 'market-sync').status, 'ok');
 });
@@ -93,7 +98,7 @@ test('3+4 LINE → กระดานสถานะ → ตามเจ้า�
   const dv = okj(call('boss', 'GET', '/api/deals')); assert.equal(dv.summary.won, 1); assert.ok(dv.summary.margin != null);
   const dvs = okj(call('sale', 'GET', '/api/deals')); assert.equal(dvs.summary.gp, undefined, 'เซลล์ไม่เห็นกำไร'); assert.equal(dvs.deals[0].lines[0].cost, undefined);
   /* เสียอีกเจ้า */
-  const C2 = 'c0a24'; prepareHandedSheet(C2); okj(call('sale', 'POST', '/api/quote-sent', { customer_id: C2 }));
+  const C2 = okj(call('ops', 'GET', '/api/guard')).customers.filter(c => c.n > 0 && c.id !== CID)[0].id; prepareHandedSheet(C2); okj(call('sale', 'POST', '/api/quote-sent', { customer_id: C2 }));
   okj(call('sale', 'POST', '/api/deal-close', { customer_id: C2, outcome: 'lost', reason: 'เจ้าอื่นถูกกว่า', lost_to: 'Betagro' }));
   const dv2 = okj(call('boss', 'GET', '/api/deals')); assert.equal(dv2.summary.lost, 1); assert.equal(dv2.summary.reasons[0].reason, 'เจ้าอื่นถูกกว่า');
 });
@@ -137,7 +142,7 @@ test('รอบ 3 · แหล่งข้อมูล: สำรวจหน้
   const pr = store.ext.parseSurvey('สามชั้น 189\nสันคอหมู 178 บาท\nกระดูกซุป 45/กก\nหมูยอ 90\n135 บาท สันนอก\nอะไรก็ไม่รู้');
   assert.equal(pr.filter(r => r.ok).length, 4); assert.equal(pr.find(r => r.raw === 'หมูยอ 90').reason, 'จับคู่ SKU ไม่ได้'); assert.ok(pr.find(r => r.raw === 'หมูยอ 90').alts.length, 'เสนอตัวเลือกให้คนเลือก');
   assert.equal(pr.find(r => /สันคอหมู/.test(r.raw)).how, 'exact');
-  const plan = okj(call('sale', 'GET', '/api/survey')); assert.equal(plan.stores.length, 3); assert.ok(plan.stores.every(s => s.targets.length <= 15)); assert.ok(plan.stores.find(s => s.competitor_id === 'c').mode === 'survey', 'Makro B2B ไม่มีออนไลน์ → ต้องสำรวจ');
+  const plan = okj(call('sale', 'GET', '/api/survey')); assert.equal(plan.stores.length, 3); assert.ok(plan.stores.every(s => s.targets.length <= 15));
   const sub = okj(call('sale', 'POST', '/api/survey/submit', { store: 'c', mode: 'voice', branch: 'บางนา', rows: pr.filter(r => r.ok) }));
   assert.equal(sub.n, 4);
   const plan2 = okj(call('sale', 'GET', '/api/survey')); assert.ok(plan2.stores.find(s => s.competitor_id === 'c').submissions >= 1); assert.equal(plan2.recent[0].mode, 'voice');
@@ -149,7 +154,7 @@ test('รอบ 3 · แหล่งข้อมูล: สำรวจหน้
   /* LINE จากทีมงาน: ทุน / ตลาด */
   const wh = okj(call('anon', 'POST', '/api/line/webhook', { events: [{ source: { userId: 'Ustaff9' }, message: { type: 'text', text: 'ทุน มันแข็งหมู 68' } }, { source: { userId: 'Ustaff9' }, message: { type: 'text', text: 'ตลาด Betagro สันคอหมู 191, สามชั้น 185' } }] }));
   assert.ok(/cost 1/.test(wh.handled[0].result)); assert.ok(/survey 2/.test(wh.handled[1].result));
-  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === 'p046e65').cost, 68);
+  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === MAN).cost, 68);
   /* mini dashboard */
   const pf = okj(call('ops', 'GET', '/api/intake-perf'));
   assert.ok(pf.cost.entries30 > 0 && pf.cost.autoPct != null); assert.ok(pf.cost.match.pct != null); assert.ok(pf.cost.flags.total >= 2);

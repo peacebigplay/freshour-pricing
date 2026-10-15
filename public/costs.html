@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/peach.css">
 </head><body>
 <script src="/peach.js"></script>
+<script src="/charts.js"></script>
 <script src="/costimport.js"></script>
 <script src="/trend.js"></script>
 <script src="/intake.js"></script>
@@ -16,7 +17,7 @@
 var esc = PX.esc, money = PX.money, W = PX.why;
 /* ค่าที่ใส่ใน onclick ต้องเป็นสตริง JS ที่ปลอดภัยทั้งในฐานะ JS และ attribute — รหัสสินค้า/ลูกค้ามาจากคนพิมพ์ได้ */
 function jsq(v) { return JSON.stringify(String(v == null ? '' : v)).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-var D = null, G = 'all', Q = '', PG = 0, PER = 20, ONLY = '';
+var D = null, G = 'all', Q = '', PG = 0, PER = 20, ONLY = '', EST = {};   /* EST = ราคาตลาดคาดการณ์ต่อ SKU (/api/market-estimates) */
 (function () {
   var q = new URLSearchParams(__NAV.search);
   if (q.get('q')) Q = q.get('q');
@@ -44,6 +45,7 @@ function bindFloat() {
    บันทึกทันทีที่ออกจากช่อง แล้วดึงข้อมูลใหม่ให้ตัวเลขสรุปข้างบนขยับตาม */
 function reload(msg) {
   return CostImport.onDone = function () { Intake.load(true).then(draw); };
+PX.get('/api/market-estimates').then(function (j) { EST = j.estimates || {}; if (D) draw(); }).catch(function () {});
 Intake.load().catch(function () {}).then(function () { if (TAB === 'trend') return Trend.load().catch(function () {}); }).then(function () { if (document.getElementById('main') && D) draw(); });
 PX.get('/api/pricelist').then(function (j) {
     var v = {}; D.rows.forEach(function (r) { v[r.id] = r.vol; });
@@ -302,8 +304,8 @@ function draw() {
     '<button class="' + (TAB === 'cost' ? 'on' : '') + '" onclick="setTab(\'cost\')">📦 ทุน<em>' + (D.rows.filter(function (r) { return !(r.cost > 0); }).length ? 'ยังไม่รู้ ' + D.rows.filter(function (r) { return !(r.cost > 0); }).length : 'ครบ') + '</em></button>' +
     '<button class="' + (TAB === 'trend' ? 'on' : '') + '" onclick="setTab(\'trend\')">📈 แนวโน้มตลาด<em>' + (trW == null ? '' : trW ? 'ระวัง ' + trW : 'ปกติ') + '</em></button>' +
     '<button class="' + (TAB === 'sources' ? 'on' : '') + '" onclick="setTab(\'sources\')">🔌 แหล่งข้อมูล & สำรวจ<em>ไม่รู้ตลาด ' + noMktAll + '</em></button></div>';
-  if (TAB === 'trend') { h += Trend.html(); document.getElementById('main').innerHTML = h; PX.bindTips(); bindFloat(); return; }
-  if (TAB === 'sources') { h += Intake.sourcesTab(D.comps); document.getElementById('main').innerHTML = h; PX.bindTips(); bindFloat(); return; }
+  if (TAB === 'trend') { h += Trend.html(); document.getElementById('main').innerHTML = h; PX.bindTips(); bindFloat(); Charts.bind(); return; }
+  if (TAB === 'sources') { h += Intake.sourcesTab(D.comps); document.getElementById('main').innerHTML = h; PX.bindTips(); bindFloat(); Charts.bind(); return; }
 
   /* สรุปความครบของข้อมูลนำเข้า */
   h += '<div class="kpi">' +
@@ -379,13 +381,15 @@ function draw() {
           (r.cost > 0 ? esc(srcShort(r.costSrc)) + (r.costSrcAt ? ' · ' + esc(dmy(r.costSrcAt)) : '') : 'ยังไม่รู้') + '</div></td>' +
         '<td><input class="cin" data-id="' + r.id + '" data-f="vol_week" value="' +
           (r.vol || '') + '" placeholder="0" inputmode="numeric"></td>' +
-        r.marks.map(function (m) {
+        r.marks.map(function (m, mi) {
+          /* ไม่มีราคาสด → โชว์ราคาคาดการณ์จากแนวโน้ม 1 ปี (ติดป้าย "คาด") ให้ตัดสินเบื้องต้นได้ · ช่องยังกรอกทับได้ */
+          var e = (!m.price || m.state === 'expired') && mi === 0 && EST[r.id];
           return '<td><input class="cin mk2" data-id="' + r.id + '" data-c="' + m.id + '" value="' +
-            (m.price || '') + '" placeholder="–" inputmode="numeric">' +
+            (m.price || '') + '" placeholder="' + (e ? '~' + e.price : '–') + '" inputmode="numeric">' +
             '<div style="font-size:9.5px;color:' +
-              (m.state === 'expired' ? 'var(--red)' : 'var(--tx-3)') + '">' +
-            (m.price ? (m.age == null ? 'ไม่ระบุวัน' : m.age === 0 ? 'วันนี้' : m.age + ' วันก่อน')
-                     : 'ยังไม่รู้') + '</div></td>'; }).join('') +
+              (m.state === 'expired' ? 'var(--red)' : e ? 'var(--violet)' : 'var(--tx-3)') + '"' + (e ? ' title="' + esc(e.basis) + '"' : '') + '>' +
+            (m.price && m.state !== 'expired' ? (m.age == null ? 'ไม่ระบุวัน' : m.age === 0 ? 'วันนี้' : m.age + ' วันก่อน')
+                     : e ? 'คาด ~' + e.price + ' (' + esc(e.confidence) + ')' : m.price ? 'เก่า ' + m.age + ' วัน' : 'ยังไม่รู้') + '</div></td>'; }).join('') +
         '</tr>';
     }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--tx-3)">ไม่มีรายการ</td></tr>') +
     '</tbody></table></div>' +
@@ -405,7 +409,7 @@ function draw() {
 
   document.getElementById('main').innerHTML = h;
   CostImport.mountFlags();   /* รายการจากไฟล์ที่ติดด่านตรวจ — ท้ายแท็บทุน */
-  bindFloat();
+  bindFloat(); Charts.bind();
   var fs = document.getElementById('floatSub');
   if (fs) fs.textContent = noCost ? ('ยังไม่รู้ทุน ' + noCost + ' รายการ') : 'ทุนเข้าครบทุกรายการ';
   var q = document.getElementById('q');

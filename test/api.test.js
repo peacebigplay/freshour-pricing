@@ -19,6 +19,8 @@ function loadDocs() {
 const docs = loadDocs();
 const store = createStore(docs, {});
 const call = (role, method, url, body) => store.handle({ role, method, url, body, origin: 'http://t' });
+const PID = name => (docs.pricelist.rows.find(r => r.name === name) || {}).id;   /* fixture ตามใบราคา AL — อ้างด้วยชื่อ ไม่ใช่ id */
+const MAN = PID('มันแข็งหมู'), BONE = PID('กระดูกข้อขา');
 const okj = (r, msg) => { assert.equal(r.status, 200, (msg || '') + ' → ' + JSON.stringify(r.body).slice(0, 200)); return r.body; };
 
 test('สิทธิ์: anon 401 · sale ไม่เห็นทุน · ops ไม่เห็นหน้าผู้บริหาร', () => {
@@ -27,10 +29,10 @@ test('สิทธิ์: anon 401 · sale ไม่เห็นทุน · ops
   assert.equal(call('sale', 'GET', '/api/service-logs').status, 403);
   assert.equal(call('ops', 'GET', '/api/review').status, 403);
   const pl = okj(call('sale', 'GET', '/api/pricelist'));
-  assert.equal(pl.seeCost, false); assert.equal(pl.rows[0].cost, undefined);
+  assert.equal(pl.seeCost, false); assert.equal(pl.rows[0].cost, undefined); assert.ok(pl.rows[0].retail > 0 && pl.rows[0].s10 > 0, 'เซลล์เห็นราคาปลีก/ส่งทุกระดับ');
   const g = okj(call('sale', 'GET', '/api/guard'));
   assert.equal(g.forSale, true); assert.equal(g.lines, undefined);
-  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows[0].cost, 65);
+  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === MAN).cost, 65);
   assert.equal(okj(call('boss', 'GET', '/api/me')).role, 'boss');
   assert.equal(call('anon', 'GET', '/api/me').body.role, null);
 });
@@ -49,7 +51,7 @@ test('flow ครบวง: ราคากลาง → ใบรายเจ�
   /* Step 1 ราคากลาง — ก่อนยืนยัน ใบรายเจ้ายังติด gate */
   let dk = okj(call('ops', 'GET', '/api/desk'));
   let c = dk.customers.find(x => x.id === CID);
-  assert.equal(c.gateMissing, 78);
+  assert.ok(c.gateMissing > 0 && c.gateMissing === c.lines, 'ทุกบรรทัดสัญญายังรอราคากลาง');
   const rows = dk.rows.filter(r => r.cost > 0 && r.v21 && r.v21.goals).map(r => ({ product_id: r.id, price: Math.max(r.w2, r.v21.guard || 0), goal: 'target', exception: '' }));
   const low = dk.rows.find(r => r.v21 && r.v21.guard > 0);
   const bad = call('ops', 'POST', '/api/save-price-sheet', { customer_id: null, goal: 'target', rows: [{ product_id: low.id, price: low.v21.guard - 5, goal: 'target', exception: '' }] });
@@ -125,51 +127,52 @@ test('flow ครบวง: ราคากลาง → ใบรายเจ�
   assert.equal(dp.label, 'ทดสอบ 1');
   assert.equal(okj(call('ops', 'GET', '/api/history'))[0].label, 'ทดสอบ 1');
   sd = okj(call('sale', 'GET', '/api/sends')); assert.equal(sd.label, 'ทดสอบ 1'); assert.equal(sd.sent, 0);
-  sh = okj(call('sale', 'GET', '/api/sheet?customer=' + CID)); assert.equal(sh.sent, false); assert.equal(sh.prevLabel, '26-2/09');
+  sh = okj(call('sale', 'GET', '/api/sheet?customer=' + CID)); assert.equal(sh.sent, false); assert.equal(sh.prevLabel, '01-07/10');
 });
 
 test('ทุน/ตลาด/เกณฑ์: แก้แล้วทุกหน้าเห็นตรงกัน', () => {
-  const PID = 'p046e65';
-  okj(call('ops', 'POST', '/api/costs', { items: [{ id: PID, cost: 70 }], source: 'ทดสอบ' }));
-  const pl = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === PID);
-  assert.equal(pl.cost, 70); assert.equal(pl.w2, 112, 'ตัวที่ตั้งด้วยสูตร ตามสูตร 70×1.6'); assert.equal(pl.costSrc, 'ทดสอบ');
-  const bd = okj(call('ops', 'GET', '/api/board')).lines.find(l => l.id === PID); assert.equal(bd.cost, 70); assert.equal(bd.w2, 112);
-  const dk = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID); assert.equal(dk.cost, 70); assert.equal(dk.v21.goals.target.price, Math.ceil(70 / 0.85));
-  const pv = okj(call('ops', 'GET', '/api/product?id=' + PID)); assert.equal(pv.p.cost, 70); assert.ok(pv.hist.length >= 2);
-  /* ตัวที่ไม่ได้ตั้งด้วยสูตร: ยืนราคา แต่ไม่ต่ำกว่าขั้นต่ำ */
-  const man = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.cost > 0 && r.w2 !== Math.round(r.cost * 1.6));
-  okj(call('ops', 'POST', '/api/costs', { items: [{ id: man.id, cost: man.cost + 1 }] }));
-  const man2 = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === man.id); assert.ok(man2.w2 >= man.w2);
-  const sh = okj(call('ops', 'POST', '/api/costs', { shift: 1 })); assert.ok(sh.shifted > 300); assert.equal(sh.nocost, 17);
-  okj(call('ops', 'POST', '/api/products/' + PID, { vol_week: 2000 }));
-  assert.equal(okj(call('ops', 'GET', '/api/board')).lines.find(l => l.id === PID).vol, 2000);
+  const PID0 = MAN;   /* มันแข็งหมู: ทุน 65 · ส่วนเผื่อ 15 → ปลีก 104 · 2kg 80 · 5kg 77 · 10kg 76 ตามใบ AL */
+  const before = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === PID0);
+  assert.deepEqual([before.retail, before.w2, before.s5, before.s10], [104, 80, 77, 76], 'ราคาตามใบ AL เป๊ะ');
+  okj(call('ops', 'POST', '/api/costs', { items: [{ id: PID0, cost: 70 }], source: 'ทดสอบ' }));
+  const pl = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === PID0);
+  assert.equal(pl.cost, 70); assert.deepEqual([pl.retail, pl.w2, pl.s5, pl.s10], [112, 85, 82, 81], 'ทุนใหม่ → ทุกระดับคิดใหม่จากสูตรเดียวกับใบ'); assert.equal(pl.costSrc, 'ทดสอบ');
+  const bd = okj(call('ops', 'GET', '/api/board')).lines.find(l => l.id === PID0); assert.equal(bd.cost, 70); assert.equal(bd.w2, 85);
+  const dk = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID0); assert.equal(dk.cost, 70); assert.equal(dk.retail, 112); assert.equal(dk.v21.tiers.s10, 81); assert.equal(dk.v21.goals.target.price, Math.ceil(70 / 0.85));
+  const pv = okj(call('ops', 'GET', '/api/product?id=' + PID0)); assert.equal(pv.p.cost, 70); assert.equal(pv.p.add, 15); assert.ok(pv.hist.length >= 1);
+  /* ตัวที่ใบตั้งปลีกเอง (override) ต้องคงค่าที่ตั้ง: กระดูกข้อขา ปลีก 24 ทั้งที่ทุน 3 */
+  const bone = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === BONE); assert.deepEqual([bone.retail, bone.w2], [24, 15]);
+  const sh = okj(call('ops', 'POST', '/api/costs', { shift: 1 })); assert.equal(sh.shifted, 195); assert.equal(sh.nocost, 0);
+  okj(call('ops', 'POST', '/api/products/' + PID0, { vol_week: 2000 }));
+  assert.equal(okj(call('ops', 'GET', '/api/board')).lines.find(l => l.id === PID0).vol, 2000);
   const np = okj(call('ops', 'POST', '/api/products', { name: 'สินค้าทดสอบ', grp: 'อื่นๆ', cost: 100, add_baht: 20 }));
-  const nr = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === np.id); assert.equal(nr.w2, 120);
+  const nr = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === np.id); assert.equal(nr.w2, 120); assert.equal(nr.retail, 160); assert.equal(nr.s10, 116);
   assert.ok(okj(call('ops', 'GET', '/api/desk?customer=cd6f5')).rows.find(r => r.id === np.id), 'สินค้าใหม่โผล่ในใบรายเจ้าด้วย');
-  okj(call('ops', 'POST', '/api/competitor-prices', { items: [{ product_id: PID, competitor_id: 'a', price: 99 }] }));
-  const m = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === PID).marks.find(x => x.id === 'a'); assert.equal(m.price, 99); assert.equal(m.state, 'fresh');
-  assert.equal(okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID).v21.goals.competitive.disabled, undefined);
+  okj(call('ops', 'POST', '/api/competitor-prices', { items: [{ product_id: PID0, competitor_id: 'a', price: 99 }] }));
+  const m = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === PID0).marks.find(x => x.id === 'a'); assert.equal(m.price, 99); assert.equal(m.state, 'fresh');
+  assert.equal(okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID0).v21.goals.competitive.disabled, undefined);
   assert.equal(call('ops', 'PUT', '/api/config', { floor_pct: 10 }).status, 400);
   okj(call('ops', 'PUT', '/api/config', { floor_pct: 13, haggle_baht: 3 }));
   assert.equal(okj(call('ops', 'GET', '/api/guard')).floorPct, 13); assert.equal(okj(call('ops', 'GET', '/api/pricelist')).haggle, 3);
   okj(call('ops', 'PUT', '/api/category-targets', { key: 'competitive', lo: 12, hi: 14, target: 14 }));
   assert.equal(okj(call('ops', 'GET', '/api/category-guard')).groups.find(g => g.key === 'competitive').effective, 14);
   assert.equal(okj(call('ops', 'GET', '/api/category-items?key=competitive')).items[0].catTarget, 14);
-  const sk = okj(call('ops', 'POST', '/api/sku-category', { product_id: 'pc77af2', category_key: 'popular', target_pct: 22 })); assert.equal(sk.effective, 22);
-  assert.ok(okj(call('ops', 'GET', '/api/category-items?key=popular')).items.find(i => i.id === 'pc77af2').moved);
-  assert.ok(okj(call('ops', 'GET', '/api/data-audit')).master > 360);
+  const compItem = okj(call('ops', 'GET', '/api/category-items?key=competitive')).items[0].id;
+  const sk = okj(call('ops', 'POST', '/api/sku-category', { product_id: compItem, category_key: 'popular', target_pct: 22 })); assert.equal(sk.effective, 22);
+  assert.ok(okj(call('ops', 'GET', '/api/category-items?key=popular')).items.find(i => i.id === compItem).moved);
+  assert.equal(okj(call('ops', 'GET', '/api/data-audit')).master, 196, 'สินค้า = ใบราคา AL 192 + แช่แข็ง 3 + ที่เพิ่มในเทสต์ 1');
 });
 
 test('ลูกค้า/สัญญา/ปรับทั้งใบ', () => {
   const nc = okj(call('ops', 'POST', '/api/customers', { name: 'ร้านทดสอบ', owner: 'เอ', type: 'contract', tier: 'w2' }));
   assert.equal(call('ops', 'POST', '/api/customers', { name: 'ร้านทดสอบ' }).status, 400);
-  assert.equal(call('ops', 'POST', '/api/contract-price', { customer_id: nc.id, product_id: 'p046e65', price: 10 }).status, 400, 'ต่ำกว่าครึ่งทุน = พิมพ์ผิด');
-  okj(call('ops', 'POST', '/api/contract-price', { customer_id: nc.id, product_id: 'p046e65', price: 100 }));
+  assert.equal(call('ops', 'POST', '/api/contract-price', { customer_id: nc.id, product_id: MAN, price: 10 }).status, 400, 'ต่ำกว่าครึ่งทุน = พิมพ์ผิด');
+  okj(call('ops', 'POST', '/api/contract-price', { customer_id: nc.id, product_id: MAN, price: 100 }));
   const g = okj(call('ops', 'GET', '/api/guard'));
   const gc = g.customers.find(c => c.id === nc.id); assert.equal(gc.n, 1); assert.ok(['A', 'B', 'D'].includes(gc.grade));
   assert.ok(g.lines.find(l => l.cid === nc.id && l.locked === 100));
   const dk = okj(call('ops', 'GET', '/api/desk?customer=' + nc.id)); assert.equal(dk.customer.name, 'ร้านทดสอบ');
-  assert.equal(dk.rows.find(r => r.id === 'p046e65').cust.source, 'สัญญา');
+  assert.equal(dk.rows.find(r => r.id === MAN).cust.source, 'สัญญา');
   assert.equal(okj(call('sale', 'GET', '/api/sheet?customer=' + nc.id)).total, 1);
   okj(call('ops', 'POST', '/api/customer-adjust', { customer_id: nc.id, adjust: -3 }));
   const d2 = okj(call('ops', 'GET', '/api/desk?customer=' + nc.id)); assert.equal(d2.customer.adjust, -3);

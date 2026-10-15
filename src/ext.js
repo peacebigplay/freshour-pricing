@@ -196,65 +196,107 @@
     }
     function priceAt(list, date) { var v = null; for (var i = 0; i < list.length; i++) { if (list[i].observed_at <= date) v = list[i].price; else break; } return v; }
     function pct(a, b) { return a && b ? r1((b - a) / a * 100) : null; }
-    /* แนวโน้มรายหมวด + คำเตือน + คำทำนาย 7 วันข้างหน้า (บันทึกไว้ให้ตรวจย้อนหลังได้ว่าถูกกี่ครั้ง) */
-    function computeTrend(persist, asOf) {
+    /* แนวโน้มรายหมวด (ย้อนหลังถึง 1 ปี) + คำเตือน + คำทำนาย 7 วันข้างหน้า (บันทึกไว้ให้ตรวจย้อนหลังได้ว่าถูกกี่ครั้ง)
+       detailGrp = ขอรายละเอียดราย SKU ของหมวดนั้น (ซีรีส์รายเดือน + ราคาคาดการณ์เมื่อไม่มีการสำรวจ) */
+    function monthKey(d) { return String(d).slice(0, 7); }
+    function monthsBack(td, n) { var out = [], d = new Date(td.slice(0, 7) + '-01T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() - n + 1); for (var i = 0; i < n; i++) { out.push(d.toISOString().slice(0, 7)); d.setUTCMonth(d.getUTCMonth() + 1); } return out; }
+    function computeTrend(persist, asOf, detailGrp) {
       var td = asOf || today(), days = function (n) { var d = new Date(td + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
-      var d7 = days(7), d30 = days(30), byG = {}, prods = {}, known = 0;
-      D.market_obs.forEach(function (o) { (prods[o.product_id] = prods[o.product_id] || {})[o.competitor_id] = 1; });
+      var d7 = days(7), d30 = days(30), d90 = days(90), d365 = days(365), byG = {}, prods = {}, known = 0, MONTHS = monthsBack(td, 12);
+      D.market_obs.forEach(function (o) { if (o.observed_at <= td) (prods[o.product_id] = prods[o.product_id] || {})[o.competitor_id] = 1; });
+      var med = function (a) { if (!a.length) return null; var s = a.slice().sort(function (x, y) { return x - y; }); return s[Math.floor(s.length / 2)]; };
       Object.keys(prods).forEach(function (pid) {
         var P = product(pid); if (!P) return; known++;
         Object.keys(prods[pid]).forEach(function (cid) {
-          var list = obsByProduct(pid, cid); if (list.length < 2) return;
-          var last = list[list.length - 1], p7 = priceAt(list, d7), p30 = priceAt(list, d30) || list[0].price;
-          if ((Date.parse(td) - Date.parse(last.observed_at)) / 864e5 > 10) return;
-          var g = byG[P.grp] = byG[P.grp] || { grp: P.grp, c7: [], c30: [], n: 0, over: 0, under: 0, gapSum: 0, gapN: 0, items: [] };
-          g.n++; var c7 = pct(p7, last.price), c30 = pct(p30, last.price);
-          if (c7 != null) g.c7.push(c7); if (c30 != null) g.c30.push(c30);
-          var comp = compOf(cid); if (comp && comp.tier === 'w') { if (P.w2 > last.price) g.over++; else g.under++; g.gapSum += P.w2 - last.price; g.gapN++; }
-          g.items.push({ id: pid, name: P.name, comp: comp ? comp.label : cid, tier: comp ? comp.tier : '', price: last.price, seen: last.observed_at, c7: c7, c30: c30, our: P.w2, gap: P.w2 - last.price });
+          var list = obsByProduct(pid, cid).filter(function (o) { return o.observed_at <= td; }); if (!list.length) return;
+          var last = list[list.length - 1], first = list[0], age = Math.round((Date.parse(td) - Date.parse(last.observed_at)) / 864e5);
+          var g = byG[P.grp] = byG[P.grp] || { grp: P.grp, c7: [], c30: [], c90: [], c365: [], n: 0, over: 0, under: 0, gapSum: 0, gapN: 0, items: [], ratios: [], months: {}, obs: 0, survey: 0, lastSeen: '' };
+          g.n++; g.obs += list.length; g.survey += list.filter(function (o) { return o.via === 'survey'; }).length; if (last.observed_at > g.lastSeen) g.lastSeen = last.observed_at;
+          /* ซีรีส์รายเดือน: ราคาเฉลี่ยต่อเดือนของ SKU นี้ แล้วทำเป็นดัชนี (เดือนแรกที่มีข้อมูล = 100) เพื่อรวมข้าม SKU/คู่แข่งได้ */
+          var mm = {}; list.forEach(function (o) { var k = monthKey(o.observed_at); (mm[k] = mm[k] || []).push(o.price); });
+          var base = null, ser = MONTHS.map(function (k) { if (!mm[k]) return null; var v = mm[k].reduce(function (a, b) { return a + b; }, 0) / mm[k].length; if (base == null) base = v; return v; });
+          ser.forEach(function (v, i) { if (v != null && base) (g.months[MONTHS[i]] = g.months[MONTHS[i]] || []).push(v / base * 100); });
+          var comp = compOf(cid), fresh = age <= 10;
+          var c7 = fresh ? pct(priceAt(list, d7), last.price) : null, c30 = fresh ? pct(priceAt(list, d30) || (first.observed_at >= d30 ? null : first.price), last.price) : null;
+          var c90 = pct(priceAt(list, d90) || (first.observed_at >= d90 ? null : first.price), last.price), c365 = pct(priceAt(list, d365) || (first.observed_at > d365 && first.observed_at < d90 ? first.price : null), last.price);
+          if (c7 != null) g.c7.push(c7); if (c30 != null) g.c30.push(c30); if (c90 != null) g.c90.push(c90); if (c365 != null) g.c365.push(c365);
+          if (comp && comp.tier === 'w' && fresh) { if (P.w2 > last.price) g.over++; else g.under++; g.gapSum += P.w2 - last.price; g.gapN++; }
+          if (comp && comp.tier === 'w' && P.w2) g.ratios.push(last.price / P.w2);
+          g.items.push({ id: pid, name: P.name, comp: comp ? comp.label : cid, cid: cid, tier: comp ? comp.tier : '', price: last.price, seen: last.observed_at, age: age, via: last.via || 'online', n: list.length, c7: c7, c30: c30, c90: c90, c365: c365, our: P.w2, gap: P.w2 - last.price, series: ser, mm: mm });
         });
       });
-      var med = function (a) { if (!a.length) return null; var s = a.slice().sort(function (x, y) { return x - y; }); return s[Math.floor(s.length / 2)]; };
       var dir = function (c, th) { th = th || 1; return c == null ? 'unknown' : c > th ? 'up' : c < -th ? 'down' : 'flat'; };
-      var groups = Object.keys(byG).map(function (k) { var g = byG[k], c7 = med(g.c7), c30 = med(g.c30);
-        return { grp: g.grp, n: g.n, change7: c7, change30: c30, direction: dir(c30 != null ? c30 : c7, 2), momentum: dir(c7, 1.5), over: g.over, under: g.under, gapAvg: g.gapN ? r1(g.gapSum / g.gapN) : null, items: g.items.sort(function (a, b) { return (b.c30 || 0) - (a.c30 || 0); }) }; })
-        .sort(function (a, b) { return Math.abs(b.change30 || 0) - Math.abs(a.change30 || 0); });
-      /* ทุนเราขยับทางไหน (เทียบ prev_cost) — เอาไว้จับ margin บีบ */
+      var groups = Object.keys(byG).map(function (k) { var g = byG[k], c7 = med(g.c7), c30 = med(g.c30), c90 = med(g.c90), c365 = med(g.c365);
+        var idx = MONTHS.map(function (m) { return g.months[m] ? Math.round(med(g.months[m]) * 10) / 10 : null; });
+        var main = c90 != null ? c90 : c365 != null ? c365 : c30;
+        return { grp: g.grp, n: g.n, obs: g.obs, survey: g.survey, lastSeen: g.lastSeen || null, change7: c7, change30: c30, change90: c90, change365: c365, direction: dir(main, 2), momentum: dir(c7, 1.5), over: g.over, under: g.under, gapAvg: g.gapN ? r1(g.gapSum / g.gapN) : null, ratio: med(g.ratios),
+          series: { months: MONTHS, idx: idx }, items: g.items.sort(function (a, b) { return (b.c90 || 0) - (a.c90 || 0); }) }; })
+        .sort(function (a, b) { return Math.abs(b.change90 != null ? b.change90 : b.change365 || 0) - Math.abs(a.change90 != null ? a.change90 : a.change365 || 0); });
       var costMove = {}; S.products.forEach(function (p) { if (p.cost > 0 && p.prev_cost > 0) { var g = costMove[p.grp] = costMove[p.grp] || []; g.push(pct(p.prev_cost, p.cost)); } });
       var warnings = [];
       groups.forEach(function (g) {
-        var cm = med(costMove[g.grp] || []);
-        if (g.change30 != null && g.change30 >= 4) warnings.push({ level: 'good', grp: g.grp, text: 'ตลาด' + g.grp + ' ขึ้น ' + g.change30 + '% ใน 30 วัน' + (g.gapAvg != null && g.gapAvg < 0 ? ' — เราถูกกว่าราคาส่งคู่แข่งเฉลี่ย ' + (-g.gapAvg) + ' ฿ มีช่องขยับราคากลางขึ้น' : ' — ตรวจราคากลางหมวดนี้ก่อนประกาศ') });
-        if (g.change30 != null && g.change30 <= -4) warnings.push({ level: 'bad', grp: g.grp, text: 'ระวัง: ตลาด' + g.grp + ' ลง ' + (-g.change30) + '% ใน 30 วัน' + (g.over ? ' — เราแพงกว่าคู่แข่ง ' + g.over + ' รายการ เสี่ยงโดนต่อรอง/เสียลูกค้า' : '') });
+        var cm = med(costMove[g.grp] || []), c = g.change90 != null ? g.change90 : g.change365, horizon = g.change90 != null ? '90 วัน' : '1 ปี';
+        if (c != null && c >= 4) warnings.push({ level: 'good', grp: g.grp, text: 'ตลาด' + g.grp + ' ขึ้น ' + c + '% ใน ' + horizon + (g.gapAvg != null && g.gapAvg < 0 ? ' — เราถูกกว่าราคาส่งคู่แข่งเฉลี่ย ' + (-g.gapAvg) + ' ฿ มีช่องขยับราคากลางขึ้น' : ' — ตรวจราคากลางหมวดนี้ก่อนประกาศ') });
+        if (c != null && c <= -4) warnings.push({ level: 'bad', grp: g.grp, text: 'ระวัง: ตลาด' + g.grp + ' ลง ' + (-c) + '% ใน ' + horizon + (g.over ? ' — เราแพงกว่าคู่แข่ง ' + g.over + ' รายการ เสี่ยงโดนต่อรอง/เสียลูกค้า' : '') });
         if (cm != null && cm > 3 && (g.change30 == null || g.change30 < cm - 3)) warnings.push({ level: 'warn', grp: g.grp, text: 'margin ' + g.grp + ' กำลังบีบ: ทุนเราขึ้น ' + cm + '% แต่ตลาดขยับ ' + (g.change30 == null ? 'ไม่รู้' : g.change30 + '%') + ' — ขึ้นราคาตามทุนไม่ได้เต็มที่' });
-        if (g.momentum !== g.direction && g.momentum !== 'unknown' && g.direction !== 'unknown' && g.momentum !== 'flat') warnings.push({ level: 'warn', grp: g.grp, text: g.grp + ' 7 วันล่าสุดกลับทิศ (' + (g.momentum === 'up' ? 'ขึ้น' : 'ลง') + ' ' + Math.abs(g.change7) + '%) ต่างจากแนวโน้ม 30 วัน — รอดูอีก 1 รอบก่อนปรับราคากลาง' });
+        if (g.momentum !== 'unknown' && g.momentum !== 'flat' && g.direction !== 'unknown' && g.momentum !== g.direction) warnings.push({ level: 'warn', grp: g.grp, text: g.grp + ' 7 วันล่าสุดกลับทิศ (' + (g.momentum === 'up' ? 'ขึ้น' : 'ลง') + ' ' + Math.abs(g.change7) + '%) ต่างจากแนวโน้มระยะยาว — รอดูอีก 1 รอบก่อนปรับราคากลาง' });
+        var ageG = g.lastSeen ? Math.round((Date.parse(td) - Date.parse(g.lastSeen)) / 864e5) : null;
+        if (ageG != null && ageG > 14) warnings.push({ level: 'warn', grp: g.grp, text: 'หมวด' + g.grp + ' ไม่มีราคาตลาดใหม่มา ' + ageG + ' วัน — ตอนนี้ใช้ราคาคาดการณ์จากแนวโน้ม 1 ปี · ควรส่งคนไปสำรวจ' });
       });
       var sources = D.pricelist.comps.map(function (c) { var l = D.market_obs.filter(function (o) { return o.competitor_id === c.id; }); var lastSeen = l.reduce(function (a, o) { return o.observed_at > a ? o.observed_at : a; }, ''); var age = ageDays(lastSeen);
-        if (l.length && age > 3) warnings.push({ level: 'bad', grp: '', text: 'connector ' + c.label + ' ไม่ส่งราคามา ' + age + ' วันแล้ว — ตรวจการเชื่อมต่อ' });
+        if (l.length && age > 3 && !asOf) warnings.push({ level: 'bad', grp: '', text: 'connector ' + c.label + ' ไม่ส่งราคามา ' + age + ' วันแล้ว — ตรวจการเชื่อมต่อ' });
         return { id: c.id, label: c.label, tier: c.tier, count: l.length, skus: Object.keys(l.reduce(function (m, o) { m[o.product_id] = 1; return m; }, {})).length, lastSeen: lastSeen || null, age: age, source: c.source || '' }; });
-      /* คำทำนาย: หมวดที่มีโมเมนตัมชัด ทำนายทิศ 7 วันข้างหน้า · ครบกำหนดแล้วตรวจกับของจริง */
       if (persist) {
+        /* ทำนายเฉพาะหมวดที่แนวโน้ม 90 วันชัด (|Δ| ≥ 3%) → ทิศ 30 วันข้างหน้า · ตรวจเมื่อครบกำหนดด้วยทิศจริงของ 30 วันนั้น */
         groups.forEach(function (g) {
-          if (g.momentum === 'unknown' || g.momentum === 'flat') return;
+          var c = g.change90; if (c == null || Math.abs(c) < 3) return;
           var open = D.predictions.filter(function (p) { return p.grp === g.grp && !p.resolved; })[0]; if (open) return;
-          var list = []; g.items.forEach(function (it) { list.push(it.id + '|' + it.comp); });
-          D.predictions.unshift({ id: nextId('pr'), made_at: td, due_at: days(-7), grp: g.grp, predicted: g.momentum, basis: '7 วัน ' + (g.change7 > 0 ? '+' : '') + g.change7 + '% · 30 วัน ' + (g.change30 == null ? '—' : (g.change30 > 0 ? '+' : '') + g.change30 + '%'), ref: g.items.map(function (it) { return { id: it.id, comp: it.comp, price: it.price }; }), resolved: false, hit: null, actual: null });
+          D.predictions.unshift({ id: nextId('pr'), made_at: td, due_at: days(-30), horizon: 30, grp: g.grp, predicted: c > 0 ? 'up' : 'down', basis: '90 วัน ' + (c > 0 ? '+' : '') + c + '% · 30 วัน ' + (g.change30 == null ? '—' : (g.change30 > 0 ? '+' : '') + g.change30 + '%'), ref: g.items.filter(function (it) { return it.age <= 14; }).map(function (it) { return { id: it.id, comp: it.comp, price: it.price }; }), resolved: false, hit: null, actual: null });
         });
         D.predictions.forEach(function (p) {
           if (p.resolved || p.due_at > td) return;
-          var ch = []; p.ref.forEach(function (r) { var comp = D.pricelist.comps.filter(function (c) { return c.label === r.comp; })[0]; var list = obsByProduct(r.id, comp && comp.id); var now = priceAt(list, td); if (now && list.length && list[list.length - 1].observed_at >= p.due_at) ch.push(pct(r.price, now)); });
-          if (!ch.length) { if ((Date.parse(td) - Date.parse(p.due_at)) / 864e5 > 7) { p.resolved = true; p.hit = null; p.actual = null; p.note = 'ไม่มีข้อมูลตรวจ'; } return; }
-          var a = med(ch); p.resolved = true; p.actual = a; p.actual_dir = dir(a); p.hit = p.actual_dir === p.predicted; p.resolved_at = td;
+          var ch = []; p.ref.forEach(function (r) { var comp = D.pricelist.comps.filter(function (c) { return c.label === r.comp; })[0]; var list = obsByProduct(r.id, comp && comp.id); var now = priceAt(list, p.due_at); if (now && list.length && list[list.length - 1].observed_at >= days(Math.round((Date.parse(td) - Date.parse(p.due_at)) / 864e5) + 10)) ch.push(pct(r.price, now)); });
+          if (!ch.length) { if ((Date.parse(td) - Date.parse(p.due_at)) / 864e5 > 14) { p.resolved = true; p.hit = null; p.actual = null; p.note = 'ไม่มีข้อมูลตรวจ'; } return; }
+          var a = med(ch); p.resolved = true; p.actual = a; p.actual_dir = dir(a, 0.3); p.hit = p.actual_dir === p.predicted; p.resolved_at = td;
           logEvent({ actor: 'system', action: 'trend-verify', entity: 'prediction', entity_id: p.id, detail: p.grp + ' ทำนาย ' + p.predicted + ' จริง ' + p.actual_dir + ' (' + a + '%)', status: p.hit ? 'ok' : 'warn' });
         });
       }
       var res = D.predictions.filter(function (p) { return p.resolved && p.hit != null; }), hits = res.filter(function (p) { return p.hit; }).length;
       var total = D.pricelist.rows.length;
-      return { asOf: td, groups: groups, warnings: warnings, sources: sources, coverage: { known: known, total: total, pct: Math.round(known / total * 100), observations: D.market_obs.length },
+      /* รายละเอียดราย SKU ของหมวดเดียว: ทุก SKU ในหมวด (ที่ไม่มีข้อมูลด้วย) + ราคาคาดการณ์ */
+      var detail = null;
+      if (detailGrp) {
+        var g = groups.filter(function (x) { return x.grp === detailGrp; })[0], idxNow = g ? (function () { for (var i = g.series.idx.length - 1; i >= 0; i--) if (g.series.idx[i] != null) return g.series.idx[i]; return null; })() : null;
+        var idxAt = function (date) { if (!g) return null; var m = monthKey(date), i = g.series.months.indexOf(m); for (var k = i; k >= 0; k--) if (g.series.idx[k] != null) return g.series.idx[k]; return null; };
+        detail = { grp: detailGrp, ratio: g ? g.ratio : null, skus: D.pricelist.rows.filter(function (r) { return r.grp === detailGrp; }).map(function (r) {
+          var its = g ? g.items.filter(function (it) { return it.id === r.id; }) : [], best = its.filter(function (it) { return it.tier === 'w'; })[0] || its[0];
+          var est = null;
+          if (best && best.age > 7 && idxNow && idxAt(best.seen)) est = { price: Math.round(best.price * idxNow / idxAt(best.seen)), basis: 'ราคาล่าสุด ' + best.price + ' ฿ (' + best.age + ' วันก่อน) × ดัชนีหมวดที่ขยับตั้งแต่นั้น', confidence: best.age <= 30 ? 'กลาง' : 'ต่ำ', from: best.comp };
+          else if (!best && g && g.ratio && r.w2) est = { price: Math.round(r.w2 * g.ratio), basis: 'ไม่เคยเห็นราคา — ราคาส่งของเรา ' + r.w2 + ' ฿ × อัตราส่วนตลาด/เราของหมวด (' + r1(g.ratio * 100) / 100 + ')', confidence: 'ต่ำ', from: 'ประมาณจากหมวด' };
+          return { id: r.id, name: r.name, our: r.w2, retail: r.retail, cost: r.cost, comps: its.map(function (it) { return { comp: it.comp, cid: it.cid, tier: it.tier, price: it.price, seen: it.seen, age: it.age, via: it.via, n: it.n, c30: it.c30, c90: it.c90, c365: it.c365, series: it.series }; }), est: est,
+            status: best ? (best.age <= 7 ? 'fresh' : best.age <= 30 ? 'stale' : 'old') : 'blind' };
+        }).sort(function (a, b) { var o = { fresh: 0, stale: 1, old: 2, blind: 3 }; return o[a.status] - o[b.status] || (b.comps[0] ? b.comps[0].n : 0) - (a.comps[0] ? a.comps[0].n : 0); }) };
+      }
+      groups.forEach(function (g) { g.items = g.items.map(function (it) { var o = {}; for (var k in it) if (k !== 'mm' && k !== 'series') o[k] = it[k]; return o; }); });
+      return { asOf: td, months: MONTHS, groups: groups, warnings: warnings, sources: sources, coverage: { known: known, total: total, pct: Math.round(known / total * 100), observations: D.market_obs.length, span: D.market_obs.length ? D.market_obs.reduce(function (a, o) { return o.observed_at < a ? o.observed_at : a; }, '9') : null },
         score: { total: D.predictions.length, open: D.predictions.filter(function (p) { return !p.resolved; }).length, resolved: res.length, hits: hits, pct: res.length ? Math.round(hits / res.length * 100) : null, list: D.predictions.slice(0, 30) },
-        costMove: Object.keys(costMove).map(function (g) { return { grp: g, change: med(costMove[g]) }; }), job: D.jobs['market-sync'] };
+        costMove: Object.keys(costMove).map(function (g) { return { grp: g, change: med(costMove[g]) }; }), job: D.jobs['market-sync'], detail: detail };
     }
-    function marketTrend() { return ok(computeTrend(false)); }
+    function marketTrend(q) { return ok(computeTrend(false, null, q && q.grp || null)); }
+    /* ราคาตลาดคาดการณ์ต่อ SKU เมื่อไม่มีการสำรวจ/ดึงล่าสุด — หน้า ทุน/ตลาด ใช้เติมช่องว่างแบบติดป้าย "คาด" */
+    function marketEstimates() {
+      var tr = computeTrend(false), out = {}, byG = {}; tr.groups.forEach(function (g) { byG[g.grp] = g; });
+      var idxNow = function (g) { for (var i = g.series.idx.length - 1; i >= 0; i--) if (g.series.idx[i] != null) return g.series.idx[i]; return null; };
+      var idxAt = function (g, date) { var m = String(date).slice(0, 7), i = g.series.months.indexOf(m); for (var k = i; k >= 0; k--) if (g.series.idx[k] != null) return g.series.idx[k]; return null; };
+      D.pricelist.rows.forEach(function (r) {
+        var g = byG[r.grp]; if (!g) return;
+        var its = g.items.filter(function (it) { return it.id === r.id; }), best = its.filter(function (it) { return it.tier === 'w'; })[0] || its[0];
+        if (best && best.age <= 7) return;
+        if (best && idxNow(g) && idxAt(g, best.seen)) out[r.id] = { price: Math.round(best.price * idxNow(g) / idxAt(g, best.seen)), from: best.comp, age: best.age, confidence: best.age <= 30 ? 'กลาง' : 'ต่ำ', basis: 'ล่าสุด ' + best.price + ' × ดัชนีหมวด' };
+        else if (!best && g.ratio && r.w2) out[r.id] = { price: Math.round(r.w2 * g.ratio), from: 'หมวด', age: null, confidence: 'ต่ำ', basis: 'ราคาส่งเรา × อัตราส่วนหมวด ' + Math.round(g.ratio * 100) / 100 };
+      });
+      return ok({ asOf: tr.asOf, estimates: out, n: Object.keys(out).length });
+    }
     function marketObservations(q) {
       var list = D.market_obs.slice();
       if (q.sku || q.product_id) { var m = q.product_id ? { p: product(q.product_id) } : matchProduct(q.sku); if (!m || !m.p) return ok({ rows: [], product: null }); list = list.filter(function (o) { return o.product_id === m.p.id; }); return ok({ product: { id: m.p.id, name: m.p.name }, rows: list.sort(function (a, b) { return a.observed_at < b.observed_at ? 1 : -1; }) }); }
@@ -426,6 +468,12 @@
       var ops = { central: cc, sheetsOpen: D.desk.customers.filter(function (c) { return !c.handed && c.work > 0; }).length, sheetsHanded: D.desk.customers.filter(function (c) { return c.handed; }).length, requestsOpen: D['price-requests'].open, flagsPending: flags.length, flags: flags.slice(0, 8),
         stale: { costOld: oldCost, costOldDays: STALE_COST_DAYS, noCost: noCost, marketFresh: mk, marketOld: mkOld, marketBlind: D.pricelist.rows.length - mk - mkOld, total: D.pricelist.rows.length, lastCost: CFG.cost_updated, lastMarket: (tr.sources.reduce(function (a, s) { return s.lastSeen > a ? s.lastSeen : a; }, '') || null) },
         trendWarnings: tr.warnings.slice(0, 4), trendScore: tr.score, lastImport: D.cost_imports[0] || null, jobs: h.jobs };
+      var CGd = D['category-guard'];
+      ops.history = D.history.slice(0, 12).reverse().map(function (h) { return { label: h.label, at: h.dispatched_at, cost_avg: h.cost_avg, margin_avg: h.margin_avg, profit_week: h.profit_week }; });
+      ops.categories = CGd.groups.map(function (g) { return { key: g.key, name: g.name, margin: g.margin, target: g.effective, lo: g.lo, hi: g.hi, n: g.n, state: g.state }; });
+      ops.groups = D.pricelist.grps.map(function (g) { var rows = D.pricelist.rows.filter(function (r) { return r.grp === g.grp && r.cost > 0; }); var fresh = rows.filter(function (r) { return r.marks.some(function (m) { return m.price > 0 && m.state === 'fresh'; }); }).length; var mgs = rows.map(function (r) { return r.margin; }).filter(function (x) { return x != null; });
+        return { grp: g.grp, n: g.n, fresh: fresh, margin: mgs.length ? Math.round(mgs.reduce(function (a, b) { return a + b; }, 0) / mgs.length * 10) / 10 : null, costAvg: rows.length ? Math.round(rows.reduce(function (a, r) { return a + r.cost; }, 0) / rows.length) : null }; });
+      ops.priceSheets = { total: D.desk.customers.filter(function (c) { return c.lines > 0; }).length, done: D.desk.customers.filter(function (c) { return c.lines > 0 && c.work === 0; }).length, handed: D.desk.customers.filter(function (c) { return c.handed; }).length };
       if (role === 'ops') return ok(Object.assign(common, { role: 'ops' }, ops, { board: { followupDue: b.followupDue, rows: b.rows } }));
       /* boss: ผลลัพธ์ — ปิดได้กี่เจ้า margin จริงเท่าไหร่ */
       var inv = D.invoices.ytd || {}, G = D.guard;
@@ -532,7 +580,8 @@
         case '/api/deals': need(1); return dealsView(role);
         case '/api/outbox': need(1); return ok({ rows: D.outbox.slice(0, 100).map(function (o) { var x = clone(o); if (LVL[role] < 2) x.text = x.text.slice(0, 80); return x; }), queued: D.outbox.filter(function (o) { return o.status === 'queued'; }).length });
         case '/api/cost-flags': need(2); return ok({ rows: D.cost_flags.slice(0, 200), pending: D.cost_flags.filter(function (f) { return f.status === 'pending'; }).length, imports: D.cost_imports.slice(0, 20) });
-        case '/api/market-trend': need(2); return marketTrend();
+        case '/api/market-trend': need(2); return marketTrend(q);
+        case '/api/market-estimates': need(2); return marketEstimates();
         case '/api/market-observations': need(2); return marketObservations(q);
         case '/api/market-sync/status': need(2); return ok(D.jobs['market-sync']);
         case '/api/intake-perf': need(2); return ok(intakePerf());

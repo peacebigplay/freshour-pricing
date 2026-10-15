@@ -5,7 +5,7 @@
    · สำรวจหน้าร้าน แผนรายสัปดาห์ต่อร้าน (SKU ที่ควรไปดู) · บันทึกได้ 3 ทาง: พิมพ์ · พูด (Web Speech) · ถ่ายรูปป้าย — ระบบจับคู่ SKU ให้เอง
    ══════════════════════════════════════════════════════════════════ */
 window.Intake = (function () {
-  var esc = PX.esc, money = PX.money, ago = PX.ago, PERF = null, SRC = null, PLAN = null, AT = 0;
+  var esc = PX.esc, money = PX.money, ago = PX.ago, PERF = null, SRC = null, PLAN = null, DASH = null, AT = 0;
   var CSS = '<style id="inCss">' +
     '.perf{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px;margin:0 0 12px}.perf>div{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;min-width:0}' +
     '.perf .l{font-size:10.5px;color:var(--tx-3);font-weight:600;letter-spacing:.04em;text-transform:uppercase}.perf .n{font-family:var(--fn);font-size:22px;font-weight:600;letter-spacing:-.03em;line-height:1.2;margin-top:2px}.perf .n small{font-family:var(--ff);font-size:11px;font-weight:500;color:var(--tx-3);margin-left:2px}.perf .s{font-size:10.5px;color:var(--tx-2);margin-top:3px;line-height:1.4}' +
@@ -23,7 +23,7 @@ window.Intake = (function () {
   function css() { if (!document.getElementById('inCss')) document.head.insertAdjacentHTML('beforeend', CSS); }
   function load(force) {
     if (PERF && !force && Date.now() - AT < 15000) return Promise.resolve();
-    return Promise.all([PX.get('/api/intake-perf').then(function (j) { PERF = j; }), PX.get('/api/survey').then(function (j) { PLAN = j; }), PX.get('/api/sources').then(function (j) { SRC = j; })]).then(function () { AT = Date.now(); css(); });
+    return Promise.all([PX.get('/api/intake-perf').then(function (j) { PERF = j; }), PX.get('/api/survey').then(function (j) { PLAN = j; }), PX.get('/api/sources').then(function (j) { SRC = j; }), PX.get('/api/dashboard').then(function (j) { DASH = j; }).catch(function () {}), window.Trend ? Trend.load().catch(function () {}) : null]).then(function () { AT = Date.now(); css(); });
   }
   var pc = function (v, good, warn) { return v == null ? '' : v >= good ? 'g' : v >= warn ? 'a' : 'r'; };
   /* ── mini dashboard (บนสุด ทุกแท็บ) ── */
@@ -40,7 +40,21 @@ window.Intake = (function () {
       tile('ตลาดสด (7 วัน)', m.fresh7, '<small>/' + m.coverage.total + '</small>', 'ออนไลน์ ' + m.online7 + ' · สำรวจ ' + m.survey7 + ' ครั้ง/สัปดาห์ · อายุกลาง ' + (m.medianAge == null ? '—' : m.medianAge + ' วัน'), pc(m.fresh7 / m.coverage.total * 100, 30, 10), m.fresh7 / m.coverage.total * 100) +
       tile('สำรวจหน้าร้านสัปดาห์นี้', m.survey.stores.reduce(function (a, s) { return a + s.done; }, 0) + '/' + m.survey.stores.reduce(function (a, s) { return a + s.total; }, 0), '', 'เป้า: ' + m.survey.stores.map(function (s) { return esc(s.label) + ' ' + s.done + '/' + s.total; }).join(' · ') + ' · ส่งมาแล้ว ' + m.survey.rows + ' ราคา' + (m.survey.matchPct != null ? ' · จับคู่ SKU ได้ ' + m.survey.matchPct + '%' : ''), m.survey.rows ? 'g' : '', null) +
       tile('เตือนแนวโน้มถูก', sc.pct == null ? '—' : sc.pct, sc.pct == null ? '' : '%', sc.resolved ? 'ถูก ' + sc.hits + '/' + sc.resolved + ' · รอผล ' + sc.open + ' · เตือนตอนนี้ ' + m.warnings + ' เรื่อง' : 'ยังไม่มีคำทำนายครบกำหนด', pc(sc.pct, 70, 50), sc.pct) +
-      '</div>';
+      '</div>' + chartRow();
+  }
+  /* กราฟใต้ tiles: ทุนเข้าทางไหน · ดัชนีตลาด 12 เดือน · margin ราย grp (ตามเรฟ: เห็นภาพเร็วกว่าตัวเลข) */
+  function chartRow() {
+    if (!PERF || !window.Charts) return '';
+    var c = PERF.cost, by = c.byChannel, tr = window.Trend && Trend.data(), DB = DASH;
+    var ch1 = Charts.donut({ items: [{ label: 'ไฟล์ AL / กล่องรับ', value: by.file, color: Charts.CAT[0] }, { label: 'LINE', value: by.line, color: Charts.CAT[5] }, { label: 'ตรวจทุนแปลกแล้วใช้', value: by.flag, color: Charts.CAT[3] }, { label: 'พิมพ์มือ', value: by.manual, color: Charts.CAT[4] }, { label: 'ปรับทุกตัว', value: by.bulk, color: '#CBD5E1' }], size: 92, center: { big: String(c.entries30), small: 'รายการ' } });
+    var top = tr ? tr.groups.filter(function (g) { return g.series.idx.filter(function (v) { return v != null; }).length >= 6; }).slice(0, 3) : [];
+    var ch2 = tr ? Charts.line({ labels: tr.months.map(function (mm) { return mm.slice(5); }), series: top.map(function (g, i) { return { name: g.grp, values: g.series.idx, color: Charts.CAT[i] }; }), h: 110 }) : '<p class="hint">กำลังอ่านแนวโน้ม…</p>';
+    var grs = DB && DB.groups ? DB.groups.filter(function (g) { return g.margin != null; }).sort(function (a, b) { return a.margin - b.margin; }).slice(0, 8) : [];
+    var ch3 = grs.length ? Charts.bars({ items: grs.map(function (g) { return { label: g.grp, value: g.margin, sub: g.n + ' SKU · ทุนเฉลี่ย ' + g.costAvg, color: g.margin < 12 ? '#DC2626' : g.margin < 15 ? '#D97706' : Charts.CAT[0] }; }), unit: '%', horizontal: true }) : '<p class="hint">—</p>';
+    return '<div class="perf" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">' +
+      '<div><div class="l">ทุนเข้าทางไหน · 30 วัน</div><div style="margin-top:6px">' + ch1 + '</div></div>' +
+      '<div><div class="l">ดัชนีราคาตลาด 12 เดือน · 3 หมวดที่ขยับมากสุด</div>' + ch2 + '</div>' +
+      '<div><div class="l">margin ราคาส่ง 2kg รายกลุ่มสินค้า · 8 กลุ่มต่ำสุด</div><div style="margin-top:6px">' + ch3 + '</div></div></div>';
   }
   /* ── แท็บแหล่งข้อมูล ── */
   function sourcesTab(comps) {

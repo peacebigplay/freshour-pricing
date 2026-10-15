@@ -189,29 +189,35 @@
       if (D.brain.audit.length > 60) D.brain.audit.length = 60;
     }
 
-    /* ── ทุน/ราคา: สูตรเดียวกับเครื่องคิดราคาจริง (ปลีก = ทุน × markup · ส่ง 5/10 = ปลีก + k) ── */
-    function priceFromCost(cost) { return Math.round(cost * CFG.markup); }
+    /* ── เครื่องคิดราคา (สูตรเดียวกับใบราคา AL): ปลีก = ⌈ทุน × 1.6⌉ · ส่ง 2kg = ทุน + ส่วนเผื่อรายตัว · 5kg = 2kg−3 · 10kg = 2kg−4
+       ค่าที่คนตั้งเอง (override) ชนะสูตร · ราคากลางที่ยืนยันแล้ว = override ของ 2kg จนกว่าทุนจะเปลี่ยน ── */
+    function tiersOf(sp, cost) {
+      cost = cost == null ? sp.cost : cost;
+      var add = sp.add_baht == null ? 15 : sp.add_baht;
+      var retail = sp.retail_override != null ? sp.retail_override : cost > 0 ? Math.ceil(cost * CFG.markup - 1e-9) : 0;
+      var w2 = sp.override || (cost > 0 ? cost + add : 0);
+      return { retail: retail, w2: w2, s5: sp.s5_override != null ? sp.s5_override : w2 ? w2 + CFG.k5 : 0, s10: sp.s10_override != null ? sp.s10_override : w2 ? w2 + CFG.k10 : 0, add: add };
+    }
+    function priceFromCost(cost) { return Math.ceil(cost * CFG.markup - 1e-9); }
+    function v0(r) { return r.v21 || (r.v21 = {}); }
     function setCost(pid, cost, src, role) {
       var P = product(pid); if (!P) return false;
       var prevCost = P.cost, td = today();
       var sp = S.products.filter(function (p) { return p.id === pid; })[0];
       if (sp) { sp.prev_cost = sp.cost; sp.cost = cost; sp.cost_src = src; sp.cost_src_at = td; }
+      /* ทุนเปลี่ยน → ราคากลางที่เคยยืนยันถือว่าเก่า (override หลุด) · ราคาทุกระดับคิดใหม่จากสูตร */
       var override = sp ? sp.override : 0;
-      /* ราคากระดานขยับตามทุนเฉพาะ 2 กรณี: ตัวที่ตั้งด้วยสูตร ทุน × markup อยู่แล้ว ตามสูตรต่อ ·
-         ตัวอื่นยืนราคาเดิม แต่ถ้าทุนใหม่ดัน margin หลุดเป้าหมวด ดันขึ้นถึงขั้นต่ำ (ไม่ลดราคาเองเงียบๆ) */
-      var baseRow = D.desk.rows.filter(function (r) { return r.id === pid; })[0];
-      var pct = (baseRow && baseRow.v21 && baseRow.v21.effectivePct) || targetPct();
-      var wasFormula = prevCost > 0 && P.w2 === priceFromCost(prevCost);
-      var w2 = override || (wasFormula ? priceFromCost(cost) : Math.max(P.w2 || 0, floorPrice(cost, pct)));
+      if (sp && sp.override && cost !== prevCost) { sp.override = 0; override = 0; }
+      var t = tiersOf(sp || { add_baht: P.w2 - prevCost }, cost), w2 = t.w2;
       P.cost = cost; P.costSrc = src; P.costSrcAt = td;
-      if (!override) { P.w2 = w2; P.retail = w2; P.s5 = w2 + CFG.k5; P.s10 = w2 + CFG.k10; P.saleFloor = w2 - CFG.haggle_baht; }
+      P.w2 = w2; P.retail = t.retail; P.s5 = t.s5; P.s10 = t.s10; P.saleFloor = w2 - CFG.haggle_baht;
       P.margin = mg(P.w2, cost);
       D.board.lines.forEach(function (l) { if (l.id === pid) { l.cost = cost; l.w2 = P.w2; l.margin = P.margin; l.jump = l.w2 - (l.prev || 0); l.okMargin = l.margin >= floorPct(); } });
       desks().forEach(function (d) {
         d.rows.forEach(function (r) {
           if (r.id !== pid) return;
           r.costPrev = prevCost; r.cost = cost; r.boardCost = cost; r.costJump = cost - (prevCost || cost);
-          if (!override) { r.w2 = P.w2; r.auto = P.w2; r.jump = r.w2 - (r.prev || 0); }
+          r.w2 = P.w2; r.auto = P.w2; r.retail = t.retail; r.s5 = t.s5; r.s10 = t.s10; r.jump = r.w2 - (r.prev || 0); if (v0(r).tiers) v0(r).tiers = { retail: t.retail, w2: w2, s5: t.s5, s10: t.s10, add: t.add };
           r.floorPrice = floorPrice(cost, floorPct()); r.safeLow = r.floorPrice; r.saleFloor = r.w2 - CFG.haggle_baht;
           if (r.cust) { r.cust.cost = cost; if (r.cust.source !== 'สัญญา') r.cust.price = r.w2 + (r.cust.adjust || 0); }
           r.margin = mg(r.cust ? r.cust.price : r.w2, cost);
@@ -287,7 +293,7 @@
       var hist = (S.dispatched.items || []).filter(function (i) { return i.product_id === pid; }).map(function (i) { return { price: i.w2, cost: i.cost }; });
       hist.push({ price: P.w2, cost: P.cost });
       return { floorPct: floorPct(), haggle: CFG.haggle_baht,
-        p: { grp: P.grp, name: P.name, vol: bl.vol || 0, cost: P.cost, w2: P.w2, margin: P.margin, floorPrice: floorPrice(P.cost || 0, floorPct()), retail: P.retail, s5: P.s5, s10: P.s10, saleFloor: P.saleFloor },
+        p: { grp: P.grp, name: P.name, vol: bl.vol || 0, cost: P.cost, w2: P.w2, margin: P.margin, floorPrice: floorPrice(P.cost || 0, floorPct()), retail: P.retail, s5: P.s5, s10: P.s10, saleFloor: P.saleFloor, unit: P.unit, add: (S.products.filter(function (x) { return x.id === P.id; })[0] || {}).add_baht },
         marks: (P.marks || []).map(function (m) { return { label: m.label, tier: m.tier, price: m.price || 0, state: m.state, age: m.age }; }),
         customers: D.guard.lines.filter(function (l) { return l.pid === pid; }).map(function (l) { return { name: l.cust, price: l.locked, margin: l.margin }; }),
         hist: hist };
@@ -387,10 +393,10 @@
         if (!cid) {
           v.central = { price: px, goal: x.goal || body.goal || 'target', at: td, by: role, state: 'approved', exception: String(x.exception || '') };
           r.w2 = px; r.margin = mg(px, r.cost); r.status = r.margin < floorPct() ? 'floored' : 'none';
-          var P = product(r.id); if (P) { P.w2 = px; P.retail = px; P.s5 = px + CFG.k5; P.s10 = px + CFG.k10; P.saleFloor = px - CFG.haggle_baht; P.margin = mg(px, P.cost); }
+          var P = product(r.id); if (P) { P.w2 = px; P.s5 = px + CFG.k5; P.s10 = px + CFG.k10; P.saleFloor = px - CFG.haggle_baht; P.margin = mg(px, P.cost); }
           D.board.lines.forEach(function (l) { if (l.id === r.id) { l.w2 = px; l.margin = mg(px, l.cost); l.jump = px - (l.prev || 0); } });
           var sp = S.products.filter(function (p) { return p.id === r.id; })[0];
-          if (sp) { sp.central_price = px; sp.central_goal = v.central.goal; sp.central_at = td; sp.central_by = role; }
+          if (sp) { sp.central_price = px; sp.central_goal = v.central.goal; sp.central_at = td; sp.central_by = role; sp.override = px; }
           desks().forEach(function (o) { if (o === D.desk) return; o.rows.forEach(function (q) { if (q.id !== r.id) return; var qv = q.v21 || (q.v21 = {});
             var was = qv.base; qv.central = clone(v.central); qv.base = px; q.w2 = px;
             if (qv.baseApproved === false) qv.baseApproved = true; else if (qv.saved && was != null && was !== px) qv.baseChanged = true;
@@ -507,9 +513,9 @@
     function addProduct(role, body) {
       var name = String(body.name || '').trim(); if (!name) return err(400, 'ต้องมีชื่อสินค้า');
       var grp = body.grp || 'อื่นๆ', cost = num(body.cost) || 0, add = num(body.add_baht) == null ? 15 : num(body.add_baht);
-      var id = hashId('p', name + Date.now()), w2 = cost ? cost + add : 0, td = today();
+      var id = hashId('p', name + Date.now()), td = today(), tt = tiersOf({ add_baht: add }, cost), w2 = tt.w2;
       var marks = D.pricelist.comps.map(function (c) { return { id: c.id, label: c.label, tier: c.tier, price: 0, state: 'none' }; });
-      D.pricelist.rows.push({ id: id, name: name, grp: grp, retail: w2, w2: w2, s5: w2 ? w2 + CFG.k5 : 0, s10: w2 ? w2 + CFG.k10 : 0, saleFloor: w2 ? w2 - CFG.haggle_baht : 0, marks: clone(marks), pos: 'none', gap: null, cost: cost, margin: mg(w2, cost), costSrc: cost ? 'กรอกในหน้าเว็บ' : '', costSrcAt: cost ? td : '' });
+      D.pricelist.rows.push({ id: id, name: name, grp: grp, retail: tt.retail, w2: w2, s5: tt.s5, s10: tt.s10, saleFloor: w2 ? w2 - CFG.haggle_baht : 0, marks: clone(marks), pos: 'none', gap: null, cost: cost, margin: mg(w2, cost), costSrc: cost ? 'กรอกในหน้าเว็บ' : '', costSrcAt: cost ? td : '' });
       var g = D.pricelist.grps.filter(function (x) { return x.grp === grp; })[0]; if (g) g.n++; else D.pricelist.grps.push({ grp: grp, n: 1 });
       D.board.lines.push({ id: id, name: name, grp: grp, w2: w2, cost: cost, margin: mg(w2, cost), cheapest: 0, prev: 0, jump: 0, status: cost ? 'none' : 'nocost', vol: 0, okMarket: null, okMargin: cost ? mg(w2, cost) >= floorPct() : false, okMove: false });
       S.products.push({ id: id, name: name, spec: '', grp: grp, cost: cost, prev_cost: cost, add_baht: add, markup: 0, vol_week: 0, watch: 0, override: 0, active: 1, sort: 0, cost_src: '', cost_src_at: td, central_price: null, central_goal: null, central_at: null, central_by: null, central_exception: null, central_cost_at: null });
@@ -921,7 +927,7 @@
     function afterCosts() { rebuildGuard(); rebuildTotals(); rebuildCentralCount(); }
     var EXT = extend({ D: D, S: S, CFG: CFG, today: today, stamp: stamp, r1: r1, mg: mg, num: num, err: err, ok: ok, clone: clone, hashId: hashId, LVL: LVL, ROLE_NAME: ROLE_NAME,
       product: product, custOf: custOf, custByName: custByName, sheetFor: sheetFor, deskFor: deskFor, sendRow: sendRow, desks: desks, rebuildSheet: rebuildSheet, rebuildGuard: rebuildGuard, rebuildTotals: rebuildTotals,
-      setCost: setCost, afterCosts: afterCosts, competitorPrices: competitorPrices, quoteFor: quoteFor, quoteLink: quoteLink, quoteResponse: quoteResponse, priceRequest: priceRequest, audit: function () { return audit.apply(null, arguments); }, targetPct: targetPct, floorPct: floorPct,
+      setCost: setCost, afterCosts: afterCosts, tiersOf: tiersOf, competitorPrices: competitorPrices, quoteFor: quoteFor, quoteLink: quoteLink, quoteResponse: quoteResponse, priceRequest: priceRequest, audit: function () { return audit.apply(null, arguments); }, targetPct: targetPct, floorPct: floorPct,
       lineConfigured: function () { return !!opts.lineConfigured; } });
     /* audit เดิม (หน้า "ความจำ") → ลง log กลางด้วย รูปแบบเดียวกับงานของระบบ */
     var audit0 = audit;
