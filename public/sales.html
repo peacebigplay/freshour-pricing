@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/peach.css">
 </head><body>
 <script src="/peach.js"></script>
+<script src="/dash.js"></script>
 <style>
 /* ── Issues dashboard section (list view) ────────────────── */
 .id-kpi-row{display:flex;gap:8px;margin:8px 0 10px}
@@ -670,5 +671,6 @@ function createInvoice() {
         .then(function (x) { close(); PX.toast('บันทึก ' + esc(x.id) + ' แล้ว · ' + kgf(x.total_kg) + ' กก. · ฿' + money(x.net_sales)); return reloadSheet(); });
     }, onStale: function () { reloadSheet(); } });
 }
+Dash.mount('sales');   /* หน้าสรุปตามบทบาท (dash.js) — วางบนหน้าแรก วาดซ้ำเมื่อหน้าแม่วาดใหม่ */
 </script>
 </body></html>

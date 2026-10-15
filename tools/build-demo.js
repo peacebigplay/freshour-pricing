@@ -13,7 +13,8 @@ const PAGES = JSON.parse(rd('data/pages.json'));
 const idx = JSON.parse(rd('data/fixtures/index.json'));
 const DOCS = {}; for (const k of Object.keys(idx)) DOCS[k] = fs.readFileSync(path.join(ROOT, 'data/fixtures', idx[k])).toString('base64');
 const PAGE_SRC = {}; for (const p of PAGES) PAGE_SRC[p.id] = gz(rd('public/' + p.id + '.html'));
-const ASSETS = { '/peach.css': gz(rd('public/peach.css')), '/peach.js': gz(rd('public/peach.js')), '/catmargin.js': gz(rd('public/catmargin.js')) };
+const ASSETS = {}; ['peach.css', 'peach.js', 'catmargin.js', 'dash.js', 'costimport.js'].forEach(f => { ASSETS['/' + f] = gz(rd('public/' + f)); });
+const FEED = fs.readFileSync(path.join(ROOT, 'data/market-feed-sample.json'), 'utf8');
 const stamp = new Date(Date.now() + 7 * 3600e3);
 const TH = `${stamp.getUTCDate()} ${['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][stamp.getUTCMonth()]} ${stamp.getUTCFullYear() + 543}`;
 
@@ -48,6 +49,7 @@ body{display:flex;flex-direction:column;background:var(--soft);color:var(--ink);
 </div>
 <div class="stage"><div class="load" id="load">กำลังเตรียมข้อมูล…</div><iframe id="fr" title="หน้าเว็บ"></iframe></div>
 <div class="toast" id="toast"></div>
+<script>${rd('src/ext.js')}</script>
 <script>${rd('src/store.js')}</script>
 <script>${rd('src/quote-page.js')}</script>
 <script>
@@ -55,6 +57,7 @@ var PAGES=${JSON.stringify(PAGES)};
 var DOCS_B64=${JSON.stringify(DOCS)};
 var PAGE_SRC=${JSON.stringify(PAGE_SRC)};
 var ASSET_SRC=${JSON.stringify(ASSETS)};
+var FEED_B64=${JSON.stringify(gz(FEED))};
 (function(){
   var fr=document.getElementById('fr'),nav=document.getElementById('nav'),LS='fh-demo-journal',RS='fh-demo-role';
   var ROLE=sessionStorage.getItem(RS)||null,STORE=null,CUR=null,HIST=[],cache={};
@@ -83,11 +86,12 @@ var ASSET_SRC=${JSON.stringify(ASSETS)};
     CUR={id:id,search:search||''};
     [].forEach.call(nav.querySelectorAll('button'),function(b){b.setAttribute('aria-current',b.dataset.id===id?'page':'false');});
     document.getElementById('load').style.display='flex';
-    Promise.all([cached('p:'+id,PAGE_SRC[id]),cached('a:css',ASSET_SRC['/peach.css']),cached('a:js',ASSET_SRC['/peach.js']),cached('a:cm',ASSET_SRC['/catmargin.js'])]).then(function(v){
-      var h=v[0].replace(/<head([^>]*)>/i,function(m){return m+shim(page.id,search);})
-        .replace('<link rel="stylesheet" href="/peach.css">',function(){return '<style>'+v[1]+'</style>';})
-        .replace('<script src="/peach.js"><\\/script>',function(){return '<script>'+v[2]+'<\\/script>';})
-        .replace('<script src="/catmargin.js"><\\/script>',function(){return '<script>'+v[3]+'<\\/script>';});
+    var names=Object.keys(ASSET_SRC);
+    Promise.all([cached('p:'+id,PAGE_SRC[id])].concat(names.map(function(n){return cached('a:'+n,ASSET_SRC[n]);}))).then(function(v){
+      var h=v[0].replace(/<head([^>]*)>/i,function(m){return m+shim(page.id,search);});
+      names.forEach(function(n,i){var body=v[i+1];
+        if(/\\.css$/.test(n)) h=h.replace('<link rel="stylesheet" href="'+n+'">',function(){return '<style>'+body+'</style>';});
+        else h=h.replace('<script src="'+n+'"><\\/script>',function(){return '<script>'+body.replace(/<\\/script>/g,'<\\\\/script>')+'<\\/script>';});});
       show(h);
     });
   }
@@ -110,7 +114,7 @@ var ASSET_SRC=${JSON.stringify(ASSETS)};
     var q=d.fx,src=e.source,body={};
     try{body=q.body?JSON.parse(q.body):{};}catch(x){}
     var entry={method:q.method,url:q.url.replace(/^https?:\\/\\/[^/]+/,''),body:body,role:ROLE||'anon',origin:''};
-    var r=STORE.handle(entry);
+    var r=entry.url==='/api/market-feed-sample'?{status:200,body:window.__FEED||{rows:[]}}:STORE.handle(entry);
     if('session' in r){ROLE=r.session;if(ROLE)sessionStorage.setItem(RS,ROLE);else sessionStorage.removeItem(RS);who();}
     else if(q.method!=='GET'&&r.status<300)journal({method:entry.method,url:entry.url,body:body,role:entry.role,at:new Date().toISOString()});
     if(q.id)src.postMessage({fxr:{id:q.id,s:r.status,t:JSON.stringify(r.body)}},'*');
@@ -126,6 +130,9 @@ var ASSET_SRC=${JSON.stringify(ASSETS)};
   var keys=Object.keys(DOCS_B64),docs={};
   Promise.all(keys.map(function(k){return unzip(DOCS_B64[k]).then(function(t){docs[k]=JSON.parse(t);});})).then(function(){
     STORE=FHStore.createStore(docs,{});
+    /* งานที่ระบบทำเอง (เวอร์ชันในเบราว์เซอร์): ดึงราคาตลาดจาก feed ตัวอย่างตอนเปิด · ส่ง LINE แบบจำลองทุก 15 วิ */
+    unzip(FEED_B64).then(function(t){var rows=JSON.parse(t).rows;window.__FEED={rows:rows};STORE.handle({method:'POST',url:'/api/market-sync/run',body:{observations:rows},role:'system'});});
+    setInterval(function(){STORE.ext.drainOutbox(null).then(function(n){if(n)toast('ส่ง LINE (จำลอง) '+n+' ข้อความ');});},15000);
     var j=[];try{j=JSON.parse(localStorage.getItem(LS)||'[]');}catch(x){}
     j.forEach(function(e){try{STORE.handle(e);}catch(x){}});
     if(j.length)toast('โหลดสิ่งที่บันทึกไว้ในเครื่องนี้ '+j.length+' รายการ');

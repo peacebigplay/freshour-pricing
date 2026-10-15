@@ -1,0 +1,470 @@
+/* ══════════════════════════════════════════════════════════════════
+   Freshour · ส่วนต่อขยายจากคอมเมนต์ผู้ใช้ (15 ต.ค.) — ต่อจาก store.js เรียงตาม flow งาน
+   1 ทุนเข้า      อ่านไฟล์ทุน AL อัตโนมัติ + ด่านตรวจตัวเลขแปลก (ทุน 3 บาท / กระโดด / สูงกว่าราคาขาย)
+   2 เทียบตลาด    connector ดึงราคาเองทุกวัน · จับคู่ SKU เพิ่มเรื่อยๆ · อ่านแนวโน้ม · คะแนนว่าเตือนถูกกี่ครั้ง
+   3 ส่งราคา      ราคาไปถึงลูกค้าเองทาง LINE (outbox) · กระดานสถานะใบราคาทุกเจ้า
+   4 ต่อรองจนจบ   ตามเจ้าที่เงียบ · บันทึกผลปิดดีล (ตกลงที่ราคาเท่าไหร่ / เสียไปเพราะอะไร)
+   5 Log          ทุกเหตุการณ์รูปแบบเดียว ทั้งคนและระบบ · health + alert ถ้าระบบล้มต้องมีคนรู้
+   6 Dashboard    สรุปแยกตามคน: พี่หมิง ปิดได้กี่เจ้า margin จริง · พี่จุ๋ม ติดตรงไหน ข้อมูลไหนเก่า · เซลล์ แต่ละเจ้าอยู่ขั้นไหน (ไม่เห็นทุน)
+   ══════════════════════════════════════════════════════════════════ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.FHExt = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+  return function extend(X) {
+    var D = X.D, S = X.S, CFG = X.CFG, today = X.today, stamp = X.stamp, r1 = X.r1, mg = X.mg, num = X.num, err = X.err, ok = X.ok, clone = X.clone;
+    var product = X.product, custOf = X.custOf, sheetFor = X.sheetFor, sendRow = X.sendRow, rebuildSheet = X.rebuildSheet, LVL = X.LVL;
+    var FOLLOW_DAYS = 2, STALE_COST_DAYS = 7, STALE_MARKET_DAYS = CFG.market_ttl_days || 30;
+
+    /* ── ตารางใหม่ (อยู่ใน D เพื่อให้ journal/เดโมเล่นซ้ำได้เหมือนเดิม) ── */
+    D.events = D.events || []; D.alerts = D.alerts || []; D.outbox = D.outbox || []; D.market_obs = D.market_obs || [];
+    D.predictions = D.predictions || []; D.cost_imports = D.cost_imports || []; D.cost_flags = D.cost_flags || []; D.followups = D.followups || []; D.deals = D.deals || [];
+    D.jobs = D.jobs || { 'market-sync': { label: 'ดึงราคาตลาด (ทุกวัน)', every_h: 24, last_run: null, status: 'never', detail: '', runs: 0 },
+      'line-outbox': { label: 'ส่ง LINE', every_h: 0, last_run: null, status: 'never', detail: '', runs: 0 },
+      'cost-import': { label: 'อ่านไฟล์ทุน AL', every_h: 0, last_run: null, status: 'never', detail: '', runs: 0 } };
+    var seq = { ev: 0, al: 0, ob: 0, pr: 0, ci: 0, cf: 0, fu: 0, dl: 0, ob2: 0 };
+    var nextId = function (k) { return ++seq[k]; };
+
+    /* ════════ 5 · LOG รูปแบบเดียวทั้งคนและระบบ ════════ */
+    function logEvent(e) {
+      var ev = { id: nextId('ev'), at: stamp(), actor: e.actor || 'system', kind: e.kind || (e.actor && e.actor !== 'system' ? 'human' : 'system'),
+        action: e.action, entity: e.entity || '', entity_id: e.entity_id == null ? '' : String(e.entity_id), detail: e.detail || '', status: e.status || 'ok', step: e.step || stepOf(e.action) };
+      D.events.unshift(ev); if (D.events.length > 3000) D.events.length = 3000;
+      return ev;
+    }
+    /* ขั้นของ flow ที่เหตุการณ์นี้อยู่ — ใช้ร้อยเรื่องราวจากทุน → ส่งลูกค้า → ปิดดีล */
+    function stepOf(a) {
+      a = String(a || '');
+      if (/cost|product|import\/costs|cost-flag/.test(a)) return 'ทุนเข้า';
+      if (/market|competitor|trend/.test(a)) return 'เทียบตลาด';
+      if (/save-price-sheet|handoff|central|category|config|customer-adjust|contract/.test(a)) return 'ตั้งราคา';
+      if (/quote|line|sent|link/.test(a)) return 'ส่งราคา';
+      if (/price-request|price-decide|followup|deal|response|nego/.test(a)) return 'ต่อรอง';
+      if (/invoice|payment|dispatch/.test(a)) return 'ปิดรอบ';
+      if (/service|deliver|prospect/.test(a)) return 'บริการ';
+      return 'ระบบ';
+    }
+    function alert(level, title, detail, source) {
+      var same = D.alerts.filter(function (a) { return !a.acked && a.title === title; })[0];
+      if (same) { same.count = (same.count || 1) + 1; same.last_at = stamp(); same.detail = detail; return same; }
+      var a = { id: nextId('al'), at: stamp(), last_at: stamp(), level: level, title: title, detail: detail || '', source: source || 'system', acked: false, count: 1, notified: false };
+      D.alerts.unshift(a); logEvent({ actor: 'system', action: 'alert', entity: 'alert', entity_id: a.id, detail: title, status: level === 'bad' ? 'fail' : 'warn' });
+      return a;
+    }
+    function jobStart(k) { var j = D.jobs[k]; j.status = 'running'; j.started = stamp(); return j; }
+    function jobDone(k, detail) { var j = D.jobs[k]; j.status = 'ok'; j.last_run = stamp(); j.detail = detail || ''; j.runs++; j.error = null; logEvent({ actor: 'system', action: k, entity: 'job', entity_id: k, detail: detail }); }
+    function jobFail(k, e) { var j = D.jobs[k]; j.status = 'fail'; j.last_run = stamp(); j.error = String(e && e.message || e); j.runs++; logEvent({ actor: 'system', action: k, entity: 'job', entity_id: k, detail: j.error, status: 'fail' }); alert('bad', 'งานระบบล้ม: ' + j.label, j.error, k); }
+    function ageDays(iso) { return iso ? Math.floor((Date.parse(today()) - Date.parse(String(iso).slice(0, 10))) / 864e5) : null; }
+    function health() {
+      var jobs = Object.keys(D.jobs).map(function (k) { var j = D.jobs[k], age = j.last_run ? (Date.now() - Date.parse(j.last_run + '+07:00')) / 36e5 : null;
+        var stale = j.every_h && (age == null || age > j.every_h * 1.5);
+        return Object.assign({ key: k, stale: !!stale, age_h: age == null ? null : r1(age) }, j); });
+      var bad = jobs.filter(function (j) { return j.status === 'fail' || j.stale; });
+      var ob = { queued: D.outbox.filter(function (o) { return o.status === 'queued'; }).length, failed: D.outbox.filter(function (o) { return o.status === 'failed'; }).length, sent: D.outbox.filter(function (o) { return o.status === 'sent' || o.status === 'simulated'; }).length };
+      var open = D.alerts.filter(function (a) { return !a.acked; });
+      return { ok: !bad.length && !open.some(function (a) { return a.level === 'bad'; }), today: today(), jobs: jobs, outbox: ob, alerts: open, events: D.events.length, line: X.lineConfigured ? X.lineConfigured() : false };
+    }
+
+    /* ════════ 1 · ทุนเข้า: อ่านไฟล์ AL + ด่านตรวจตัวเลขแปลก ════════ */
+    function norm(s) { return String(s || '').toLowerCase().replace(/\(.*?\)/g, ' ').replace(/[%\-_/.,()]/g, ' ').replace(/\s+/g, ' ').replace(/หมู/g, '').trim(); }
+    function tokens(s) { return norm(s).split(' ').filter(Boolean); }
+    /* จับคู่ชื่อจากไฟล์กับ SKU: ตรงเป๊ะ → ตรงหลังล้างชื่อ → คำซ้อนกันมากสุด (ต้อง ≥ 60%) */
+    function bigrams(s) { var t = norm(s).replace(/\s+/g, ''), out = {}; for (var i = 0; i < t.length - 1; i++) out[t.slice(i, i + 2)] = (out[t.slice(i, i + 2)] || 0) + 1; return out; }
+    function dice(a, b) { var A = bigrams(a), B = bigrams(b), n = 0, na = 0, nb = 0, k; for (k in A) { na += A[k]; if (B[k]) n += Math.min(A[k], B[k]); } for (k in B) nb += B[k]; return na + nb ? 2 * n / (na + nb) : 0; }
+    /* จับคู่ชื่อจากไฟล์/ตลาดกับ SKU: ตรงเป๊ะ → ตรงหลังล้างชื่อ → ความคล้ายตัวอักษรคู่ (ภาษาไทยไม่มีช่องว่าง) ต้อง ≥ 0.6 และไม่กำกวม */
+    var MATCH_CACHE = {};
+    function matchProduct(name, grpHint) {
+      var rows = D.pricelist.rows, nm = String(name || '').trim(); if (!nm) return null;
+      var ck = nm + '|' + (grpHint || '') + '|' + rows.length; if (ck in MATCH_CACHE) return MATCH_CACHE[ck];
+      return (MATCH_CACHE[ck] = matchProduct0(rows, nm, grpHint));
+    }
+    function matchProduct0(rows, nm, grpHint) {
+      var exact = rows.filter(function (r) { return r.name === nm; }); if (exact.length === 1) return { p: exact[0], how: 'exact', score: 1 };
+      var n1 = norm(nm), eq = rows.filter(function (r) { return norm(r.name) === n1; }); if (eq.length === 1) return { p: eq[0], how: 'normalized', score: 0.95 };
+      var tk = tokens(nm); if (!tk.length) return null;
+      var scored = rows.map(function (r) {
+        var rt = tokens(r.name), hit = tk.filter(function (t) { return rt.some(function (x) { return x === t || (t.length > 2 && (x.indexOf(t) >= 0 || t.indexOf(x) >= 0)); }); }).length;
+        var tok = hit / Math.max(tk.length, rt.length), dc = dice(nm, r.name), rn = norm(r.name).replace(/\s+/g, ''), qn = n1.replace(/\s+/g, '');
+        var contain = rn && qn && (rn.indexOf(qn) === 0 || qn.indexOf(rn) === 0) ? 0.1 : 0;
+        return { p: r, score: Math.max(tok, dc) + contain + (grpHint && r.grp === grpHint ? 0.05 : 0) };
+      }).sort(function (a, b) { return b.score - a.score; });
+      var best = scored[0], second = scored[1];
+      if (!best || best.score < 0.6) return null;
+      if (second && best.score < 0.95 && best.score - second.score < 0.03 && second.p.name !== best.p.name) return null;   /* กำกวม — ให้คนเลือก ไม่เดา */
+      return { p: best.p, how: 'fuzzy', score: Math.round(Math.min(best.score, 1) * 100) / 100 };
+    }
+    function groupMedianCost(grp) { var v = D.pricelist.rows.filter(function (r) { return r.grp === grp && r.cost > 0; }).map(function (r) { return r.cost; }).sort(function (a, b) { return a - b; }); return v.length ? v[Math.floor(v.length / 2)] : null; }
+    /* กฎตรวจทุน — คืนรายการเหตุผล (ว่าง = ปกติ) */
+    function costChecks(p, cost) {
+      var out = [];
+      if (!(cost > 0)) out.push({ code: 'zero', text: 'ทุนเป็น 0 หรือว่าง' });
+      else {
+        if (cost <= 10) out.push({ code: 'tiny', text: 'ทุน ' + cost + ' ฿/กก. ต่ำผิดปกติ — ลืมหน่วย/ทศนิยม?' });
+        if (p.cost > 0) { var d = cost - p.cost, pct = Math.round(d / p.cost * 100); if (Math.abs(pct) >= 30 || Math.abs(d) >= 40) out.push({ code: 'jump', text: 'กระโดดจาก ' + p.cost + ' → ' + cost + ' (' + (pct > 0 ? '+' : '') + pct + '%)' }); }
+        if (p.w2 > 0 && cost >= p.w2) out.push({ code: 'above-price', text: 'ทุนสูงกว่าราคาขาย ' + p.w2 + ' ฿ — ขายแล้วขาดทุนทันที' });
+        var med = groupMedianCost(p.grp); if (med && cost < med * 0.4 && cost > 10) out.push({ code: 'group-low', text: 'ต่ำกว่าครึ่งของทุนกลางหมวด ' + p.grp + ' (' + med + ' ฿)' });
+      }
+      return out;
+    }
+    function importCosts(role, body) {
+      var rows = Array.isArray(body.rows) ? body.rows : [], commit = !!body.commit, source = body.source || 'ไฟล์ทุน AL';
+      if (!rows.length) return err(400, 'ไม่มีแถวในไฟล์');
+      var seen = {}, out = [], problems = [], flagged = [], okRows = [];
+      rows.forEach(function (r, i) {
+        var name = String(r.product || r.name || '').trim(), cost = num(String(r.cost == null ? '' : r.cost).replace(/[,฿\s]/g, ''));
+        if (!name) return problems.push({ row: i + 1, reason: 'ไม่มีชื่อสินค้า' });
+        var m = matchProduct(name, r.grp);
+        if (!m) return problems.push({ row: i + 1, name: name, reason: 'จับคู่กับสินค้าในระบบไม่ได้ — เพิ่มสินค้าก่อน หรือแก้ชื่อในไฟล์' });
+        if (seen[m.p.id]) return problems.push({ row: i + 1, name: name, reason: 'ซ้ำกับแถว ' + seen[m.p.id] + ' (' + m.p.name + ')' });
+        seen[m.p.id] = i + 1;
+        var checks = costChecks(m.p, cost);
+        var item = { row: i + 1, product_id: m.p.id, name: m.p.name, raw: name, how: m.how, score: m.score, prev: m.p.cost, cost: cost, checks: checks, changed: cost !== m.p.cost };
+        out.push(item); if (checks.length) flagged.push(item); else okRows.push(item);
+      });
+      var res = { ok: okRows.length, changed: okRows.filter(function (x) { return x.changed; }).length, flagged: flagged.length, problems: problems, problemCount: problems.length, rows: out, flags: flagged, fuzzy: out.filter(function (x) { return x.how === 'fuzzy'; }).length };
+      if (commit) {
+        jobStart('cost-import');
+        try {
+          var applied = 0;
+          okRows.forEach(function (x) { if (x.changed && X.setCost(x.product_id, x.cost, source, role)) applied++; });
+          flagged.forEach(function (x) { D.cost_flags.unshift({ id: nextId('cf'), at: stamp(), import_id: seq.ci + 1, product_id: x.product_id, name: x.name, raw: x.raw, prev: x.prev, cost: x.cost, reasons: x.checks.map(function (c) { return c.text; }), status: 'pending' }); });
+          X.afterCosts();
+          var imp = { id: nextId('ci'), at: stamp(), by: role, source: source, rows: rows.length, matched: out.length, applied: applied, flagged: flagged.length, problems: problems.length };
+          D.cost_imports.unshift(imp); res.import_id = imp.id; res.applied = applied;
+          jobDone('cost-import', 'นำเข้า ' + applied + ' รายการ · รอตรวจ ' + flagged.length + ' · จับคู่ไม่ได้ ' + problems.length);
+          if (flagged.length) alert('warn', 'ทุนแปลก ' + flagged.length + ' รายการรอพี่จุ๋มตรวจ', flagged.slice(0, 3).map(function (x) { return x.name + ' ' + x.cost + ' ฿'; }).join(' · '), 'cost-import');
+          X.audit(role, 'import-costs', applied + ' รายการ (' + source + ')');
+        } catch (e) { jobFail('cost-import', e); return err(500, 'นำเข้าไม่สำเร็จ — ' + e.message); }
+      }
+      return ok(res);
+    }
+    function decideFlag(role, body) {
+      var f = D.cost_flags.filter(function (x) { return x.id === Number(body.id); })[0]; if (!f) return err(404, 'ไม่พบรายการ');
+      if (f.status !== 'pending') return err(400, 'ตัดสินไปแล้ว');
+      var cost = body.cost != null && body.cost !== '' ? num(body.cost) : f.cost;
+      if (body.approve) { if (!(cost > 0)) return err(400, 'ทุนต้องมากกว่า 0'); X.setCost(f.product_id, cost, 'ไฟล์ทุน AL (ตรวจแล้ว)', role); X.afterCosts(); f.status = 'approved'; f.final = cost; }
+      else f.status = 'rejected';
+      f.decided_by = role; f.decided_at = stamp(); f.note = body.note || '';
+      X.audit(role, 'cost-flag', f.name + ' → ' + (body.approve ? 'ใช้ ' + cost : 'ไม่ใช้'));
+      return ok({ ok: true, status: f.status });
+    }
+
+    /* ════════ 2 · เทียบตลาด: connector รายวัน · จับคู่ SKU · แนวโน้ม · คะแนนเตือน ════════ */
+    function compOf(id) { return D.pricelist.comps.filter(function (c) { return c.id === id; })[0]; }
+    function obsByProduct(pid, cid) { return D.market_obs.filter(function (o) { return o.product_id === pid && (!cid || o.competitor_id === cid); }).sort(function (a, b) { return a.observed_at < b.observed_at ? -1 : 1; }); }
+    /* รับผลจาก connector (array ของการเห็นราคา) — จับคู่ · เก็บ · อัปเดตราคาคู่แข่งล่าสุด · คิดแนวโน้ม+คำทำนาย */
+    function marketSync(role, body) {
+      var obs = Array.isArray(body.observations) ? body.observations : [];
+      if (!obs.length) return err(400, 'connector ไม่ส่งข้อมูลมา (observations ว่าง)');
+      jobStart('market-sync');
+      try {
+        var dates = obs.map(function (o) { return String(o.observed_at || today()).slice(0, 10); }).sort(), first = dates[0], lastD = dates[dates.length - 1];
+        var span = (Date.parse(lastD) - Date.parse(first)) / 864e5, total = { added: 0, matched: {}, unmatched: {} }, tr;
+        /* ครั้งแรกที่ได้ประวัติย้อนหลังยาว: เล่นทีละสัปดาห์เหมือนที่ระบบรายวันจะสะสมมา — คำทำนายเก่าจึงมีของจริงให้ตรวจ (ประเมินย้อนหลัง) */
+        if (!D.market_obs.length && span > 10) {
+          var cut = new Date(first + 'T00:00:00Z');
+          while (true) { cut.setUTCDate(cut.getUTCDate() + 7); var c = cut.toISOString().slice(0, 10); if (c >= lastD) c = lastD;
+            ingest(obs.filter(function (o) { return String(o.observed_at || today()).slice(0, 10) <= c; }), c, total); tr = computeTrend(true, c); if (c === lastD) break; }
+        } else { ingest(obs, lastD > today() ? today() : lastD, total); tr = computeTrend(true, lastD > today() ? today() : lastD); }
+        var um = Object.keys(total.unmatched);
+        var detail = 'เห็นราคาใหม่ ' + total.added + ' · SKU ที่มีราคา ' + tr.coverage.known + '/' + tr.coverage.total + (um.length ? ' · จับคู่ไม่ได้ ' + um.length : '');
+        jobDone('market-sync', detail);
+        if (um.length) alert('warn', 'ราคาตลาด ' + um.length + ' รายการจับคู่ SKU ไม่ได้', um.slice(0, 5).join(' · '), 'market-sync');
+        return ok({ ok: true, added: total.added, matched: Object.keys(total.matched).length, unmatched: um, coverage: tr.coverage, warnings: tr.warnings.length, score: tr.score.pct });
+      } catch (e) { jobFail('market-sync', e); return err(500, 'ดึงราคาตลาดไม่สำเร็จ — ' + e.message); }
+    }
+    /* เก็บการเห็นราคา (ข้ามที่เคยเก็บแล้ว) และดันราคาล่าสุดต่อคู่แข่งไปตารางราคาตลาดที่ทุกหน้าใช้ */
+    function ingest(obs, asOf, total) {
+      var latest = {}, keys = {}; D.market_obs.forEach(function (x) { keys[x.key] = 1; });
+      obs.forEach(function (o) {
+        var cid = o.competitor || o.competitor_id, price = num(String(o.price).replace(/,/g, '')), at = String(o.observed_at || asOf).slice(0, 10);
+        if (!compOf(cid) || !(price > 0)) return;
+        var m = matchProduct(o.sku || o.name); if (!m) { total.unmatched[o.sku || o.name] = 1; return; }
+        var key = cid + '|' + m.p.id + '|' + at; if (keys[key]) return; keys[key] = 1;
+        D.market_obs.push({ id: nextId('ob'), key: key, competitor_id: cid, product_id: m.p.id, sku: o.sku || o.name, how: m.how, price: price, unit: o.unit || 'บาท/กก.', observed_at: at, source_url: o.source_url || (compOf(cid).source || ''), ingested_at: stamp() });
+        total.added++; total.matched[m.p.id] = 1;
+        var lk = cid + '|' + m.p.id; if (!latest[lk] || latest[lk].at < at) latest[lk] = { pid: m.p.id, cid: cid, price: price, at: at };
+      });
+      if (D.market_obs.length > 20000) D.market_obs.splice(0, D.market_obs.length - 20000);
+      var items = Object.keys(latest).map(function (k) { return { product_id: latest[k].pid, competitor_id: latest[k].cid, price: latest[k].price, seen: latest[k].at }; });
+      if (!items.length) return;
+      X.competitorPrices('system', { items: items });
+      items.forEach(function (it) { var age = ageDays(it.seen); var fix = function (marks) { (marks || []).forEach(function (m) { if (m.id === it.competitor_id) { m.age = age; m.seen = it.seen; m.state = age > STALE_MARKET_DAYS ? 'expired' : 'fresh'; } }); };
+        var P = product(it.product_id); if (P) fix(P.marks); X.desks().forEach(function (d) { d.rows.forEach(function (r) { if (r.id === it.product_id) fix(r.marks); }); }); });
+    }
+    function priceAt(list, date) { var v = null; for (var i = 0; i < list.length; i++) { if (list[i].observed_at <= date) v = list[i].price; else break; } return v; }
+    function pct(a, b) { return a && b ? r1((b - a) / a * 100) : null; }
+    /* แนวโน้มรายหมวด + คำเตือน + คำทำนาย 7 วันข้างหน้า (บันทึกไว้ให้ตรวจย้อนหลังได้ว่าถูกกี่ครั้ง) */
+    function computeTrend(persist, asOf) {
+      var td = asOf || today(), days = function (n) { var d = new Date(td + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
+      var d7 = days(7), d30 = days(30), byG = {}, prods = {}, known = 0;
+      D.market_obs.forEach(function (o) { (prods[o.product_id] = prods[o.product_id] || {})[o.competitor_id] = 1; });
+      Object.keys(prods).forEach(function (pid) {
+        var P = product(pid); if (!P) return; known++;
+        Object.keys(prods[pid]).forEach(function (cid) {
+          var list = obsByProduct(pid, cid); if (list.length < 2) return;
+          var last = list[list.length - 1], p7 = priceAt(list, d7), p30 = priceAt(list, d30) || list[0].price;
+          if ((Date.parse(td) - Date.parse(last.observed_at)) / 864e5 > 10) return;
+          var g = byG[P.grp] = byG[P.grp] || { grp: P.grp, c7: [], c30: [], n: 0, over: 0, under: 0, gapSum: 0, gapN: 0, items: [] };
+          g.n++; var c7 = pct(p7, last.price), c30 = pct(p30, last.price);
+          if (c7 != null) g.c7.push(c7); if (c30 != null) g.c30.push(c30);
+          var comp = compOf(cid); if (comp && comp.tier === 'w') { if (P.w2 > last.price) g.over++; else g.under++; g.gapSum += P.w2 - last.price; g.gapN++; }
+          g.items.push({ id: pid, name: P.name, comp: comp ? comp.label : cid, tier: comp ? comp.tier : '', price: last.price, seen: last.observed_at, c7: c7, c30: c30, our: P.w2, gap: P.w2 - last.price });
+        });
+      });
+      var med = function (a) { if (!a.length) return null; var s = a.slice().sort(function (x, y) { return x - y; }); return s[Math.floor(s.length / 2)]; };
+      var dir = function (c, th) { th = th || 1; return c == null ? 'unknown' : c > th ? 'up' : c < -th ? 'down' : 'flat'; };
+      var groups = Object.keys(byG).map(function (k) { var g = byG[k], c7 = med(g.c7), c30 = med(g.c30);
+        return { grp: g.grp, n: g.n, change7: c7, change30: c30, direction: dir(c30 != null ? c30 : c7, 2), momentum: dir(c7, 1.5), over: g.over, under: g.under, gapAvg: g.gapN ? r1(g.gapSum / g.gapN) : null, items: g.items.sort(function (a, b) { return (b.c30 || 0) - (a.c30 || 0); }) }; })
+        .sort(function (a, b) { return Math.abs(b.change30 || 0) - Math.abs(a.change30 || 0); });
+      /* ทุนเราขยับทางไหน (เทียบ prev_cost) — เอาไว้จับ margin บีบ */
+      var costMove = {}; S.products.forEach(function (p) { if (p.cost > 0 && p.prev_cost > 0) { var g = costMove[p.grp] = costMove[p.grp] || []; g.push(pct(p.prev_cost, p.cost)); } });
+      var warnings = [];
+      groups.forEach(function (g) {
+        var cm = med(costMove[g.grp] || []);
+        if (g.change30 != null && g.change30 >= 4) warnings.push({ level: 'good', grp: g.grp, text: 'ตลาด' + g.grp + ' ขึ้น ' + g.change30 + '% ใน 30 วัน' + (g.gapAvg != null && g.gapAvg < 0 ? ' — เราถูกกว่าราคาส่งคู่แข่งเฉลี่ย ' + (-g.gapAvg) + ' ฿ มีช่องขยับราคากลางขึ้น' : ' — ตรวจราคากลางหมวดนี้ก่อนประกาศ') });
+        if (g.change30 != null && g.change30 <= -4) warnings.push({ level: 'bad', grp: g.grp, text: 'ระวัง: ตลาด' + g.grp + ' ลง ' + (-g.change30) + '% ใน 30 วัน' + (g.over ? ' — เราแพงกว่าคู่แข่ง ' + g.over + ' รายการ เสี่ยงโดนต่อรอง/เสียลูกค้า' : '') });
+        if (cm != null && cm > 3 && (g.change30 == null || g.change30 < cm - 3)) warnings.push({ level: 'warn', grp: g.grp, text: 'margin ' + g.grp + ' กำลังบีบ: ทุนเราขึ้น ' + cm + '% แต่ตลาดขยับ ' + (g.change30 == null ? 'ไม่รู้' : g.change30 + '%') + ' — ขึ้นราคาตามทุนไม่ได้เต็มที่' });
+        if (g.momentum !== g.direction && g.momentum !== 'unknown' && g.direction !== 'unknown' && g.momentum !== 'flat') warnings.push({ level: 'warn', grp: g.grp, text: g.grp + ' 7 วันล่าสุดกลับทิศ (' + (g.momentum === 'up' ? 'ขึ้น' : 'ลง') + ' ' + Math.abs(g.change7) + '%) ต่างจากแนวโน้ม 30 วัน — รอดูอีก 1 รอบก่อนปรับราคากลาง' });
+      });
+      var sources = D.pricelist.comps.map(function (c) { var l = D.market_obs.filter(function (o) { return o.competitor_id === c.id; }); var lastSeen = l.reduce(function (a, o) { return o.observed_at > a ? o.observed_at : a; }, ''); var age = ageDays(lastSeen);
+        if (l.length && age > 3) warnings.push({ level: 'bad', grp: '', text: 'connector ' + c.label + ' ไม่ส่งราคามา ' + age + ' วันแล้ว — ตรวจการเชื่อมต่อ' });
+        return { id: c.id, label: c.label, tier: c.tier, count: l.length, skus: Object.keys(l.reduce(function (m, o) { m[o.product_id] = 1; return m; }, {})).length, lastSeen: lastSeen || null, age: age, source: c.source || '' }; });
+      /* คำทำนาย: หมวดที่มีโมเมนตัมชัด ทำนายทิศ 7 วันข้างหน้า · ครบกำหนดแล้วตรวจกับของจริง */
+      if (persist) {
+        groups.forEach(function (g) {
+          if (g.momentum === 'unknown' || g.momentum === 'flat') return;
+          var open = D.predictions.filter(function (p) { return p.grp === g.grp && !p.resolved; })[0]; if (open) return;
+          var list = []; g.items.forEach(function (it) { list.push(it.id + '|' + it.comp); });
+          D.predictions.unshift({ id: nextId('pr'), made_at: td, due_at: days(-7), grp: g.grp, predicted: g.momentum, basis: '7 วัน ' + (g.change7 > 0 ? '+' : '') + g.change7 + '% · 30 วัน ' + (g.change30 == null ? '—' : (g.change30 > 0 ? '+' : '') + g.change30 + '%'), ref: g.items.map(function (it) { return { id: it.id, comp: it.comp, price: it.price }; }), resolved: false, hit: null, actual: null });
+        });
+        D.predictions.forEach(function (p) {
+          if (p.resolved || p.due_at > td) return;
+          var ch = []; p.ref.forEach(function (r) { var comp = D.pricelist.comps.filter(function (c) { return c.label === r.comp; })[0]; var list = obsByProduct(r.id, comp && comp.id); var now = priceAt(list, td); if (now && list.length && list[list.length - 1].observed_at >= p.due_at) ch.push(pct(r.price, now)); });
+          if (!ch.length) { if ((Date.parse(td) - Date.parse(p.due_at)) / 864e5 > 7) { p.resolved = true; p.hit = null; p.actual = null; p.note = 'ไม่มีข้อมูลตรวจ'; } return; }
+          var a = med(ch); p.resolved = true; p.actual = a; p.actual_dir = dir(a); p.hit = p.actual_dir === p.predicted; p.resolved_at = td;
+          logEvent({ actor: 'system', action: 'trend-verify', entity: 'prediction', entity_id: p.id, detail: p.grp + ' ทำนาย ' + p.predicted + ' จริง ' + p.actual_dir + ' (' + a + '%)', status: p.hit ? 'ok' : 'warn' });
+        });
+      }
+      var res = D.predictions.filter(function (p) { return p.resolved && p.hit != null; }), hits = res.filter(function (p) { return p.hit; }).length;
+      var total = D.pricelist.rows.length;
+      return { asOf: td, groups: groups, warnings: warnings, sources: sources, coverage: { known: known, total: total, pct: Math.round(known / total * 100), observations: D.market_obs.length },
+        score: { total: D.predictions.length, open: D.predictions.filter(function (p) { return !p.resolved; }).length, resolved: res.length, hits: hits, pct: res.length ? Math.round(hits / res.length * 100) : null, list: D.predictions.slice(0, 30) },
+        costMove: Object.keys(costMove).map(function (g) { return { grp: g, change: med(costMove[g]) }; }), job: D.jobs['market-sync'] };
+    }
+    function marketTrend() { return ok(computeTrend(false)); }
+    function marketObservations(q) {
+      var list = D.market_obs.slice();
+      if (q.sku || q.product_id) { var m = q.product_id ? { p: product(q.product_id) } : matchProduct(q.sku); if (!m || !m.p) return ok({ rows: [], product: null }); list = list.filter(function (o) { return o.product_id === m.p.id; }); return ok({ product: { id: m.p.id, name: m.p.name }, rows: list.sort(function (a, b) { return a.observed_at < b.observed_at ? 1 : -1; }) }); }
+      return ok({ rows: list.sort(function (a, b) { return a.observed_at < b.observed_at ? 1 : -1; }).slice(0, Number(q.limit) || 200), total: list.length });
+    }
+
+    /* ════════ 3 · ส่งราคาให้ลูกค้าทาง LINE + สถานะใบ ════════ */
+    function lineIdOf(cid) { var c = S.customers.filter(function (x) { return x.id === cid; })[0]; return c && c.line_user_id || ''; }
+    function updateCustomer(role, cid, body) {
+      var c = S.customers.filter(function (x) { return x.id === cid; })[0]; if (!c) return err(404, 'ไม่พบลูกค้า');
+      ['line_user_id', 'contact', 'owner', 'note'].forEach(function (k) { if (body[k] != null) c[k] = String(body[k]).trim(); });
+      X.audit(role, 'customer-update', c.name + (body.line_user_id != null ? ' · ผูก LINE' : ''));
+      return ok({ ok: true, line_user_id: c.line_user_id || '' });
+    }
+    function enqueue(role, cid, kind, text, meta) {
+      var c = custOf(cid), to = lineIdOf(cid);
+      var o = Object.assign({ id: nextId('ob2'), at: stamp(), by: role, customer_id: cid, customer: c ? c.name : cid, to: to, kind: kind, text: text, status: to ? 'queued' : 'failed', error: to ? null : 'ยังไม่ได้ผูก LINE ของลูกค้า', attempts: 0, sent_at: null }, meta || {});
+      D.outbox.unshift(o); if (D.outbox.length > 2000) D.outbox.length = 2000;
+      logEvent({ actor: role, action: 'line-queue', entity: 'customer', entity_id: cid, detail: kind + (to ? '' : ' · ไม่มี LINE'), status: to ? 'ok' : 'fail' });
+      return o;
+    }
+    function lineSend(role, body) {
+      var cid = body.customer_id, sh = sheetFor(cid); if (!sh) return err(404, 'ไม่พบลูกค้า');
+      var kind = body.kind || 'quote', text = body.text || '';
+      if (kind === 'quote') {
+        var q = X.quoteFor(cid, 'w2'); if (q.status !== 200) return q;
+        var link = sh.link ? sh.link.url : (X.quoteLink(role, { customer_id: cid }, body.origin || '').body || {}).url;
+        text = q.body.text + (link ? '\n\nยืนยัน/ขอต่อรองทีละรายการได้ที่ ' + link : '');
+      }
+      if (kind === 'nudge' && !text) text = nudgeText(sh);
+      if (!lineIdOf(cid)) return err(400, 'ยังไม่ได้ผูก LINE ของ ' + sh.customer.name + ' — ใส่ LINE user id ที่กระดานส่งใบราคาก่อน', { needLine: true });
+      var o = enqueue(role, cid, kind, text, { label: sh.label });
+      if (kind === 'quote') { var c = sendRow(cid); if (c) { if (!c.sentAt) { c.sentAt = stamp(); c.sentBy = role; } c.channel = 'line'; } sh.sent = true; sh.sentAt = sh.sentAt || stamp(); sh.sentChannel = 'line'; rebuildSheet(sh); }
+      return ok({ ok: true, id: o.id, status: o.status, queued: D.outbox.filter(function (x) { return x.status === 'queued'; }).length });
+    }
+    function lineSendAll(role, body) {
+      var kind = body.kind || 'quote', done = [], skipped = [];
+      D.sends.customers.forEach(function (c) {
+        var sh = sheetFor(c.id); if (!sh || !c.handedAt) return;
+        if (kind === 'quote' && c.sentAt && c.channel === 'line') return skipped.push({ id: c.id, name: c.name, why: 'ส่ง LINE แล้ว' });
+        if (!lineIdOf(c.id)) return skipped.push({ id: c.id, name: c.name, why: 'ยังไม่ผูก LINE' });
+        var r = lineSend(role, { customer_id: c.id, kind: kind, origin: body.origin }); if (r.status === 200) done.push(c.name); else skipped.push({ id: c.id, name: c.name, why: r.body.error });
+      });
+      return ok({ ok: true, sent: done.length, done: done, skipped: skipped });
+    }
+    /* server เรียกเป็นระยะพร้อม transport (async) — ส่งจริงเมื่อมี LINE token · ไม่มี = บันทึกว่าจำลองส่ง เพื่อให้ flow เดินต่อได้ */
+    function drainOutbox(transport) {
+      var q = D.outbox.filter(function (o) { return o.status === 'queued'; }).slice(-10).reverse(); if (!q.length) return Promise.resolve(0);
+      jobStart('line-outbox');
+      return q.reduce(function (p, o) { return p.then(function () {
+        o.attempts++;
+        return Promise.resolve().then(function () { return transport ? transport(o.to, o.text, o) : { simulated: true }; })
+          .then(function (r) { o.status = r && r.simulated ? 'simulated' : 'sent'; o.sent_at = stamp(); o.error = null; logEvent({ actor: 'system', action: 'line-send', entity: 'customer', entity_id: o.customer_id, detail: o.kind + ' → ' + o.customer + (o.status === 'simulated' ? ' (จำลอง — ยังไม่ตั้ง LINE token)' : ''), status: 'ok' }); })
+          .catch(function (e) { o.error = String(e && e.message || e); if (o.attempts >= 3) { o.status = 'failed'; alert('bad', 'ส่ง LINE ไม่สำเร็จ: ' + o.customer, o.error, 'line-outbox'); } logEvent({ actor: 'system', action: 'line-send', entity: 'customer', entity_id: o.customer_id, detail: o.error, status: 'fail' }); });
+      }); }, Promise.resolve()).then(function () { var f = D.outbox.filter(function (o) { return o.status === 'failed'; }).length; jobDone('line-outbox', 'ส่ง ' + q.length + ' ข้อความ' + (f ? ' · ล้มเหลวสะสม ' + f : '')); return q.length; });
+    }
+    function retryOutbox(role, body) { var n = 0; D.outbox.forEach(function (o) { if (o.status === 'failed' && (!body.id || o.id === Number(body.id))) { if (!o.to) o.to = lineIdOf(o.customer_id); if (o.to) { o.status = 'queued'; o.attempts = 0; o.error = null; n++; } } }); return ok({ ok: true, requeued: n }); }
+    /* LINE webhook (ข้อความจากลูกค้า): "ยืนยัน/ตกลง/โอเค" = รับทั้งใบ · "ขอ <สินค้า> <ราคา>" = คำขอต่อรอง · อื่นๆ = บันทึกไว้ให้เซลล์อ่าน */
+    function lineWebhook(body) {
+      var evs = Array.isArray(body.events) ? body.events : [], handled = [];
+      evs.forEach(function (ev) {
+        var uid = ev.source && ev.source.userId, text = ev.message && ev.message.text || '';
+        var c = S.customers.filter(function (x) { return x.line_user_id && x.line_user_id === uid; })[0];
+        if (!c) { logEvent({ actor: 'customer', kind: 'customer', action: 'line-inbound', detail: 'ไม่รู้จัก LINE ' + uid + ': ' + text.slice(0, 80), status: 'warn' }); return handled.push({ uid: uid, result: 'unknown' }); }
+        var sh = sheetFor(c.id), res = 'noted';
+        if (/^(ยืนยัน|ตกลง|โอเค|ok|รับ)/i.test(text.trim()) && sh && sh.sent) { var r = X.quoteResponse('customer', { customer_id: c.id, kind: 'accept', all: true }); res = r.status === 200 ? 'accepted ' + r.body.n : r.body.error; }
+        else { var m = text.match(/ขอ\s*(.+?)\s*(\d+)\s*(บาท|฿)?/); if (m && sh) { var mp = matchProduct(m[1]); if (mp) { var rr = X.priceRequest('customer', { customer_id: c.id, product_id: mp.p.id, want: Number(m[2]), reason: 'ขอผ่าน LINE: ' + text.slice(0, 60) }); res = rr.status === 200 ? 'request ' + mp.p.name + ' ' + m[2] : rr.body.error; } } }
+        var sr = sendRow(c.id); if (sr && !sr.opened) sr.opened = stamp();
+        logEvent({ actor: 'customer', kind: 'customer', action: 'line-inbound', entity: 'customer', entity_id: c.id, detail: c.name + ': "' + text.slice(0, 80) + '" → ' + res });
+        handled.push({ customer: c.name, result: res });
+      });
+      return ok({ ok: true, handled: handled });
+    }
+
+    /* ── สถานะใบราคาของแต่ละเจ้า (ใช้ทั้งกระดานเซลล์ · dashboard · follow-up) ── */
+    var STAGES = [['draft', 'รอ Pricing'], ['ready', 'พร้อมส่ง'], ['sent', 'ส่งแล้ว รอตอบ'], ['waiting', 'ต่อรอง รอ Pricing'], ['partial', 'ตอบบางส่วน'], ['agreed', 'ตอบครบ'], ['won', 'ปิดดีลได้'], ['lost', 'เสียไป'], ['invoiced', 'ออก invoice แล้ว']];
+    var STAGE_LABEL = {}; STAGES.forEach(function (s) { STAGE_LABEL[s[0]] = s[1]; });
+    function stageOf(cid) {
+      var c = sendRow(cid), sh = sheetFor(cid), deal = D.deals.filter(function (d) { return d.customer_id === cid && d.label === D.sends.label; })[0];
+      if (!c || !sh) return { stage: 'draft' };
+      var st = !c.handedAt ? 'draft' : (sh.invoices || []).length ? 'invoiced' : deal ? deal.outcome : !c.sentAt ? 'ready' : c.waiting ? 'waiting'
+        : (c.accepted + c.declined) >= (c.offerLines || 1) && c.accepted ? 'agreed' : (c.accepted + c.declined) > 0 ? 'partial' : 'sent';
+      var lastFu = D.followups.filter(function (f) { return f.customer_id === cid; })[0];
+      var silentSince = c.sentAt && st === 'sent' ? (lastFu && lastFu.at > c.sentAt ? lastFu.at : c.sentAt) : null;
+      var silentDays = silentSince ? Math.floor((Date.now() - Date.parse(silentSince + '+07:00')) / 864e5) : 0;
+      var due = st === 'sent' && silentDays >= (lastFu && lastFu.next_in_days || FOLLOW_DAYS);
+      var ob = D.outbox.filter(function (o) { return o.customer_id === cid; })[0];
+      return { stage: st, label: STAGE_LABEL[st], silentDays: silentDays, followupDue: !!due, lastFollowup: lastFu || null, line: !!lineIdOf(cid), lineStatus: ob ? ob.status : null, channel: c.channel || (c.sentAt ? 'manual' : null), opened: c.opened || null, deal: deal || null };
+    }
+    function board(role) {
+      var rows = D.sends.customers.map(function (c) {
+        var s = stageOf(c.id), sh = sheetFor(c.id);
+        return { id: c.id, name: c.name, stage: s.stage, label: s.label, lines: c.lines, offerLines: c.offerLines, handedAt: c.handedAt, sentAt: c.sentAt, sentBy: c.sentBy, channel: s.channel, lineStatus: s.lineStatus, line: s.line, opened: s.opened,
+          accepted: c.accepted, declined: c.declined, waiting: c.waiting, revised: c.revised, invoiced: c.invoiced, silentDays: s.silentDays, followupDue: s.followupDue, lastFollowup: s.lastFollowup ? { at: s.lastFollowup.at, channel: s.lastFollowup.channel, note: s.lastFollowup.note } : null,
+          outcome: s.deal ? { outcome: s.deal.outcome, at: s.deal.at, reason: s.deal.reason, value: s.deal.value } : null, link: sh && sh.link ? sh.link.url : null };
+      });
+      var counts = {}; STAGES.forEach(function (s) { counts[s[0]] = 0; }); rows.forEach(function (r) { counts[r.stage]++; });
+      return ok({ label: D.sends.label, today: today(), stages: STAGES.map(function (s) { return { key: s[0], label: s[1], n: counts[s[0]] }; }), rows: rows, followupDue: rows.filter(function (r) { return r.followupDue; }).length, lineReady: rows.filter(function (r) { return r.stage === 'ready' && r.line; }).length, lineMissing: rows.filter(function (r) { return r.stage !== 'draft' && !r.line; }).length, followDays: FOLLOW_DAYS });
+    }
+
+    /* ════════ 4 · ต่อรองจนจบ: ตามเจ้าที่เงียบ · บันทึกผล ════════ */
+    function nudgeText(sh) { return 'สวัสดีครับ ' + sh.customer.name + ' ใบราคา Freshour รอบ ' + sh.label + ' ที่ส่งไป ยังไม่ได้รับคำตอบครับ ' + (sh.link ? 'ยืนยัน/ขอต่อรองได้ที่ ' + sh.link.url : 'ตอบกลับทางไลน์นี้ได้เลยครับ') + ' ขอบคุณครับ'; }
+    function followups(role) {
+      var b = board(role).body, due = b.rows.filter(function (r) { return r.followupDue; }).sort(function (a, c) { return c.silentDays - a.silentDays; });
+      return ok({ today: today(), afterDays: FOLLOW_DAYS, due: due, silent: b.rows.filter(function (r) { return r.stage === 'sent'; }).length, log: D.followups.slice(0, 50) });
+    }
+    function followup(role, body) {
+      var cid = body.customer_id, c = custOf(cid); if (!c) return err(404, 'ไม่พบลูกค้า');
+      var f = { id: nextId('fu'), at: stamp(), by: role, customer_id: cid, customer: c.name, channel: body.channel || 'โทร', note: body.note || '', next_in_days: Math.max(1, num(body.next_in_days) || FOLLOW_DAYS), result: body.result || '' };
+      D.followups.unshift(f);
+      if (f.channel === 'line') { var sh = sheetFor(cid); var r = lineSend(role, { customer_id: cid, kind: 'nudge', text: body.note || nudgeText(sh) }); if (r.status !== 200) return r; }
+      X.audit(role, 'followup', c.name + ' · ' + f.channel);
+      return ok({ ok: true, id: f.id });
+    }
+    function followupAuto(role) {
+      var due = followups(role).body.due, sent = [], skipped = [];
+      due.forEach(function (r) { if (!r.line) return skipped.push(r.name); var x = followup(role, { customer_id: r.id, channel: 'line' }); (x.status === 200 ? sent : skipped).push(r.name); });
+      return ok({ ok: true, sent: sent, skipped: skipped });
+    }
+    function dealClose(role, body) {
+      var cid = body.customer_id, sh = sheetFor(cid), c = custOf(cid); if (!sh || !c) return err(404, 'ไม่พบลูกค้า');
+      var outcome = body.outcome; if (outcome !== 'won' && outcome !== 'lost') return err(400, 'ผลต้องเป็น won หรือ lost');
+      if (outcome === 'lost' && !String(body.reason || '').trim()) return err(400, 'เสียลูกค้าต้องบอกเหตุผล — จะได้รู้ว่าเสียเพราะราคาหรือบริการ');
+      var inOffer = sh.rows.filter(function (r) { return r.inOffer; }); if (!inOffer.length) return err(400, 'ใบนี้ยังไม่มีราคาที่ส่งลูกค้า');
+      var vol = {}; (D.board.lines || []).forEach(function (l) { vol[l.id] = l.vol || 0; });
+      var lines = inOffer.map(function (r) { var P = product(r.pid) || {}; var agreed = outcome === 'won' ? (r.accepted != null ? r.accepted : r.offer) : null;
+        return { pid: r.pid, name: r.name, offer: r.offer, agreed: agreed, accepted: r.response === 'accept', cost: P.cost || 0, vol: vol[r.pid] || 0, margin: agreed ? mg(agreed, P.cost || 0) : null }; });
+      var won = lines.filter(function (l) { return l.agreed; }), value = Math.round(won.reduce(function (a, l) { return a + l.agreed * (l.vol || 1); }, 0)), gp = Math.round(won.reduce(function (a, l) { return a + (l.agreed - l.cost) * (l.vol || 1); }, 0));
+      var central = Math.round(lines.reduce(function (a, l) { return a + (l.offer || 0) * (l.vol || 1); }, 0));
+      var prev = D.deals.filter(function (d) { return d.customer_id === cid && d.label === sh.label; })[0];
+      var deal = { id: prev ? prev.id : nextId('dl'), at: stamp(), by: role, customer_id: cid, customer: c.name, label: sh.label, outcome: outcome, reason: body.reason || '', lost_to: body.lost_to || '', lines: lines, n: lines.length, agreedN: won.length,
+        value: value, gp: gp, margin: value ? r1(gp / value * 100) : null, centralValue: central, discount: central && value ? r1((central - value) / central * 100) : null };
+      if (prev) D.deals[D.deals.indexOf(prev)] = deal; else D.deals.unshift(deal);
+      sh.deal.outcome = outcome; sh.deal.closedAt = deal.at;
+      if (outcome === 'lost') { sh.rows.forEach(function (r) { if (r.inOffer && !r.response) r.response = 'decline'; }); }
+      rebuildSheet(sh);
+      X.audit(role, 'deal-close', c.name + ' → ' + (outcome === 'won' ? 'ได้ ' + value + ' ฿ (margin ' + deal.margin + '%)' : 'เสีย: ' + deal.reason));
+      return ok({ ok: true, id: deal.id, outcome: outcome, value: value, margin: deal.margin, agreedN: won.length });
+    }
+    function dealsView(role) {
+      var label = D.sends.label, cur = D.deals.filter(function (d) { return d.label === label; }), won = cur.filter(function (d) { return d.outcome === 'won'; }), lost = cur.filter(function (d) { return d.outcome === 'lost'; });
+      var value = won.reduce(function (a, d) { return a + d.value; }, 0), gp = won.reduce(function (a, d) { return a + d.gp; }, 0);
+      var reasons = {}; lost.forEach(function (d) { var k = d.reason.split(/[·,/]/)[0].trim() || 'ไม่ระบุ'; reasons[k] = (reasons[k] || 0) + 1; });
+      var sale = LVL[role] < 2;
+      return ok({ label: label, summary: { customers: D.sends.customers.length, won: won.length, lost: lost.length, open: D.sends.customers.length - cur.length, value: value, gp: sale ? undefined : gp, margin: sale ? undefined : (value ? r1(gp / value * 100) : null), lostValue: lost.reduce(function (a, d) { return a + d.centralValue; }, 0),
+        reasons: Object.keys(reasons).map(function (k) { return { reason: k, n: reasons[k] }; }).sort(function (a, b) { return b.n - a.n; }) },
+        deals: D.deals.slice(0, 100).map(function (d) { var o = clone(d); if (sale) { delete o.gp; delete o.margin; o.lines.forEach(function (l) { delete l.cost; delete l.margin; }); } return o; }) });
+    }
+
+    /* ════════ 6 · DASHBOARD แยกตามคน ════════ */
+    function dashboard(role, origin) {
+      var td = today(), b = board(role).body, dv = dealsView(role).body, h = health(), stale = {};
+      var oldCost = S.products.filter(function (p) { return p.cost > 0 && (!p.cost_src_at || ageDays(p.cost_src_at) > STALE_COST_DAYS); }).length;
+      var noCost = D.pricelist.rows.filter(function (r) { return !(r.cost > 0); }).length;
+      var mk = D.pricelist.rows.filter(function (r) { return (r.marks || []).some(function (m) { return m.price > 0 && m.state === 'fresh'; }); }).length;
+      var mkOld = D.pricelist.rows.filter(function (r) { return (r.marks || []).some(function (m) { return m.price > 0; }) && !(r.marks || []).some(function (m) { return m.price > 0 && m.state === 'fresh'; }); }).length;
+      var common = { today: td, round: D.sends.label, stages: b.stages, alerts: h.alerts.slice(0, 5), health: { ok: h.ok, jobs: h.jobs.map(function (j) { return { key: j.key, label: j.label, status: j.status, stale: j.stale, last_run: j.last_run, detail: j.detail }; }), outbox: h.outbox } };
+      if (LVL[role] < 2) {
+        return ok(Object.assign(common, { role: 'sale', customers: b.rows, followupDue: b.rows.filter(function (r) { return r.followupDue; }), lineMissing: b.lineMissing, lineReady: b.lineReady, deals: dv.summary, followDays: FOLLOW_DAYS,
+          requests: D.sends.negotiations.filter(function (n) { return n.status === 'open'; }).length, revised: b.rows.reduce(function (a, r) { return a + (r.revised || 0); }, 0) }));
+      }
+      var cc = D.desk.centralCount || {}, flags = D.cost_flags.filter(function (f) { return f.status === 'pending'; });
+      var tr = computeTrend(false);
+      var ops = { central: cc, sheetsOpen: D.desk.customers.filter(function (c) { return !c.handed && c.work > 0; }).length, sheetsHanded: D.desk.customers.filter(function (c) { return c.handed; }).length, requestsOpen: D['price-requests'].open, flagsPending: flags.length, flags: flags.slice(0, 8),
+        stale: { costOld: oldCost, costOldDays: STALE_COST_DAYS, noCost: noCost, marketFresh: mk, marketOld: mkOld, marketBlind: D.pricelist.rows.length - mk - mkOld, total: D.pricelist.rows.length, lastCost: CFG.cost_updated, lastMarket: (tr.sources.reduce(function (a, s) { return s.lastSeen > a ? s.lastSeen : a; }, '') || null) },
+        trendWarnings: tr.warnings.slice(0, 4), trendScore: tr.score, lastImport: D.cost_imports[0] || null, jobs: h.jobs };
+      if (role === 'ops') return ok(Object.assign(common, { role: 'ops' }, ops, { board: { followupDue: b.followupDue, rows: b.rows } }));
+      /* boss: ผลลัพธ์ — ปิดได้กี่เจ้า margin จริงเท่าไหร่ */
+      var inv = D.invoices.ytd || {}, G = D.guard;
+      var centralMargin = (function () { var rows = D.pricelist.rows.filter(function (r) { return r.cost > 0; }); var vol = {}; (D.board.lines || []).forEach(function (l) { vol[l.id] = l.vol || 0; }); var rev = 0, gp = 0; rows.forEach(function (r) { var v = vol[r.id] || 0; rev += r.w2 * v; gp += (r.w2 - r.cost) * v; }); return rev ? r1(gp / rev * 100) : null; })();
+      return ok(Object.assign(common, { role: 'boss', deals: dv.summary, recentDeals: dv.deals.slice(0, 8), realMargin: dv.summary.margin, centralMargin: centralMargin, contractMargin: G.customers.length ? r1(G.customers.reduce(function (a, c) { return a + (c.margin || 0); }, 0) / G.customers.length) : null,
+        invoices: { n: inv.invoices || 0, revenue: inv.revenue || 0, gp: inv.gp || 0, margin: inv.margin || 0 }, ar: { outstanding: D.ar.outstanding, overdue: D.ar.overdue }, ops: ops, followupDue: b.followupDue, lineMissing: b.lineMissing }));
+    }
+
+    /* ── เส้นทางของส่วนขยาย — คืน undefined ถ้าไม่ใช่ของตัวเอง ── */
+    function route(method, path, q, body, role, need, req) {
+      var cm = path.match(/^\/api\/customers\/([^/]+)$/);
+      if (cm && method === 'POST') { need(1); if (LVL[role] < 2) body = { line_user_id: body.line_user_id, contact: body.contact }; return updateCustomer(role, cm[1], body); }   /* เซลล์ผูก LINE/ผู้ติดต่อได้ · ชื่อ/เจ้าของ ต้อง ops ขึ้นไป */
+      if (path === '/api/line/webhook' && method === 'POST') return lineWebhook(body);   /* ของจริงตรวจลายเซ็นที่ server */
+      if (method === 'GET') switch (path) {
+        case '/api/health': return ok(health());
+        case '/api/events': need(1); var list = D.events.filter(function (e) { return (!q.actor || e.actor === q.actor) && (!q.kind || e.kind === q.kind) && (!q.step || e.step === q.step) && (!q.status || e.status === q.status) && (!q.q || (e.detail + ' ' + e.action + ' ' + e.entity_id).indexOf(q.q) >= 0); });
+          if (LVL[role] < 2) list = list.filter(function (e) { return !/cost|import|central|config|category/.test(e.action); });
+          return ok({ total: list.length, rows: list.slice(0, Number(q.limit) || 200), steps: ['ทุนเข้า', 'เทียบตลาด', 'ตั้งราคา', 'ส่งราคา', 'ต่อรอง', 'ปิดรอบ', 'บริการ', 'ระบบ'] });
+        case '/api/alerts': need(1); return ok({ rows: D.alerts.slice(0, 100) });
+        case '/api/dashboard': need(1); return dashboard(role, req.origin);
+        case '/api/board': if (q.view === 'sales') { need(1); return board(role); } return undefined;
+        case '/api/sales-board': need(1); return board(role);
+        case '/api/followups': need(1); return followups(role);
+        case '/api/deals': need(1); return dealsView(role);
+        case '/api/outbox': need(1); return ok({ rows: D.outbox.slice(0, 100).map(function (o) { var x = clone(o); if (LVL[role] < 2) x.text = x.text.slice(0, 80); return x; }), queued: D.outbox.filter(function (o) { return o.status === 'queued'; }).length });
+        case '/api/cost-flags': need(2); return ok({ rows: D.cost_flags.slice(0, 200), pending: D.cost_flags.filter(function (f) { return f.status === 'pending'; }).length, imports: D.cost_imports.slice(0, 20) });
+        case '/api/market-trend': need(2); return marketTrend();
+        case '/api/market-observations': need(2); return marketObservations(q);
+        case '/api/market-sync/status': need(2); return ok(D.jobs['market-sync']);
+      }
+      else switch (path) {
+        case '/api/import/costs': need(2); return importCosts(role, body);
+        case '/api/cost-flags/decide': need(2); return decideFlag(role, body);
+        case '/api/market-sync/run': need(2); return marketSync(role, body);
+        case '/api/line/send': need(1); body.origin = req.origin; return lineSend(role, body);
+        case '/api/line/send-all': need(1); body.origin = req.origin; return lineSendAll(role, body);
+        case '/api/line/retry': need(2); return retryOutbox(role, body);
+        case '/api/followups': need(1); return followup(role, body);
+        case '/api/followups/auto': need(1); return followupAuto(role);
+        case '/api/deal-close': need(1); return dealClose(role, body);
+        case '/api/alerts/ack': need(1); var a = D.alerts.filter(function (x) { return x.id === Number(body.id); })[0]; if (!a) return err(404, 'ไม่พบ'); a.acked = true; a.acked_by = role; a.acked_at = stamp(); return ok();
+        case '/api/log': need(1); return ok(logEvent({ actor: role, kind: 'human', action: body.action || 'note', entity: body.entity, entity_id: body.entity_id, detail: body.detail, status: body.status }));
+      }
+      return undefined;
+    }
+    return { route: route, logEvent: logEvent, alert: alert, health: health, drainOutbox: drainOutbox, marketSync: marketSync, computeTrend: computeTrend, stageOf: stageOf, board: board, matchProduct: matchProduct, costChecks: costChecks, STAGES: STAGES };
+  };
+});

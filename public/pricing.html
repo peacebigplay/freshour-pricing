@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/peach.css">
 </head><body>
 <script src="/peach.js"></script>
+<script src="/dash.js"></script>
 <script src="/catmargin.js"></script>
 <script>
 /* โต๊ะตั้งราคา — งานวันพุธของพี่จุ๋ม
@@ -1036,5 +1037,6 @@ function dataAudit() {
           return g.map(function (x) { return esc(x.name) + ' (' + esc(x.grp || '') + ')'; }).join(' = '); }).join(' · ') + '</p>' : '') });
   }).catch(function (e) { PX.toast('ตรวจไม่ได้ — ' + esc(e.message), 'bad'); });
 }
+Dash.mount('pricing');   /* หน้าสรุปตามบทบาท (dash.js) — วางบนหน้าแรก วาดซ้ำเมื่อหน้าแม่วาดใหม่ */
 </script>
 </body></html>

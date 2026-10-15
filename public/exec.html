@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/peach.css">
 </head><body>
 <script src="/peach.js"></script>
+<script src="/dash.js"></script>
 <style>
 /* ── Priority 04: Delivery + Issues 2-col grid ───────────── */
 .ex-ops-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
@@ -1221,5 +1222,6 @@ Promise.all([
   PX.get('/api/me').then(function(me){ROLE=me&&me.role||'';}).catch(function(){})
 ]).then(reloadOps).then(loadAttention).catch(PX.fail);
 
+Dash.mount('exec');   /* หน้าสรุปตามบทบาท (dash.js) — วางบนหน้าแรก วาดซ้ำเมื่อหน้าแม่วาดใหม่ */
 </script>
 </body></html>

@@ -209,7 +209,7 @@ test('บริการ/ขนส่ง/prospect/baseline/สมอง', () => 
 });
 
 test('server จริง: cookie · redirect ตามบทบาท · หน้า · ลิงก์ลูกค้า', async () => {
-  process.env.FH_JOURNAL = '0'; process.env.FH_PORT = '0';
+  process.env.FH_JOURNAL = '0'; process.env.FH_PORT = '0'; process.env.FH_JOBS = '0';
   const { server } = require('../server');
   await new Promise(r => server.listen(0, r));
   const port = server.address().port, base = 'http://127.0.0.1:' + port;

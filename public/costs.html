@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/peach.css">
 </head><body>
 <script src="/peach.js"></script>
+<script src="/costimport.js"></script>
 <script>
 /* รับทุน & ตลาด — งานวันอังคาร
    หน้านี้ไม่ออกราคา มีหน้าที่เดียวคือรับตัวเลขเข้าระบบให้ครบและถูก */
@@ -24,7 +25,7 @@ var D = null, G = 'all', Q = '', PG = 0, PER = 20, ONLY = '';
 PX.shell('cost',
   '<div class="float"><div class="ic">📦</div><b>ทุนเข้าครบหรือยัง</b>' +
   '<span id="floatSub">กำลังอ่าน…</span>' +
-  '<button onclick="pasteCost()">วางทุนจาก Excel</button></div>');
+  '<button onclick="CostImport.open()">นำเข้าไฟล์ทุน AL</button></div>');
 
 /* ── บันทึกจริงทุกช่อง ────────────────────────────────────────────
    ทุน/ปริมาณ → /api/products/:id · ราคาตลาด → /api/competitor-prices
@@ -326,7 +327,8 @@ function draw() {
 
   /* เครื่องมือ */
   h += '<div class="tools" style="margin-top:14px">' +
-    '<button class="btn pri" onclick="pasteCost()">📋 วางทุนจาก Excel</button>' +
+    '<button class="btn pri" onclick="CostImport.open()">📂 นำเข้าไฟล์ทุน AL</button>' +
+    '<button class="btn" onclick="pasteCost()">📋 วางทุนจาก Excel</button>' +
     '<button class="btn" onclick="shiftAll()">± ปรับทุนทุกตัว</button>' +
     '<button class="btn" onclick="addProduct()">+ สินค้า</button>' +
     '<button class="btn" id="csvBtn" title="ดาวน์โหลดตารางที่เห็นเป็น CSV"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>CSV</button>' +
@@ -394,6 +396,7 @@ function draw() {
     ' เพื่อดูผลก่อนประกาศ · <b>ทุกช่องในตารางบันทึกจริงทันทีที่ออกจากช่อง</b></p>';
 
   document.getElementById('main').innerHTML = h;
+  CostImport.mountFlags();   /* รายการจากไฟล์ที่ติดด่านตรวจ — ท้ายหน้า */
   var fs = document.getElementById('floatSub');
   if (fs) fs.textContent = noCost ? ('ยังไม่รู้ทุน ' + noCost + ' รายการ') : 'ทุนเข้าครบทุกรายการ';
   var q = document.getElementById('q');

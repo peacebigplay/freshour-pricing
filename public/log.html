@@ -1,0 +1,61 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>บันทึกเหตุการณ์ · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+<style>
+.hl{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:14px}
+.ev{display:grid;grid-template-columns:118px 90px 1fr auto;gap:10px;align-items:start;padding:9px 12px;border-bottom:1px dashed var(--line);font-size:12.5px}
+.ev:last-child{border-bottom:0}.ev .t{font-family:var(--fn);font-size:11px;color:var(--tx-3)}.ev .who{font-size:11px;font-weight:600}.ev .who.system{color:var(--violet)}.ev .who.human{color:var(--blue)}.ev .who.customer{color:var(--teal)}
+.ev .d b{font-weight:600}.ev .d small{display:block;color:var(--tx-3);font-size:11px}.ev.fail{background:#FFF7F7}.ev.warn{background:#FFFCF2}
+.fl{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px;align-items:center}.fl button{font-family:var(--ff);font-size:11.5px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 11px;cursor:pointer}.fl button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.fl input{font-family:var(--ff);font-size:12.5px;border:1px solid var(--line);border-radius:10px;padding:6px 10px;min-width:200px}
+.jb{display:flex;gap:8px;flex-wrap:wrap}.jb>div{border:1px solid var(--line);border-radius:12px;padding:9px 12px;font-size:12px;min-width:200px;background:#fff;border-left-width:5px}.jb>div.ok{border-left-color:var(--green)}.jb>div.fail{border-left-color:var(--red);background:#FFF7F7}.jb>div.stale{border-left-color:var(--amber);background:#FFFCF2}.jb>div.never{border-left-color:var(--tx-3)}
+.jb b{display:block;font-size:13px}.jb small{display:block;color:var(--tx-3)}
+.al{border:1px solid var(--red-b);background:var(--red-l);border-radius:12px;padding:9px 12px;font-size:12.5px;display:flex;gap:10px;align-items:center;margin-top:6px}.al.warn{border-color:var(--amber-b);background:var(--amber-l)}.al .btn{margin-left:auto}
+.step{font-size:10px;padding:1px 7px;border-radius:99px;background:var(--line-2);color:var(--tx-2);margin-left:6px;white-space:nowrap}
+@media(max-width:700px){.ev{grid-template-columns:1fr 1fr}.ev .d{grid-column:1/-1}}
+</style>
+</head><body>
+<script src="/peach.js"></script>
+<script>
+/* บันทึกเหตุการณ์ — คอมเมนต์ผู้ใช้: "ตอนนี้จดเป็นข้อความกระจัดกระจาย ร้อยต่อกันไม่ได้ ทุกขั้นต้องจดในรูปแบบเดียวกัน ทั้งงานที่คนทำและงานที่ระบบทำเอง และถ้าระบบล้มต้องมีคนรู้"
+   ทุกแถว = {เวลา · ใคร (คน/ระบบ/ลูกค้า) · ทำอะไร · กับใคร/อะไร · ผล · อยู่ขั้นไหนของ flow} · งานระบบ 3 ตัวมี heartbeat · ล้ม = alert + LINE admin */
+var esc = PX.esc, ago = PX.ago, H = null, EV = null, F = { step: '', kind: '', status: '', q: '' };
+PX.shell('log', '<div class="float"><div class="ic">🧾</div><b>ระบบยังหายใจอยู่ไหม</b><span id="floatSub">กำลังอ่าน…</span><button onclick="load()">โหลดใหม่</button></div>');
+var KIND = { human: 'คน', system: 'ระบบ', customer: 'ลูกค้า' };
+var WHO = { boss: 'พี่หมิง', ops: 'พี่จุ๋ม', sale: 'เซลล์', admin: 'อิ๊บ', system: 'ระบบ', customer: 'ลูกค้า', anon: 'ไม่ล็อกอิน' };
+var ACT = { costs: 'บันทึกทุน', 'import-costs': 'นำเข้าไฟล์ทุน AL', 'cost-flag': 'ตัดสินทุนแปลก', 'market-sync': 'ดึงราคาตลาด', 'trend-verify': 'ตรวจคำทำนาย', central: 'ยืนยันราคากลาง', 'price-sheet': 'บันทึกใบรายเจ้า', handoff: 'ส่งใบให้ Sales',
+  'line-queue': 'เข้าคิว LINE', 'line-send': 'ส่ง LINE', 'line-inbound': 'ลูกค้าตอบทาง LINE', 'quote-sent': 'บันทึกว่าส่งใบ', 'quote-links': 'สร้างลิงก์ใบราคา', quoted: 'เซลล์ยืนยันราคา', 'quote-response': 'ลูกค้าตอบใบ', 'price-request': 'ขอต่อรอง', 'price-decide': 'ตัดสินคำขอ',
+  followup: 'ตามลูกค้า', 'deal-close': 'ปิดดีล', invoice: 'บันทึก invoice', payments: 'รับเงิน', dispatch: 'ประกาศรอบ', alert: 'แจ้งเตือน', 'cost-import': 'งานนำเข้าทุน', 'line-outbox': 'งานส่ง LINE', 'customer-update': 'แก้ข้อมูลลูกค้า', 'contract-price': 'แก้ราคาสัญญา', customer: 'เพิ่มลูกค้า', product: 'เพิ่มสินค้า', config: 'แก้เกณฑ์', 'service-logs': 'บันทึกปัญหาบริการ', deliveries: 'บันทึกรอบส่ง', prospects: 'prospect' };
+function draw() {
+  var main = document.getElementById('main'), h = PX.head('บันทึกเหตุการณ์', 'ทุกขั้นของงานในรูปแบบเดียวกัน — คน · ระบบ · ลูกค้า · ร้อยเรื่องได้ตั้งแต่ทุนเข้าจนปิดดีล', ['จุ๋ม', 'พี่จุ๋ม', 'ผู้ออกราคา']);
+  var open = H.alerts || [];
+  h += '<div class="hl">' +
+    '<div class="k ' + (H.ok ? 'lead' : '') + '"><div class="kt"><span class="ic">' + (H.ok ? '💚' : '🚨') + '</span><span class="pill ' + (H.ok ? '' : 'r') + '">' + (H.ok ? 'ปกติ' : 'ต้องดู') + '</span></div><div class="lb">สุขภาพระบบ</div><div class="v" style="font-size:20px">' + (H.ok ? 'ทุกงานทำงานตามรอบ' : open.length + ' เรื่องค้าง') + '</div><div class="c">งานล้ม/ขาดรอบ → ขึ้นที่นี่ + หน้าแรกทุกคน' + (H.line ? ' + LINE แจ้งผู้ดูแล' : ' · ตั้ง LINE_ADMIN_USER_ID เพื่อให้แจ้งทางไลน์') + '</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">📨</span></div><div class="lb">คิว LINE</div><div class="v" style="font-size:20px">รอส่ง ' + H.outbox.queued + ' · ส่งแล้ว ' + H.outbox.sent + '</div><div class="c">' + (H.outbox.failed ? '<b style="color:var(--red)">ล้มเหลว ' + H.outbox.failed + '</b> · <button class="lnk3" onclick="retry()">ลองส่งใหม่</button>' : 'ไม่มีที่ล้มเหลว') + (H.line ? '' : ' · ตอนนี้โหมดจำลอง (ยังไม่ตั้ง LINE_CHANNEL_TOKEN)') + '</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">🧾</span></div><div class="lb">เหตุการณ์ที่บันทึก</div><div class="v">' + H.events + '</div><div class="c">เก็บ 3,000 รายการล่าสุดในหน้านี้ · ของเก่ากว่านั้นอยู่ใน journal</div></div></div>';
+  h += '<div class="card"><h3>งานที่ระบบทำเอง <span class="sub">ไม่ต้องมีใครกด · ทุกตัวต้องรายงานว่ารันล่าสุดเมื่อไร</span></h3><div class="jb">' + H.jobs.map(function (j) { var st = j.status === 'fail' ? 'fail' : j.stale ? 'stale' : j.status === 'never' ? 'never' : 'ok';
+    return '<div class="' + st + '"><b>' + esc(j.label) + '</b>' + (st === 'fail' ? '<span style="color:var(--red)">ล้ม: ' + esc(j.error || '') + '</span>' : st === 'stale' ? '<span style="color:var(--amber)">ขาดรอบ — ควรรันทุก ' + j.every_h + ' ชม.</span>' : st === 'never' ? 'ยังไม่เคยรัน' : esc(j.detail || 'ปกติ')) + '<small>ล่าสุด ' + (j.last_run ? ago(j.last_run) + ' · รัน ' + j.runs + ' ครั้ง' : '—') + '</small></div>'; }).join('') + '</div>' +
+    (open.length ? open.map(function (a) { return '<div class="al ' + (a.level === 'bad' ? '' : 'warn') + '"><b>' + (a.level === 'bad' ? '⛔' : '⚠') + ' ' + esc(a.title) + (a.count > 1 ? ' ×' + a.count : '') + '</b><span>' + esc(a.detail || '') + '</span><span class="rnote">' + ago(a.last_at) + '</span><button class="btn" style="padding:4px 10px;font-size:11px" onclick="ack(' + a.id + ')">รับทราบ</button></div>'; }).join('') : '<p class="hint" style="margin:10px 0 0">ไม่มีเรื่องค้าง</p>') + '</div>';
+  h += '<div class="card" style="margin-top:12px"><h3>เหตุการณ์ <span class="sub">' + (EV ? EV.total + ' รายการ' : '') + '</span></h3>' +
+    '<div class="fl"><span class="hint2">ขั้น:</span>' + [''].concat(EV.steps).map(function (s) { return '<button class="' + (F.step === s ? 'on' : '') + '" onclick="setF(\'step\',' + JSON.stringify(s).replace(/"/g, '&quot;') + ')">' + (s || 'ทุกขั้น') + '</button>'; }).join('') + '</div>' +
+    '<div class="fl"><span class="hint2">ใคร:</span>' + [['', 'ทุกคน'], ['human', 'คน'], ['system', 'ระบบ'], ['customer', 'ลูกค้า']].map(function (k) { return '<button class="' + (F.kind === k[0] ? 'on' : '') + '" onclick="setF(\'kind\',\'' + k[0] + '\')">' + k[1] + '</button>'; }).join('') +
+    '<span class="hint2" style="margin-left:8px">ผล:</span>' + [['', 'ทั้งหมด'], ['ok', 'สำเร็จ'], ['fail', 'ล้มเหลว'], ['warn', 'เตือน']].map(function (k) { return '<button class="' + (F.status === k[0] ? 'on' : '') + '" onclick="setF(\'status\',\'' + k[0] + '\')">' + k[1] + '</button>'; }).join('') +
+    '<input id="q" placeholder="ค้นชื่อลูกค้า / สินค้า / ข้อความ…" value="' + esc(F.q) + '"></div>' +
+    '<div>' + (EV.rows.length ? EV.rows.map(function (e) { return '<div class="ev ' + e.status + '"><div class="t">' + esc(String(e.at).replace('T', ' ')) + '<br>' + ago(e.at) + '</div><div class="who ' + e.kind + '">' + esc(WHO[e.actor] || e.actor) + '<br><span style="font-weight:400;color:var(--tx-3)">' + (KIND[e.kind] || e.kind) + '</span></div>' +
+      '<div class="d"><b>' + esc(ACT[e.action] || e.action) + '</b><span class="step">' + esc(e.step) + '</span>' + (e.status === 'fail' ? ' <span class="pill2 r">ล้มเหลว</span>' : e.status === 'warn' ? ' <span class="pill2 a">เตือน</span>' : '') + '<small>' + esc(e.detail || '') + (e.entity_id && !/^(\d+)$/.test(e.entity_id) && (e.detail || '').indexOf(e.entity_id) < 0 ? ' · ' + esc(e.entity) + ' ' + esc(e.entity_id) : '') + '</small></div><div class="t">#' + e.id + '</div></div>'; }).join('') : '<p class="hint">ไม่มีเหตุการณ์ตามตัวกรอง</p>') + '</div></div>';
+  main.innerHTML = h;
+  var q = document.getElementById('q'); q.onkeydown = function (e) { if (e.key === 'Enter') { F.q = q.value.trim(); loadEv(); } };
+  var fs = document.getElementById('floatSub'); if (fs) fs.textContent = H.ok ? 'ปกติ · ' + H.events + ' เหตุการณ์' : open.length + ' เรื่องต้องดู';
+}
+function setF(k, v) { F[k] = v; loadEv(); }
+function loadEv() { var qs = Object.keys(F).filter(function (k) { return F[k]; }).map(function (k) { return k + '=' + encodeURIComponent(F[k]); }).join('&'); return PX.get('/api/events' + (qs ? '?' + qs : '')).then(function (j) { EV = j; draw(); }); }
+function load() { return PX.get('/api/health').catch(function (e) { if (e.body && e.body.jobs) return e.body; throw e; }).then(function (h) { H = h; return loadEv(); }).catch(PX.fail); }
+function ack(id) { PX.post('/api/alerts/ack', { id: id }).then(function () { PX.toast('รับทราบแล้ว'); return load(); }); }
+function retry() { PX.post('/api/line/retry', {}).then(function (r) { PX.toast('เข้าคิวใหม่ ' + r.requeued + ' ข้อความ'); return load(); }); }
+load();
+</script>
+</body></html>

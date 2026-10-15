@@ -34,7 +34,9 @@ window.PX = (function () {
     { id: 'memory', href: '/memory', ic: '🗂', t: 'ความจำ', s: 'ย้อนดูทุกอย่าง' },
     { id: 'logic', href: '/logic', ic: '📜', t: 'หลักการ', s: 'กฎที่ระบบใช้จริง' },
     { id: 'guard', href: '/guard', ic: '⚙️', t: 'ตั้งค่า Margin Guard', s: 'เกณฑ์ + เพดานต่อรอง' },
-    { id: 'wire', href: '/wiring', ic: '🔌', t: 'การต่อ', s: 'ต่อติดจริงไหม' }
+    { id: 'wire', href: '/wiring', ic: '🔌', t: 'การต่อ', s: 'ต่อติดจริงไหม' },
+    { id: 'trend', href: '/trend', ic: '📈', t: 'แนวโน้มตลาด', s: 'ดึงเองทุกวัน · เตือนถูกกี่ครั้ง' },
+    { id: 'log', href: '/log', ic: '🧾', t: 'บันทึกเหตุการณ์', s: 'คน + ระบบ · ล้มแล้วรู้' }
   ];
 
   function item(n, cur) {
@@ -49,9 +51,9 @@ window.PX = (function () {
   /* บทบาทไหนเห็นเมนูอะไร — ต้องตรงกับสิทธิ์จริงที่ API บังคับ
      ให้เห็นเมนูที่กดแล้วเจอ "ไม่มีสิทธิ์" คือหลอกให้เสียเวลา */
   var CAN = { sale: ['sale'],
-              ops:   ['pricing','cust','sale','cost','flow','memory','logic','guard','wire'],
-              boss:  ['exec','brain','pricing','cust','sale','cost','flow','memory','logic','guard','wire'],
-              admin: ['exec','brain','pricing','cust','sale','cost','flow','memory','logic','guard','wire'] };
+              ops:   ['pricing','cust','sale','cost','flow','memory','logic','guard','wire','trend','log'],
+              boss:  ['exec','brain','pricing','cust','sale','cost','flow','memory','logic','guard','wire','trend','log'],
+              admin: ['exec','brain','pricing','cust','sale','cost','flow','memory','logic','guard','wire','trend','log'] };
 
   function applyRole(role) {
     var ok = CAN[role] || CAN.ops;
@@ -543,7 +545,16 @@ window.PX = (function () {
     var d=m.el.querySelector('[data-k="last_contact"]'); if(d){d.type='date';d.max=today;}
   }
 
-  return { esc: esc, money: money, shell: shell, badge: badge, why: why, pageNums: pageNums,
+  /* เวลาแบบอ่านง่าย: "3 นาทีก่อน" · "เมื่อวาน 14:02" — หน้า log/กระดานใช้ร่วมกัน */
+  function ago(iso) {
+    if (!iso) return '—';
+    var t = Date.parse(String(iso).length <= 10 ? iso + 'T00:00:00+07:00' : iso + (/[Z+]/.test(iso) ? '' : '+07:00')); if (isNaN(t)) return String(iso);
+    var d = (Date.now() - t) / 1000;
+    if (d < 60) return 'เมื่อกี้'; if (d < 3600) return Math.floor(d / 60) + ' นาทีก่อน'; if (d < 86400) return Math.floor(d / 3600) + ' ชม.ก่อน';
+    if (d < 86400 * 7) return Math.floor(d / 86400) + ' วันก่อน';
+    return String(iso).slice(0, 10).split('-').reverse().join('/');
+  }
+  return { esc: esc, money: money, shell: shell, ago: ago, badge: badge, why: why, pageNums: pageNums,
            ISSUE_TYPES: ISSUE_TYPES, issueNeedsCarrier: issueNeedsCarrier,
            bindTips: bindTips, get: get, fail: fail, head: head, back: back, COL: COL,
            deliveryForm: deliveryForm, deliveryFinish: deliveryFinish, prospectForm: prospectForm,

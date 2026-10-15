@@ -6,13 +6,13 @@
    ที่หน้าเว็บเรียก ให้ทดสอบ flow ได้ครบ: ทุน → ราคากลาง → ใบรายเจ้า → ส่ง Sales → ลูกค้าตอบ → invoice → รับเงิน
    ══════════════════════════════════════════════════════════════════ */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.FHStore = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./ext'));
+  else root.FHStore = factory(root.FHExt);
+})(typeof self !== 'undefined' ? self : this, function (extend) {
   'use strict';
 
-  var LVL = { anon: 0, sale: 1, ops: 2, boss: 3, admin: 3 };
-  var ROLE_NAME = { boss: 'พี่หมิง', ops: 'พี่จุ๋ม', sale: 'ทีมเซลล์', admin: 'ผู้ดูแลระบบ' };
+  var LVL = { anon: 0, sale: 1, ops: 2, boss: 3, admin: 3, system: 4 };
+  var ROLE_NAME = { boss: 'พี่หมิง', ops: 'พี่จุ๋ม', sale: 'ทีมเซลล์', admin: 'ผู้ดูแลระบบ', system: 'ระบบ', customer: 'ลูกค้า' };
   var GOAL_NAMES = { competitive: 'แข่งขันได้', hold: 'ยืนราคาเดิม', target: 'กำไรตามเป้า', protect: 'ป้องกันกำไร' };
 
   /* ── เวลาไทย ─────────────────────────────────────────────────── */
@@ -250,7 +250,7 @@
     }
     function login(body) {
       var role = String(body.role || ''), pin = body.pin == null ? '' : String(body.pin);
-      if (!LVL[role] || role === 'anon') return err(400, 'ไม่รู้จักบทบาทนี้');
+      if (!LVL[role] || role === 'anon' || role === 'system') return err(400, 'ไม่รู้จักบทบาทนี้');
       if (PINS) {
         if (!pin) return err(401, 'ต้องใส่รหัสของ ' + (ROLE_NAME[role] || role));
         if (PINS[role] !== pin) { audit(role, 'login-fail', 'รหัสผิด'); return err(401, 'รหัสไม่ถูกต้อง'); }
@@ -914,8 +914,18 @@
       return quoteResponse('customer', { customer_id: cid, product_id: body.product_id, kind: body.kind, all: !!body.all });
     }
 
+    /* ── ส่วนขยาย (ทุนเข้า · ตลาด · LINE · ต่อรอง · log · dashboard) — src/ext.js ── */
+    function afterCosts() { rebuildGuard(); rebuildTotals(); rebuildCentralCount(); }
+    var EXT = extend({ D: D, S: S, CFG: CFG, today: today, stamp: stamp, r1: r1, mg: mg, num: num, err: err, ok: ok, clone: clone, hashId: hashId, LVL: LVL, ROLE_NAME: ROLE_NAME,
+      product: product, custOf: custOf, custByName: custByName, sheetFor: sheetFor, deskFor: deskFor, sendRow: sendRow, desks: desks, rebuildSheet: rebuildSheet, rebuildGuard: rebuildGuard, rebuildTotals: rebuildTotals,
+      setCost: setCost, afterCosts: afterCosts, competitorPrices: competitorPrices, quoteFor: quoteFor, quoteLink: quoteLink, quoteResponse: quoteResponse, priceRequest: priceRequest, audit: function () { return audit.apply(null, arguments); }, targetPct: targetPct, floorPct: floorPct,
+      lineConfigured: function () { return !!opts.lineConfigured; } });
+    /* audit เดิม (หน้า "ความจำ") → ลง log กลางด้วย รูปแบบเดียวกับงานของระบบ */
+    var audit0 = audit;
+    audit = function (role, action, detail) { audit0(role, action, detail); EXT.logEvent({ actor: role, kind: 'human', action: action, detail: detail }); };
+
     /* ── ตารางเส้นทาง ───────────────────────────────────────────── */
-    function handle(req) {
+    function handle0(req) {
       var method = (req.method || 'GET').toUpperCase(), role = req.role && LVL[req.role] != null ? req.role : 'anon', lvl = LVL[role];
       var url = req.url || '/', i = url.indexOf('?'), path = i < 0 ? url : url.slice(0, i), qs = i < 0 ? '' : url.slice(i + 1), body = req.body || {};
       var q = {}; if (qs) qs.split('&').forEach(function (kv) { var j = kv.indexOf('='); var k = j < 0 ? kv : kv.slice(0, j), v = j < 0 ? '' : kv.slice(j + 1); try { q[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, ' ')); } catch (e) { q[k] = v; } });
@@ -961,6 +971,7 @@
             case '/api/ui-state': need(1); return ok({ role: role, today: today() });
             case '/api/price-history': need(2); return ok({ rows: D.history });
           }
+          var xg = EXT.route(method, path, q, body, role, need, req); if (xg) return xg;
           return err(404, 'ไม่มีเส้นทางนี้ (' + path + ')');
         }
         /* เขียน */
@@ -998,6 +1009,7 @@
           case '/api/dispatch': need(3); return dispatch(role, body);
           case '/api/ui-state': need(2); return ok();
         }
+        var xw = EXT.route(method, path, q, body, role, need, req); if (xw) return xw;
         return err(404, 'ไม่มีเส้นทางนี้ (' + method + ' ' + path + ')');
       } catch (e) {
         if (e && e.status) return { status: e.status, body: e.body };
@@ -1005,10 +1017,23 @@
       }
     }
 
+    /* ทุกคำสั่งเขียนลง log กลางรูปแบบเดียวกัน (สำเร็จ/ล้มเหลว) — ยกเว้น activity ping · /api/log เขียนเองแล้ว */
+    function handle(req) {
+      var r = handle0(req), m = (req.method || 'GET').toUpperCase(), p = String(req.url || '').split('?')[0];
+      if (m !== 'GET' && !/\/api\/(activity|log|login|logout|line\/webhook)$/.test(p)) {
+        var b = req.body || {}, cid = b.customer_id || (b.id && /customers/.test(p) ? b.id : ''), pid = b.product_id || '';
+        var detail = r.status < 300 ? '' : (r.body && r.body.error) || ('ผิดพลาด ' + r.status);
+        var ent = cid ? (custOf(cid) || {}).name || cid : pid ? (product(pid) || {}).name || pid : b.id != null ? String(b.id) : '';
+        var already = r.status < 300 && D.events[0] && D.events[0].actor === (req.role || 'anon') && Date.parse(D.events[0].at + '+07:00') > Date.now() - 1500 && D.events[0].kind === 'human';
+        if (!already) EXT.logEvent({ actor: req.role || 'anon', kind: 'human', action: p.replace('/api/', ''), entity: cid ? 'customer' : pid ? 'product' : '', entity_id: cid || pid || (b.id == null ? '' : b.id), detail: (ent ? ent + ' · ' : '') + detail, status: r.status < 300 ? 'ok' : 'fail' });
+      }
+      return r;
+    }
+
     /* ทำให้ตัวเลขสรุปตรงกับบรรทัดจริงตั้งแต่เปิด (fixture บางก้อนจับมาคนละวินาที) */
     rebuildSends(); rebuildDeliveries();
 
-    return { handle: handle, docs: D, meOf: meOf, publicQuote: publicQuote, today: today, LVL: LVL, ROLE_NAME: ROLE_NAME, GOAL_NAMES: GOAL_NAMES, esc: esc };
+    return { handle: handle, docs: D, meOf: meOf, publicQuote: publicQuote, today: today, LVL: LVL, ROLE_NAME: ROLE_NAME, GOAL_NAMES: GOAL_NAMES, esc: esc, ext: EXT };
   }
 
   return { createStore: createStore, keyOf: keyOf, LVL: LVL, ROLE_NAME: ROLE_NAME };
