@@ -1,0 +1,112 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>เส้นทาง · ราคาเดินผ่าน 6 สถานี · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+</head><body>
+<script src="/peach.js"></script>
+<script>
+/* เส้นทางราคา — ราคาหนึ่งราคาเดินผ่าน 6 สถานี ตอนนี้ตันสถานีไหน
+   ของถูกเขียนไว้คนละไฟล์ (line.js · pricing.js · preflight() · scheduled() · doQuote())
+   พอไม่มีภาพรวม ก็ไม่มีใครเห็นว่ามันตันตรงไหน — หน้านี้คือภาพรวมนั้น */
+var esc = PX.esc, money = PX.money, W = PX.why;
+var B = null;
+
+PX.shell('flow',
+  '<div class="float"><div class="ic">🛤</div><b>เส้นทางราคา</b>' +
+  '<span id="floatSub">กำลังอ่าน…</span>' +
+  '<button onclick="jumpStuck()">ไปสถานีที่ตัน</button></div>');
+
+var HL = { ok: ['g', 'เดินได้'], watch: ['a', 'มีของค้าง'], bad: ['r', 'ตัน'] };
+/* สถานีที่ "ok แต่มีของค้าง" ไม่ใช่เขียว — มันคือเหลือง ต้องแยกให้ออก */
+function stOf(n) { return (n.health === 'ok' && n.stuck) ? 'watch' : n.health; }
+
+/* ไปที่สถานีแรกที่ตัน — ไม่ใช่ให้ไล่อ่านเองทั้ง 6 */
+function jumpStuck() {
+  var n = (B.flow.nodes || []).filter(function (x) { return stOf(x) !== 'ok'; })[0];
+  var el = n && document.getElementById('s-' + n.key);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* หน้าที่กดไปแก้สถานีนั้นได้จริง — ป้ายเฉยๆ ไม่ช่วยใคร */
+var FIX = {
+  cost:     ['/costs', 'ไปกรอกทุน'],
+  market:   ['/costs', 'ไปกรอกราคาตลาด'],
+  price:    ['/pricing', 'ไปโต๊ะตั้งราคา'],
+  gate:     ['/exec', 'ไปดูด่านตรวจ'],
+  dispatch: ['/exec', 'ไปหน้าประกาศ'],
+  out:      ['/customers', 'ไปดูสัญญารายเจ้า']
+};
+
+function draw() {
+  var N = B.flow.nodes || [];
+  var stuck = N.filter(function (n) { return n.health === 'bad'; });
+
+  var h = PX.head('ราคาหนึ่งราคา เดินผ่าน 6 สถานี',
+    stuck.length
+      ? 'ตอนนี้ตันที่ ' + stuck.map(function (n) { return n.name; }).join(' และ ')
+      : 'ตอนนี้เดินได้ทั้งเส้น',
+    ['หมิง', 'พี่หมิง (MD)', 'ผู้บริหาร ตัดสินใจ']);
+
+  /* ── แถบ 6 สถานี กดข้ามไปได้ ── */
+  h += '<div class="tape">' + N.map(function (n, i) {
+    var s = stOf(n), p = HL[s] || HL.ok;
+    return '<a class="tp ' + s + '" href="#s-' + esc(n.key) + '">' +
+      '<span class="no">0' + (i + 1) + '</span>' +
+      '<span class="nm">' + esc(n.name) + '</span>' +
+      '<span class="pill2 ' + p[0] + '">' + esc(p[1]) + '</span></a>';
+  }).join('') + '</div>';
+
+  h += '<p class="hint" style="margin-top:10px"' + W('สถานะของสถานี',
+    'อ่านจาก /api/brain — ทุกสถานีคิดใหม่จากข้อมูลจริงตอนเปิดหน้า',
+    'ตาราง products · config · dispatches · contract_lines',
+    'เป็นสถานะ ณ วินาทีนี้ ไม่ใช่ค่าที่จดไว้ล่วงหน้า') +
+    '>ของถูกเขียนไว้คนละไฟล์ — <code>line.js</code> · <code>pricing.js</code> · ' +
+    '<code>preflight()</code> · <code>scheduled()</code> · <code>doQuote()</code> ' +
+    'พอไม่มีภาพรวม ก็ไม่มีใครเห็นว่ามันตันสถานีไหน</p>';
+
+  /* ── ทีละสถานี ── */
+  h += N.map(function (n, i) {
+    var s = stOf(n), p = HL[s] || HL.ok;
+    var ps = (B.principles || []).filter(function (x) {
+      return (n.principles || []).indexOf(x.id) >= 0; });
+    var fx = FIX[n.key];
+    return '<div class="stn ' + s + '" id="s-' + esc(n.key) + '">' +
+      '<div class="sh"><div class="sno">' + (i + 1) + '</div>' +
+        '<div class="st"><h3>' + esc(n.name) + '</h3>' +
+          '<div class="wh">ใครทำ · ' + esc(n.who || '—') + '</div>' +
+          '<div class="wh2">ทำที่ไหน · ' + esc(n.where || '—') + '</div></div>' +
+        '<div class="sr"><span class="pill2 ' + p[0] + '">' + esc(p[1]) + '</span>' +
+          (fx ? '<a class="btn" href="' + fx[0] + '">' + esc(fx[1]) + ' →</a>' : '') +
+        '</div></div>' +
+      '<div class="sb">' +
+        '<div class="sf">' + (n.stats || []).map(function (f) {
+          return '<div class="ff"><em>' + esc(f.label) + '</em>' +
+            '<b>' + esc(f.value) + '</b>' +
+            (f.note ? '<small>' + esc(f.note) + '</small>' : '') + '</div>';
+        }).join('') + '</div>' +
+        (n.stuck
+          ? '<div class="stuck' + (s === 'watch' ? ' warn' : '') + '">' +
+            '<em>' + (n.health === 'bad' ? 'ตันเพราะ' : 'ของค้าง') + '</em>' +
+            esc(n.stuck) + '</div>'
+          : '') +
+        '<div class="rl"><span class="lb2">หลักการที่คุมสถานีนี้</span>' +
+          (ps.length
+            ? ps.map(function (x) {
+                return '<a class="chip2" href="/logic">' + esc(x.text) + '</a>'; }).join('')
+            : '<span class="none2">ยังไม่มีหลักการข้อไหนคุมสถานีนี้ — น่าคิดว่าควรมีไหม</span>') +
+        '</div>' +
+      '</div></div>';
+  }).join('');
+
+  document.getElementById('main').innerHTML = h;
+  var fs = document.getElementById('floatSub');
+  if (fs) fs.textContent = stuck.length ? ('ตัน ' + stuck.length + ' สถานี') : 'เดินได้ทั้งเส้น';
+  PX.bindTips();
+}
+
+PX.get('/api/brain').then(function (j) { B = j; draw(); }).catch(PX.fail);
+</script>
+</body></html>

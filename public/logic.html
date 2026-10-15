@@ -1,0 +1,153 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>หลักการ · กฎที่ระบบใช้จริง · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+</head><body>
+<script src="/peach.js"></script>
+<script>
+/* หลักการ — กฎที่ระบบใช้ตัดสินจริง
+   แยกให้ชัดว่ากฎไหน "โค้ดบังคับอยู่" กับกฎไหน "เขียนไว้เฉยๆ"
+   เพราะกฎที่ไม่มีใครบังคับ = ความตั้งใจ ไม่ใช่กฎ */
+var esc = PX.esc, money = PX.money, W = PX.why;
+var B = null, LAY = 'all', ONLY = '';
+
+PX.shell('logic',
+  '<div class="float"><div class="ic">📜</div><b>กฎที่บังคับจริง</b>' +
+  '<span id="floatSub">กำลังอ่าน…</span>' +
+  '<button onclick="ONLY=ONLY?\'\':\'soft\';draw()">ดูกฎที่ยังไม่บังคับ</button></div>');
+
+var LV = {
+  hard: ['var(--green)', 'โค้ดบังคับ', 'ทำผิดไม่ได้ ระบบปฏิเสธ'],
+  warn: ['var(--amber)', 'เตือนอย่างเดียว', 'ระบบบอก แต่ยังทำได้'],
+  none: ['var(--tx-3)', 'ยังไม่บังคับ', 'เขียนไว้ ไม่มีใครเช็ค']
+};
+/* ระดับการบังคับอยู่ที่ enforce_level เท่านั้น
+   ส่วนช่อง enforced เป็น "ข้อความบอกว่าโค้ดตรงไหนบังคับ" ไม่ใช่ true/false
+   เคยอ่านผิดว่าเป็นบูลีน ทำให้กฎทั้ง 40 ข้อขึ้นว่าโค้ดบังคับหมด */
+function lvOf(p) {
+  return p.enforce_level === 'hard' ? 'hard'
+       : p.enforce_level === 'warn' || p.enforce_level === 'soft' ? 'warn' : 'none';
+}
+
+function draw() {
+  var P = B.principles || [], L = B.layers || [];
+  var cfg = B.control || {};
+  var n = B.now || {};
+
+  var h = PX.head('หลักการที่ระบบใช้ตัดสิน',
+    P.length + ' ข้อ · แยกว่ากฎไหนโค้ดบังคับอยู่จริง กฎไหนแค่เขียนไว้',
+    ['อิ๊บ', 'อิ๊บ', 'ผู้ดูแลระบบ']);
+
+  /* ── ค่าที่หลักการคุมอยู่ตอนนี้ ── */
+  var vals = [
+    ['กำไรขั้นต่ำ (พื้น)', (B.floorPct != null ? B.floorPct : 8) + '%',
+     'ระบบดันราคาขึ้นให้เสมอถ้าต่ำกว่านี้', 'r'],
+    ['เป้า margin', (B.targetPct != null ? B.targetPct : 15) + '%',
+     'ใช้วัด ไม่ใช้ดันราคา', 'b'],
+    ['เพดานต่อรองเซลล์', (B.haggle != null ? B.haggle : 2) + ' ฿',
+     'ลดได้ไม่เกินนี้ · บวกขึ้นได้ตามชอบ', 'a'],
+    ['อายุราคาตลาด', (B.ttlDays != null ? B.ttlDays : 30) + ' วัน',
+     'เก่ากว่านี้ใช้ตัดสินไม่ได้', 'a']
+  ];
+  h += '<div class="kpi">' + vals.map(function (v, i) {
+    return '<div class="k' + (i === 0 ? ' lead' : '') + '">' +
+      '<div class="kt"><span class="ic">⚖️</span>' +
+      '<span class="pill ' + v[3] + '">ใช้อยู่</span></div>' +
+      '<div class="lb">' + esc(v[0]) + '</div><div class="v">' + esc(v[1]) + '</div>' +
+      '<div class="c">' + esc(v[2]) + '</div></div>';
+  }).join('') + '</div>';
+  h += '<p class="hint" style="margin-top:9px">แก้ค่าเหล่านี้ได้ที่ ' +
+    '<a class="lnk2" href="/guard">ตั้งค่า Margin Guard</a> — แก้ที่เดียว ทุกหน้าคิดใหม่ทันที</p>';
+
+  /* ── สรุปว่ากฎถูกบังคับแค่ไหน ── */
+  var cnt = { hard: 0, warn: 0, none: 0 };
+  P.forEach(function (p) { cnt[lvOf(p)]++; });
+  h += '<div class="row"><div class="card">' +
+    '<h3>กฎถูกบังคับจริงแค่ไหน<span class="sub">' + P.length + ' ข้อ</span></h3>' +
+    '<p class="hint"' + W('ระดับการบังคับ',
+      'ดูจากช่อง enforced กับ enforce_level ที่บันทึกไว้กับกฎแต่ละข้อ',
+      'ตาราง principles ในฐานข้อมูล',
+      'กฎที่ไม่มีโค้ดบังคับ = ความตั้งใจ ไม่ใช่กฎ — ต้องรู้ว่าอันไหนเป็นอันไหน') +
+    '>กฎที่ไม่มีใครบังคับ คือความตั้งใจ ไม่ใช่กฎ</p>' +
+    '<div class="cov">' + ['hard','warn','none'].map(function (k) {
+      var w = P.length ? cnt[k] / P.length * 100 : 0;
+      return '<i style="width:' + w.toFixed(1) + '%;background:' +
+        (k === 'hard' ? 'var(--green)' : k === 'warn' ? 'var(--amber)' : 'var(--line)') + '"></i>';
+    }).join('') + '</div>' +
+    '<ul class="rvCovK" style="list-style:none;display:flex;gap:22px;flex-wrap:wrap;' +
+      'margin-top:12px;font-size:12.5px">' +
+    ['hard','warn','none'].map(function (k) {
+      return '<li style="display:flex;align-items:center;gap:8px"><b style="width:11px;height:11px;' +
+        'border-radius:3px;background:' + (k === 'hard' ? 'var(--green)' :
+          k === 'warn' ? 'var(--amber)' : 'var(--line)') + '"></b>' +
+        esc(LV[k][1]) + '<i style="font-style:normal;font-family:var(--fn);font-weight:600">' +
+        cnt[k] + '</i></li>'; }).join('') + '</ul></div></div>';
+
+  /* ── ตัวกรอง ── */
+  var lays = [{ key: 'all', name: 'ทุกชั้น', n: P.length }].concat(L.map(function (x) {
+    return { key: x.key, name: (x.icon || '') + ' ' + x.name, n: x.count || 0 }; }));
+  h += '<div class="tools" style="margin-top:16px">' +
+    lays.map(function (x) {
+      return '<button class="tab' + (LAY === x.key ? ' on' : '') + '" data-l="' + esc(x.key) + '">' +
+        esc(x.name) + ' (' + x.n + ')</button>'; }).join('') +
+    '<span class="sortg">' +
+    '<button class="tab' + (ONLY === '' ? ' on' : '') + '" data-o="">ทั้งหมด</button>' +
+    '<button class="tab' + (ONLY === 'hard' ? ' on' : '') + '" data-o="hard">โค้ดบังคับ (' +
+      cnt.hard + ')</button>' +
+    '<button class="tab' + (ONLY === 'soft' ? ' on' : '') + '" data-o="soft">ยังไม่บังคับ (' +
+      (cnt.warn + cnt.none) + ')</button>' +
+    '</span></div>';
+
+  /* ── รายการกฎ ── */
+  var list = P.filter(function (p) {
+    if (LAY !== 'all' && p.layer !== LAY) return false;
+    if (ONLY === 'hard' && lvOf(p) !== 'hard') return false;
+    if (ONLY === 'soft' && lvOf(p) === 'hard') return false;
+    return true;
+  });
+  var order = { hard: 0, warn: 1, none: 2 };
+  list.sort(function (a, b) { return order[lvOf(a)] - order[lvOf(b)]; });
+
+  h += '<div class="tw2">' + (list.length ? list.map(function (p) {
+    var k = lvOf(p), v = LV[k];
+    return '<div class="pr">' +
+      '<div class="prl" style="background:' + v[0] + '"></div>' +
+      '<div class="prb">' +
+        '<div class="prt">' + esc(p.text) + '</div>' +
+        (p.because ? '<div class="prw">เพราะ ' + esc(p.because) + '</div>' : '') +
+        (p.enforced ? '<div class="prc"><span>บังคับที่ไหน</span>' + esc(p.enforced) + '</div>' : '') +
+        '<div class="prm">' +
+          '<span class="pill2 ' + (k === 'hard' ? 'g' : k === 'warn' ? 'a' : 'b') + '">' +
+            esc(v[1]) + '</span>' +
+          '<span class="prx">' + esc(v[2]) + '</span>' +
+          (p.layer ? '<span class="prx">ชั้น ' + esc(p.layer) + '</span>' : '') +
+          (p.status === 'proposed' ? '<span class="pill2 a">ยังไม่ตกลง</span>' : '') +
+        '</div>' +
+      '</div></div>';
+  }).join('') : '<p class="hint" style="padding:18px">ไม่มีกฎในกลุ่มนี้</p>') + '</div>';
+
+  document.getElementById('main').innerHTML = h;
+  var fs = document.getElementById('floatSub');
+  if (fs) fs.textContent = 'โค้ดบังคับ ' + cnt.hard + ' จาก ' + P.length + ' ข้อ';
+  document.querySelectorAll('[data-l]').forEach(function (b) {
+    b.onclick = function () { LAY = b.dataset.l; draw(); }; });
+  document.querySelectorAll('[data-o]').forEach(function (b) {
+    b.onclick = function () { ONLY = b.dataset.o; draw(); }; });
+  PX.bindTips();
+}
+
+PX.get('/api/brain').then(function (j) {
+  B = j;
+  /* ค่าเกณฑ์อยู่คนละที่ — ขอจาก guard มาเติมให้ครบ */
+  return PX.get('/api/guard').then(function (g) {
+    B.floorPct = g.floorPct; B.targetPct = g.targetPct;
+    return PX.get('/api/pricelist').then(function (pl) {
+      B.haggle = pl.haggle; B.ttlDays = pl.ttlDays; draw();
+    });
+  });
+}).catch(PX.fail);
+</script>
+</body></html>

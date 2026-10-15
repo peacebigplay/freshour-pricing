@@ -1,0 +1,160 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ความจำ · ย้อนดูทุกอย่าง · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+</head><body>
+<script src="/peach.js"></script>
+<script>
+/* ความจำ — ย้อนดูว่าเคยเกิดอะไรขึ้นบ้าง
+   เส้นเวลาของระบบ · ชุดราคาที่ประกาศไปแล้ว · ใครแก้อะไรไปบ้าง
+   ระบบที่จำไม่ได้ว่าเคยตัดสินอะไรไว้ จะตัดสินซ้ำผิดเดิมทุกสัปดาห์ */
+var esc = PX.esc, money = PX.money, W = PX.why;
+var B = null, TAB = 'time';
+
+PX.shell('memory',
+  '<div class="float"><div class="ic">🗂</div><b>ความจำของระบบ</b>' +
+  '<span id="floatSub">กำลังอ่าน…</span>' +
+  '<button onclick="TAB=\'audit\';draw()">ดูว่าใครแก้อะไร</button></div>');
+
+var KIND = {
+  fix:   ['var(--green)', 'แก้แล้ว'],
+  build: ['var(--blue)',  'สร้างใหม่'],
+  learn: ['var(--amber)', 'ได้บทเรียน'],
+  start: ['var(--tx-3)',  'จุดเริ่ม']
+};
+var ACT = {
+  dispatch: ['var(--green)', 'ประกาศราคา'],
+  costs:    ['var(--blue)',  'แก้ทุน'],
+  customer: ['var(--violet)','แก้ลูกค้า'],
+  login:    ['var(--tx-3)',  'เข้าระบบ'],
+  'login-fail': ['var(--red)', 'รหัสผิด'],
+  market:   ['var(--gold)',  'แก้ราคาตลาด']
+};
+function actOf(a) {
+  var k = ACT[a] || null;
+  if (k) return k;
+  if (/price|ราคา/.test(a)) return ['var(--blue)', a];
+  return ['var(--tx-3)', a];
+}
+
+function draw() {
+  var ms = B.milestones || [], ds = B.dispatches || [], au = B.audit || [], tk = B.talk || [];
+
+  var h = PX.head('ความจำของระบบ',
+    'ย้อนดูว่าเคยเกิดอะไรขึ้น ตัดสินอะไรไว้ และใครแก้อะไรไปบ้าง',
+    ['อิ๊บ', 'อิ๊บ', 'ผู้ดูแลระบบ']);
+
+  h += '<div class="kpi">' +
+    '<div class="k lead"><div class="kt"><span class="ic">🏁</span>' +
+      '<span class="pill">เส้นเวลา</span></div>' +
+      '<div class="lb">หมุดหมายที่ผ่านมา</div><div class="v">' + ms.length + '</div>' +
+      '<div class="c">' + (ms.length ? 'ล่าสุด ' + esc(ms[0].at) : 'ยังไม่มี') + '</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">📢</span>' +
+      '<span class="pill g">ประกาศแล้ว</span></div>' +
+      '<div class="lb">ชุดราคาที่ออกไป</div><div class="v">' + ds.length + '</div>' +
+      '<div class="c">' + (ds.length ? 'ล่าสุด ' + esc(ds[0].label) : 'ยังไม่เคยประกาศ') + '</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">✍️</span>' +
+      '<span class="pill">บันทึกไว้</span></div>' +
+      '<div class="lb">การแก้ไขล่าสุด</div><div class="v">' + au.length + '</div>' +
+      '<div class="c">ทุกการแก้ถูกบันทึกว่าใครทำ เมื่อไร</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">💬</span>' +
+      '<span class="pill">ถาม-ตอบ</span></div>' +
+      '<div class="lb">เคยคุยกับ brain</div><div class="v">' + tk.length + '</div>' +
+      '<div class="c">คำถามที่เคยถามและคำตอบที่ได้</div></div>' +
+    '</div>';
+
+  h += '<div class="tools" style="margin-top:14px">' +
+    [['time', '🏁 เส้นเวลา (' + ms.length + ')'],
+     ['dispatch', '📢 ชุดราคา (' + ds.length + ')'],
+     ['audit', '✍️ ใครแก้อะไร (' + au.length + ')'],
+     ['talk', '💬 เคยคุย (' + tk.length + ')']].map(function (x) {
+      return '<button class="tab' + (TAB === x[0] ? ' on' : '') + '" data-t="' + x[0] + '">' +
+        x[1] + '</button>'; }).join('') + '</div>';
+
+  /* ── เส้นเวลา ── */
+  if (TAB === 'time') {
+    h += '<div class="tw2">' + (ms.length ? ms.map(function (m) {
+      var k = KIND[m.kind] || KIND.start;
+      return '<div class="pr"><div class="prl" style="background:' + k[0] + '"></div>' +
+        '<div class="prb"><div class="prm" style="margin:0 0 6px">' +
+          '<span class="prx" style="font-family:var(--fn)">' + esc(m.at) + '</span>' +
+          '<span class="pill2 ' + (m.kind === 'fix' ? 'g' : m.kind === 'learn' ? 'a' : 'b') + '">' +
+          esc(k[1]) + '</span></div>' +
+        '<div class="prt">' + esc(m.title) + '</div>' +
+        (m.note ? '<div class="prw">' + esc(m.note) + '</div>' : '') +
+        '</div></div>';
+    }).join('') : '<p class="hint" style="padding:18px">ยังไม่มีหมุดหมาย</p>') + '</div>';
+  }
+
+  /* ── ชุดราคาที่ประกาศไปแล้ว ── */
+  if (TAB === 'dispatch') {
+    h += '<div class="tw2"><div class="sc"><table class="g" style="min-width:660px">' +
+      '<thead><tr><th>ชุดราคา</th><th>ประกาศเมื่อ</th><th>โดย</th>' +
+      '<th>ทุนเฉลี่ย</th><th>margin</th><th>กำไร/สัปดาห์</th><th>เสี่ยง</th></tr></thead><tbody>' +
+      (ds.length ? ds.map(function (d) {
+        return '<tr><td>' + esc(d.label) + '</td>' +
+          '<td>' + esc(String(d.at).slice(0, 10)) + '</td>' +
+          '<td style="font-family:var(--ff)">' + esc(d.by || '—') + '</td>' +
+          '<td>' + (d.cost_avg ? d.cost_avg.toFixed(1) : '—') + '</td>' +
+          '<td>' + (d.margin_avg ? d.margin_avg.toFixed(1) + '%' : '—') + '</td>' +
+          '<td>' + (d.profit_week ? money(d.profit_week) : '—') + '</td>' +
+          '<td class="' + (d.risk ? 'neg' : '') + '">' + (d.risk || 0) + '</td></tr>';
+      }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--tx-3)">' +
+        'ยังไม่เคยประกาศ</td></tr>') + '</tbody></table></div></div>' +
+      '<p class="hint" style="margin-top:10px"' + W('ชุดราคาที่ประกาศ',
+        'ทุกครั้งที่กดประกาศ ระบบเก็บกระดานทั้งใบไว้เป็นภาพนิ่ง',
+        'ตาราง dispatches — เก็บ payload ของทุกบรรทัด ณ วันนั้น',
+        'ย้อนดูได้เสมอว่าวันนั้นออกราคาเท่าไร ไม่ใช่คำนวณย้อนหลังขึ้นใหม่') +
+      '>แต่ละชุดเก็บราคาทุกบรรทัด ณ วันนั้นไว้ — กดชื่อสินค้าที่หน้าไหนก็ย้อนดูกราฟได้</p>';
+  }
+
+  /* ── ใครแก้อะไรไปบ้าง ── */
+  if (TAB === 'audit') {
+    h += '<div class="tw2"><div class="sc"><table class="g" style="min-width:620px">' +
+      '<thead><tr><th>เมื่อไร</th><th>ใคร</th><th>ทำอะไร</th><th>รายละเอียด</th></tr></thead><tbody>' +
+      (au.length ? au.map(function (a) {
+        var k = actOf(a.action);
+        var d = a.detail || '';
+        try { var j = JSON.parse(d); d = Object.keys(j).map(function (x) {
+          return x + ' ' + j[x]; }).join(' · '); } catch (e) {}
+        return '<tr><td style="font-size:12px">' + esc(String(a.at).replace('T', ' ').slice(0, 16)) + '</td>' +
+          '<td style="font-family:var(--ff)">' + esc(a.role || '—') + '</td>' +
+          '<td><span class="pill2" style="background:var(--line-2);color:' + k[0] + '">' +
+            esc(k[1]) + '</span></td>' +
+          '<td style="font-family:var(--ff);white-space:normal;font-size:12px;color:var(--tx-2)">' +
+            esc(String(d).slice(0, 90)) + '</td></tr>';
+      }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--tx-3)">' +
+        'ยังไม่มีบันทึก</td></tr>') + '</tbody></table></div></div>' +
+      '<p class="hint" style="margin-top:10px">ทุกการแก้ราคา ทุน และการประกาศ ถูกบันทึกว่าใครทำเมื่อไร — ' +
+      'รวมถึงการใส่รหัสผิดด้วย</p>';
+  }
+
+  /* ── เคยคุยอะไรกับ brain ── */
+  if (TAB === 'talk') {
+    h += '<div class="tw2">' + (tk.length ? tk.map(function (t) {
+      return '<div class="pr"><div class="prl" style="background:var(--blue)"></div>' +
+        '<div class="prb"><div class="prm" style="margin:0 0 6px">' +
+          '<span class="prx" style="font-family:var(--fn)">' +
+            esc(String(t.at).replace('T', ' ').slice(0, 16)) + '</span>' +
+          '<span class="pill2 b">' + esc(t.who) + '</span></div>' +
+        '<div class="prt">' + esc(t.said) + '</div>' +
+        '<div class="prc"><span>brain ตอบว่า</span>' +
+          esc(String(t.brain).slice(0, 400)) + '</div></div></div>';
+    }).join('') : '<p class="hint" style="padding:18px">ยังไม่เคยคุย — ' +
+      '<a class="lnk2" href="/brain">ไปถามที่หน้าสรุป</a></p>') + '</div>';
+  }
+
+  document.getElementById('main').innerHTML = h;
+  var fs = document.getElementById('floatSub');
+  if (fs) fs.textContent = ds.length + ' ชุดราคา · ' + au.length + ' การแก้ไข';
+  document.querySelectorAll('[data-t]').forEach(function (b) {
+    b.onclick = function () { TAB = b.dataset.t; draw(); }; });
+  PX.bindTips();
+}
+
+PX.get('/api/brain').then(function (j) { B = j; draw(); }).catch(PX.fail);
+</script>
+</body></html>

@@ -1,0 +1,74 @@
+[
+ {
+  "id": "login",
+  "who": "ทุกคน",
+  "role": null,
+  "title": "เข้าระบบ"
+ },
+ {
+  "id": "exec",
+  "who": "พี่หมิง",
+  "role": "boss",
+  "title": "ผู้บริหาร"
+ },
+ {
+  "id": "brain",
+  "who": "พี่หมิง",
+  "role": "boss",
+  "title": "สมองระบบ"
+ },
+ {
+  "id": "pricing",
+  "who": "พี่จุ๋ม",
+  "role": "ops",
+  "title": "ตั้งราคา"
+ },
+ {
+  "id": "customers",
+  "who": "พี่จุ๋ม",
+  "role": "ops",
+  "title": "ลูกค้า"
+ },
+ {
+  "id": "costs",
+  "who": "พี่จุ๋ม",
+  "role": "ops",
+  "title": "ทุน/ตลาด"
+ },
+ {
+  "id": "guard",
+  "who": "พี่จุ๋ม",
+  "role": "ops",
+  "title": "Margin Guard"
+ },
+ {
+  "id": "process",
+  "who": "พี่จุ๋ม",
+  "role": "ops",
+  "title": "ขั้นตอน"
+ },
+ {
+  "id": "memory",
+  "who": "พี่จุ๋ม",
+  "role": "ops",
+  "title": "ความจำ"
+ },
+ {
+  "id": "logic",
+  "who": "พี่จุ๋ม",
+  "role": "ops",
+  "title": "Logic"
+ },
+ {
+  "id": "wiring",
+  "who": "พี่จุ๋ม",
+  "role": "ops",
+  "title": "การเชื่อมต่อ"
+ },
+ {
+  "id": "sales",
+  "who": "เซลล์",
+  "role": "sale",
+  "title": "ทีมขาย"
+ }
+]

@@ -1,0 +1,125 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ตั้งค่า Margin Guard · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+</head><body>
+<script src="/peach.js"></script>
+<script src="/catmargin.js"></script>
+<script>
+/* ตั้งค่า Margin Guard — เกณฑ์ที่ทุกหน้าใช้ตัดสิน
+   แก้ที่นี่ที่เดียว ทุกหน้าขยับตาม เพราะทุกหน้าอ่านจากเครื่องยนต์ตัวเดียว */
+var esc = PX.esc, W = PX.why;
+PX.shell('guard');
+
+PX.get('/api/guard').then(function (G) {
+  return PX.get('/api/pricelist').then(function (P) {
+    var band = [
+      ['กำไรขั้นต่ำ (floor)', G.floorPct + '%',
+       'ต่ำกว่านี้ = ระบบเตือนทันที และดันราคาขึ้นให้ถึงจุดคุ้มเสมอ',
+       G.totals.low + ' บรรทัดกำลังต่ำกว่าเกณฑ์นี้', 'r'],
+      ['เพดานเสี่ยงต่อรอง (อ้างอิง)', P.haggle + ' ฿',
+       'ตอนนี้เซลล์แก้ราคาเองไม่ได้ (ล็อกตามพี่หมิง) · ค่านี้ใช้เตือนว่าถ้าลดเต็มจะกี่รายการหลุดเกณฑ์',
+       'ใช้เตือนก่อนประกาศ ไม่ได้ให้สิทธิ์เซลล์ลด', 'b'],
+      ['อายุราคาตลาด', P.ttlDays + ' วัน',
+       'ราคาคู่แข่งที่เห็นครั้งสุดท้ายเกินนี้ ถือว่าใช้ตัดสินไม่ได้',
+       'จะบอกว่าเราแพงกว่าใคร ต้องรู้ราคาเขาวันนี้', 'a']
+    ];
+    var h = PX.head('ตั้งค่า Margin Guard',
+      'เกณฑ์ที่ทุกหน้าใช้ตัดสินร่วมกัน — แก้ที่นี่ที่เดียว ทุกหน้าขยับตาม',
+      ['อิ๊บ', 'อิ๊บ', 'ผู้ดูแลระบบ']);
+
+    h += '<div class="kpi">' + band.map(function (b) {
+      return '<div class="k"><div class="kt"><span class="ic">🛡</span>' +
+        '<span class="pill ' + b[4] + '">ใช้อยู่</span></div>' +
+        '<div class="lb">' + esc(b[0]) + '</div><div class="v">' + esc(b[1]) + '</div>' +
+        '<div class="c">' + esc(b[2]) + '</div></div>';
+    }).join('') +
+      '<div class="k lead"><div class="kt"><span class="ic">📊</span></div>' +
+      '<div class="lb">ผลของเกณฑ์ตอนนี้</div>' +
+      '<div class="v">' + G.totals.low + '<small>/' + G.totals.lines + '</small></div>' +
+      '<div class="c">บรรทัดที่ไม่ผ่าน · ขาดทุนจริง ' + G.totals.loss + '</div></div></div>';
+
+    h += '<div class="row"><div class="card"><h3>เกณฑ์แต่ละตัวมีผลกับอะไร</h3>' +
+      '<p class="hint">แก้เกณฑ์ = เปลี่ยนจำนวนงานที่ระบบจะเตือน ไม่ได้เปลี่ยนราคาที่ออกไปแล้ว</p>' +
+      '<div class="auto">' + band.map(function (b) {
+        return '<div class="ac ' + (b[4] === 'r' ? 'off' : 'on') + '">' +
+          '<div class="st"><i></i>' + esc(b[1]) + '</div><b>' + esc(b[0]) + '</b>' +
+          '<span>' + esc(b[3]) + '</span></div>'; }).join('') + '</div>' +
+      '<div class="tools" style="margin-top:16px">' +
+      '<button class="btn pri" id="edit">แก้เกณฑ์</button>' +
+      '<span class="hint2">แก้แล้วมีผลกับทุกหน้าทันที เพราะทุกหน้าอ่านจากเครื่องยนต์ตัวเดียว</span>' +
+      '</div></div></div>';
+
+    h += '<div id="catBox"></div>';
+    document.getElementById('main').innerHTML = h;
+    loadCat();
+    PX.badge('low', G.totals.loss + ' ขาดทุน');
+    document.getElementById('edit').onclick = function () { editCfg(G, P); };
+    PX.bindTips();
+  });
+}).catch(PX.fail);
+
+/* ── เป้า margin รายหมวด (พี่หมิง v15) ────────────────────────────────
+   "margin ค่าเดียวเหมาทั้งพอร์ตไม่ได้" — แข่งขันสูงทำได้ ~10% เครื่องในทำได้ 30–50%
+   ตัวเลข "ทำได้จริง" คือ margin จากราคาที่ตั้ง × ปริมาณขายที่รู้ (ไม่ใช่ยอดขายจริงจากใบแจ้งหนี้)
+   เป้านี้ใช้วัดผลเท่านั้น — ไม่ได้ดันราคา (ตัวดันราคาคือ floor ด้านบน) */
+var CAT = null;
+function tgtText(g) { return g.lo === g.hi ? g.lo + '%' : g.lo + '–' + g.hi + '%'; }
+function loadCat() {
+  PX.get('/api/category-guard').then(function (c) { CAT = c; drawCat(); })
+    .catch(function () { var b = document.getElementById('catBox'); if (b) b.innerHTML = ''; });
+}
+/* ตารางหมวดใช้ชิ้นเดียวกับหน้าตั้งราคา (catmargin.js) — ข้อมูลชุดเดียวกัน แก้ที่ไหนเห็นตรงกันทุกหน้า */
+function drawCat() {
+  var box = document.getElementById('catBox'); if (!CAT || !box) return;
+  box.innerHTML = CatMargin.html(CAT, loadCat); PX.bindTips();
+}
+
+/* ── แก้เกณฑ์: เห็นผลก่อนกดบันทึก ────────────────────────────────
+   เปลี่ยน floor แล้วจำนวนบรรทัดที่ไม่ผ่านจะเปลี่ยนตาม — คำนวณให้ดูสดๆ */
+function editCfg(G, P) {
+  var m = PX.modal({
+    title: 'แก้เกณฑ์ Margin Guard',
+    sub: 'มีผลกับทุกหน้าทันที · ไม่เปลี่ยนราคาที่ประกาศไปแล้ว',
+    fields: [
+      { k: 'floor_pct', label: 'กำไรขั้นต่ำ (%)', type: 'num', value: G.floorPct,
+        hint: 'ต่ำกว่านี้ = เตือน และดันราคาขึ้นถึงจุดคุ้มเสมอ · ตั้งต่ำกว่า 12% ไม่ได้ (สเปก V21: ขั้นต่ำ 12% ทุก SKU)' },
+      { k: 'haggle_baht', label: 'เพดานต่อรอง (฿) — ใช้อ้างอิงความเสี่ยงเท่านั้น', type: 'num', value: P.haggle,
+        hint: 'ตอนนี้เซลล์แก้ราคาเองไม่ได้ (พี่หมิง v15) · ลูกค้าขอลด = ส่งคำขอให้ Pricing' },
+      { k: 'market_ttl_days', label: 'อายุราคาตลาด (วัน)', type: 'num', value: P.ttlDays,
+        hint: 'เกินนี้ถือว่าใช้ตัดสินไม่ได้' }
+    ],
+    html: '<div class="pre" id="prev">เปลี่ยนกำไรขั้นต่ำแล้วจะเห็นผลตรงนี้</div>',
+    okText: 'บันทึกเกณฑ์',
+    note: 'บันทึกแล้วจำนวนงานที่ระบบเตือนจะเปลี่ยน แต่ราคาที่ออกไปแล้วไม่ขยับ',
+    onOk: function (v) {
+      var body = {};
+      ['floor_pct', 'haggle_baht', 'market_ttl_days'].forEach(function (k) {
+        var n = Number(v[k]); if (isFinite(n) && n >= 0) body[k] = n; });
+      if (body.floor_pct != null && body.floor_pct < 12) { PX.toast('กำไรขั้นต่ำต้องไม่ต่ำกว่า 12%', 'bad'); return false; }
+      if (!Object.keys(body).length) { PX.toast('ไม่มีค่าที่ถูกต้อง', 'bad'); return false; }
+      return PX.post('/api/config', body, 'PUT').then(function () {
+        PX.toast('บันทึกเกณฑ์แล้ว · ทุกหน้าคิดใหม่ทันที');
+        setTimeout(function () { location.reload(); }, 900);
+      });
+    }
+  });
+  /* ดูผลสดขณะพิมพ์ — นับจากบรรทัดจริงที่โหลดมาแล้ว ไม่ต้องยิง API ซ้ำ */
+  var fp = m.el.querySelector('[data-k="floor_pct"]');
+  var prev = m.el.querySelector('#prev');
+  var upd = function () {
+    var n = Number(fp.value);
+    if (!isFinite(n)) { prev.textContent = 'ใส่ตัวเลข'; return; }
+    var low = G.lines.filter(function (x) { return x.margin < n; }).length;
+    var loss = G.lines.filter(function (x) { return x.margin < 0; }).length;
+    prev.innerHTML = 'ถ้าตั้งเกณฑ์ ' + n + '% → บรรทัดที่ไม่ผ่านจะเป็น <b>' + low + '</b>' +
+      ' จาก ' + G.lines.length + ' (ตอนนี้ ' + G.totals.low + ')\n' +
+      'บรรทัดที่ขาดทุนจริงยังคงเป็น <b>' + loss + '</b> — เกณฑ์ไม่เปลี่ยนความจริงข้อนี้';
+  };
+  fp.oninput = upd; upd();
+}
+</script>
+</body></html>

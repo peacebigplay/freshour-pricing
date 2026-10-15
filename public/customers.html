@@ -1,0 +1,378 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ลูกค้า &amp; ราคาสัญญา · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+</head><body>
+<script src="/peach.js"></script>
+<script>
+/* ลูกค้า & ราคาสัญญา — ราคาล็อกไว้แต่ทุนลอย
+   จัดการ Margin Guard และรายการที่ต้องเจรจาปรับราคา */
+var esc = PX.esc, money = PX.money, W = PX.why;
+/* ค่าที่ใส่ใน onclick ต้องเป็นสตริง JS ที่ปลอดภัยทั้งในฐานะ JS และ attribute — รหัส/กลุ่มสินค้ามาจากคนพิมพ์ได้ */
+function jsq(v) { return JSON.stringify(String(v == null ? '' : v)).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+var D = null, SORT = 'margin', PG = 0, PER = 12, GFIL = '';
+
+(function () {
+  /* มาจากการกดเกรดบนหน้าผู้บริหาร — ต้องเห็นเฉพาะเจ้าเกรดนั้นทันที
+     ไม่ใช่โยนมาที่หน้ารวมแล้วให้ไล่หาเอง */
+  var q = new URLSearchParams(__NAV.search);
+  if (/^[A-F]$/.test(q.get('grade') || '')) GFIL = q.get('grade');
+  if (q.get('cust')) FILT = q.get('cust');
+})();
+
+PX.shell('cust',
+  '<div class="float"><div class="ic">🛡</div><b>Margin Guard</b>' +
+  '<span id="floatSub">กำลังอ่าน…</span>' +
+  '<button onclick="jumpGuard()">ดูรายการวิกฤตด่วน</button></div>');
+
+function jumpGuard() {
+  var el = document.getElementById('guard');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ── ขอปรับราคา: เปิดกล่องพร้อมราคาที่พอดีเกณฑ์ให้เลย ──────────────
+   ไม่ใช่แค่ "ส่งคำขอ" ลอยๆ — คนตั้งราคาต้องเห็นว่าต้องขึ้นเท่าไรถึงจะพ้นเกณฑ์
+   แล้วกดยืนยันได้ในที่เดียว */
+function askRaise(cid, pid) {
+  var x = D.lines.filter(function (l) { return l.cid === cid && l.pid === pid; })[0];
+  if (!x) return;
+  var need = Math.ceil(x.cost / (1 - D.floorPct / 100));   // ราคาที่ทำให้ margin = เกณฑ์พอดี
+  var gap = need - x.locked;
+  PX.modal({
+    title: 'ขอปรับราคา · ' + x.name,
+    sub: PX.esc(x.cust) + ' · ราคาล็อกอยู่ ' + x.locked + ' ฿ · ทุนวันนี้ ' + x.cost + ' ฿',
+    html: '<div class="' + (x.margin < 0 ? 'warn2' : 'pre') + '">' +
+      (x.margin < 0
+        ? 'ตอนนี้<b> ขาดทุน ' + Math.abs(x.margin) + '% </b>— ขายกิโลละ ' + x.locked +
+          ' ฿ แต่ทุน ' + x.cost + ' ฿ เท่ากับเสีย <b>' + (x.cost - x.locked) + ' ฿/กก.</b> ทุกกิโลที่ขาย'
+        : 'margin ตอนนี้ ' + x.margin + '% ต่ำกว่าเกณฑ์ ' + D.floorPct + '%') + '</div>' +
+      '<div class="pre">ราคาที่ทำให้ถึงเกณฑ์ ' + D.floorPct + '% พอดี = <b>' + need + ' ฿</b>' +
+      '   (ขึ้นอีก ' + gap + ' ฿ จาก ' + x.locked + ')</div>',
+    fields: [{ k: 'price', label: 'ราคาใหม่ที่จะเสนอ (฿/กก.)', type: 'num', value: need,
+      hint: 'ใส่ 0 = เอาสินค้านี้ออกจากสัญญาของเจ้านี้' }],
+    okText: 'บันทึกราคาใหม่',
+    note: 'ราคาสัญญาเปลี่ยนทันที เจ้าอื่นไม่กระทบ · ถ้าเจ้านี้มีใบรอบนี้ที่ Pricing ยืนยัน/ส่งลูกค้าแล้ว บรรทัดนี้ต้องยืนยันใหม่ในหน้าตั้งราคา แล้วเซลล์ส่งลิงก์ใหม่',
+    onOk: function (v) {
+      var n = Math.round(Number(v.price));
+      if (!isFinite(n) || n < 0) { PX.toast('ราคาต้องเป็นตัวเลข', 'bad'); return false; }
+      return PX.post('/api/contract-price',
+        { customer_id: cid, product_id: pid, price: n })
+        .then(function () {
+          return PX.get('/api/guard').then(function (j) {
+            D = j; draw();
+            PX.toast('ปรับราคา ' + PX.esc(x.name) + ' ของ ' + PX.esc(x.cust) +
+              ' เป็น <b>' + n + ' ฿</b> แล้ว');
+          });
+        });
+    }
+  });
+}
+
+/* ── เพิ่มสินค้าในสัญญาของเจ้านี้ ── ใช้ /api/contract-price ตัวเดียวกับปุ่มแก้ราคา (ตรวจพิมพ์ผิดที่ server) */
+var PLIST = null;
+function addLine(cid, cname) {
+  (PLIST ? Promise.resolve(PLIST) : PX.get('/api/pricelist').then(function (j) { PLIST = j.rows || []; return PLIST; }))
+    .then(function (rows) {
+      PX.modal({
+        title: '+ เพิ่มสินค้าในสัญญา · ' + (cname || ''),
+        sub: 'เลือกสินค้าแล้วใส่ราคาสัญญาของเจ้านี้ · Pricing ยืนยันราคาในรอบนี้อีกทีที่หน้าตั้งราคา',
+        /* ค่าที่เลือกมีรหัสสินค้าต่อท้าย (#id) — ชื่อ+กลุ่มซ้ำกันได้ ห้ามเดาจากชื่อ (เคยเลือกตัวที่สองแต่ได้ตัวแรก) */
+        html: '<datalist id="plist">' + rows.map(function (r) { return '<option value="' + esc(r.name) + ' · ' + esc(r.grp || '-') + ' · #' + esc(r.id) + '"></option>'; }).join('') + '</datalist>',
+        fields: [
+          { k: 'prod', label: 'สินค้า', ph: 'พิมพ์ชื่อแล้วเลือกจากรายการ' },
+          { k: 'price', label: 'ราคาสัญญา (฿/กก.)', type: 'num', ph: 'เช่น 150' }
+        ],
+        okText: 'เพิ่มเข้าสัญญา',
+        onOk: function (v) {
+          var idm = String(v.prod || '').match(/#([A-Za-z0-9_-]+)\s*$/);
+          var byName = rows.filter(function (r) { return r.name === String(v.prod || '').trim(); });
+          var p = idm ? rows.filter(function (r) { return r.id === idm[1]; })[0] : (byName.length === 1 ? byName[0] : null);
+          if (!p) { PX.toast(byName.length > 1 ? 'ชื่อนี้มีหลายรายการ — เลือกจากรายการที่ขึ้นมา (มีรหัสต่อท้าย)' : 'เลือกสินค้าจากรายการที่ขึ้นมา', 'bad'); return false; }
+          var n = Math.round(Number(v.price));
+          if (!(n > 0)) { PX.toast('ใส่ราคาเป็นตัวเลขมากกว่า 0', 'bad'); return false; }
+          return PX.post('/api/contract-price', { customer_id: cid, product_id: p.id, price: n })
+            .then(function () { return PX.get('/api/guard'); })
+            .then(function (j) { D = j; draw(); PX.toast('เพิ่ม <b>' + esc(p.name) + '</b> ' + n + ' ฿ เข้าสัญญาแล้ว'); });
+        }
+      });
+      var inp = document.querySelector('.mdl-bd [data-k="prod"]'); if (inp) inp.setAttribute('list', 'plist');
+    }).catch(function (e) { PX.toast('เปิดรายการสินค้าไม่ได้ — ' + esc(e.message), 'bad'); });
+}
+
+/* ── ลูกค้าใหม่ ── */
+function addCust() {
+  PX.modal({
+    title: '+ ลูกค้าใหม่',
+    sub: 'เพิ่มเจ้าเข้าระบบ — ราคาสัญญาค่อยใส่ทีหลังจากหน้านี้',
+    fields: [
+      { k: 'name', label: 'ชื่อร้าน / บริษัท', ph: 'เช่น ร้านก๋วยเตี๋ยวเจ๊แดง' },
+      { k: 'owner', label: 'เซลล์ที่ดูแล', ph: 'เช่น พี่หมิว' },
+      { k: 'adjust', label: 'ส่วนต่างทั้งใบ (฿/กก.)', type: 'num', ph: '0',
+        hint: 'ลบ = ให้ถูกกว่าราคากลาง เช่น -2 · เว้นว่าง = ใช้ราคากลาง' }
+    ],
+    okText: 'เพิ่มลูกค้า',
+    onOk: function (v) {
+      if (!v.name) { PX.toast('ต้องมีชื่อร้าน', 'bad'); return false; }
+      var adj = v.adjust === '' ? 0 : Number(v.adjust);
+      if (!isFinite(adj) || Math.abs(adj) > 30) { PX.toast('ส่วนต่างต้องเป็นตัวเลขระหว่าง −30 ถึง 30 บาท', 'bad'); return false; }
+      var newId = '';
+      return PX.post('/api/customers', { name: v.name, owner: v.owner || '',
+        type: 'contract', tier: 'w2' })
+        .then(function (j) {
+          newId = j.id;
+          if (adj) return PX.post('/api/customer-adjust', { customer_id: j.id, adjust: Math.round(adj) });
+        })
+        .then(function () {
+          return PX.get('/api/guard').then(function (j) {
+            D = j; draw(); PX.toast('เพิ่ม <b>' + PX.esc(v.name) + '</b> แล้ว — ใส่สินค้าแรกในสัญญาต่อเลย');
+            /* ลูกค้าใหม่ยังไม่มีสินค้าในสัญญา = ยังไม่มีการ์ด ไม่มีใบราคา — เปิดหน้าต่างเพิ่มสินค้าให้เลย */
+            setTimeout(function () { addLine(newId, v.name); }, 300);
+          });
+        });
+    }
+  });
+}
+
+/* ── ส่งออก CSV ทุกบรรทัดสัญญา ── */
+function exportCsv(rows) {
+  var head = ['ลูกค้า', 'สินค้า', 'หมวด', 'ราคาล็อก', 'ทุนปัจจุบัน', 'margin %', 'สถานะ', 'ยืนยันแล้ว'];
+  var S = { loss: 'ขาดทุน', thin: 'ต่ำกว่าเกณฑ์', ok: 'ผ่านเกณฑ์' };
+  var body = rows.map(function (x) {
+    return [x.cust, x.name, x.grp, x.locked, x.cost, x.margin, S[x.state], x.verified ? 'ใช่' : 'ยัง'];
+  });
+  PX.csv('freshour-ราคาสัญญา-' + D.today + '.csv', [head].concat(body));
+  PX.toast('ดาวน์โหลด <b>' + rows.length + '</b> บรรทัดแล้ว');
+}
+
+/* ระดับความเจ็บของใบ — ใช้จัดสีแถบซ้ายของการ์ด */
+function lv(c) { return c.loss ? 0 : c.low ? 1 : 2; }
+
+function card(c) {
+  var vAll = c.allVerified;
+  return '<button class="cc lv' + lv(c) + '" onclick="pickCust(' +
+    jsq(c.id) + ')">' +
+    '<span class="tag">สัญญา · ราคาล็อก</span>' +
+    '<div class="nm" title="' + esc(c.name) + '">' + esc(c.name) + '</div>' +
+    '<div class="sp">ราคาส่ง 2kg' + (c.adjust ? ' · ทั้งใบ ' + (c.adjust > 0 ? '+' : '') + c.adjust : '') + '</div>' +
+    '<div class="row3"><div><div class="big">' + c.n + '</div>' +
+      '<div class="u">รายการล็อก</div></div>' +
+      '<div class="mg2"><b style="color:' + (c.margin < 0 ? 'var(--red)'
+        : c.margin < D.floorPct ? 'var(--amber)' : 'var(--green)') + '">' +
+        c.margin + '%</b><span>margin เฉลี่ย</span></div></div>' +
+    '<div class="ok2' + (vAll ? '' : ' warn') + '">' +
+      (vAll ? '✓ ยืนยันครบ' : '● ยังไม่ยืนยัน ' + (c.n - c.verified) + ' รายการ') + '</div>' +
+    '</button>';
+}
+
+var FILT = FILT || '';   /* ค่าจาก ?cust= ถูกตั้งไว้ก่อนหน้า (var ถูกยกขึ้นบน) — เดิมบรรทัดนี้ล้างทิ้งทุกครั้ง */
+/* กดการ์ดลูกค้า = เปิด "ใบของเจ้านี้" จริงๆ
+   เดิมกดแล้วแค่กรองตารางข้างล่าง คนกดเลยรู้สึกว่ากดไม่ได้
+   ใบประกอบด้วย ทุกบรรทัดของเจ้านั้น + ประวัติราคาที่เคยออกให้เจ้านี้ */
+function setGrade(g) {
+  GFIL = g; PG = 0;
+  /* จำไว้ใน URL ด้วย จะได้ส่งลิงก์ "ลูกค้าเกรด D" ให้กันได้ */
+  __NAV.replaceState(null, '', g ? '?grade=' + g : __NAV.pathname);
+  draw();
+}
+function pickCust(id) {
+  var c = (D.customers || []).filter(function (x) { return x.id === id; })[0];
+  if (!c) return;
+  FILT = id; PG = 0;
+  var mine = (D.lines || []).filter(function (l) { return l.cid === id; })
+    .sort(function (a, b) { return a.margin - b.margin; });
+  var GC = { A: 'g', B: 'b', C: 'a', D: 'r', F: 'r' };
+  PX.modal({
+    title: 'ใบราคา · ' + c.name,
+    sub: 'เกรด ' + (c.grade || '—') + ' · ' + c.n + ' รายการ · margin เฉลี่ย ' + c.margin + '%',
+    html:
+      '<div class="kpi kpi3" style="margin-bottom:14px">' +
+        '<div class="k"><div class="lb">เกรด</div><div class="v">' + esc(c.grade || '—') +
+          '</div><div class="c">margin เฉลี่ย ' + c.margin + '%</div></div>' +
+        '<div class="k"><div class="lb">ต่ำกว่าพื้น ' + D.floorPct + '%</div>' +
+          '<div class="v" style="color:' + (c.low ? 'var(--red)' : 'var(--green)') + '">' +
+          c.low + '</div><div class="c">จาก ' + c.n + ' รายการ</div></div>' +
+        '<div class="k"><div class="lb">ขาดทุนอยู่</div>' +
+          '<div class="v" style="color:' + (c.loss ? 'var(--red)' : 'var(--green)') + '">' +
+          c.loss + '</div><div class="c">บรรทัดที่ขายต่ำกว่าทุน</div></div>' +
+      '</div>' +
+      '<div class="sc"><table class="g" style="min-width:520px"><thead><tr>' +
+        '<th>สินค้า</th><th class="rt">ราคาล็อก</th><th class="rt">ทุนวันนี้</th>' +
+        '<th class="rt">margin</th><th>ประวัติ</th></tr></thead><tbody>' +
+      (mine.length ? mine.map(function (l) {
+        return '<tr><td style="font-weight:600">' + esc(l.name) + '</td>' +
+          '<td class="rt">' + l.locked + '</td><td class="rt">' + l.cost + '</td>' +
+          '<td class="rt ' + (l.margin < 0 ? 'neg' : l.margin < D.floorPct ? 'neg' : 'pos') + '">' +
+            l.margin.toFixed(1) + '%</td>' +
+          '<td><button class="lnk3" onclick="PX.closeProduct();PX.product(' + jsq(l.pid) + ')">ดูย้อนหลัง</button></td></tr>';
+      }).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--tx-3)">' +
+        'ไม่มีบรรทัดสัญญา</td></tr>') +
+      '</tbody></table></div>' +
+      '<button class="btn" style="margin-top:10px" onclick="addLine(' + jsq(c.id) + ',' + jsq(c.name) + ')">+ เพิ่มสินค้าในสัญญา</button>',
+    okText: 'กรองตาราง Margin Guard ให้เหลือเจ้านี้',
+    note: 'กด "ดูย้อนหลัง" ที่สินค้าไหนก็เห็นราคาที่เคยออกให้เจ้านี้ทุกรอบ',
+    onOk: function (v, close) { close(); draw(); jumpGuard(); }
+  });
+}
+
+function draw() {
+  var T = D.totals;
+  var h = PX.head('ลูกค้า & ราคาสัญญา (Contract Management)',
+    'ลูกค้าสัญญาราคาล็อก แต่ทุนลอย — จัดการ Margin และรายการที่ต้องเจรจาปรับราคา',
+    ['หมิง', 'พี่หมิง (MD)', 'ผู้บริหารการสัญญา']);
+
+  /* ── แถบเตือนบนสุด ── */
+  h += '<div class="bar-top"><div class="t">⚠️ ราคาสัญญากำลังกินตัวเอง</div><ul>' +
+    '<li><b>' + T.low + '</b> บรรทัด margin ต่ำกว่าเกณฑ์ ' + D.floorPct + '% — ' +
+      '<a href="#guard" onclick="jumpGuard();return false"><b>' + T.loss + '</b> บรรทัดขายต่ำกว่าทุนแล้ว</a></li>' +
+    '<li>ราคาล็อกไว้รอบเดียวแต่ทุนเป็นเรื่อยๆ — ต้องเจรจาขึ้นราคา หรือยอมรับว่าขาดทุนตัวนี้</li>' +
+    '</ul></div>';
+
+  /* ── เครื่องมือ ── */
+  h += '<div class="tools">' +
+    '<button class="btn pri" onclick="addCust()">+ ลูกค้าใหม่</button>' +
+    '<button class="btn" id="csvBtn">⭳ ส่งออก CSV</button>' +
+    '<span class="hint2">กดที่การ์ดลูกค้าเพื่อดูเฉพาะบรรทัดของเจ้านั้น</span>' +
+    '<span class="sortg"><span class="lb3">เรียงตาม</span>' +
+    '<button class="tab' + (SORT === 'margin' ? ' on' : '') + '" data-s="margin">🔥 margin ต่ำก่อน</button>' +
+    '<button class="tab' + (SORT === 'name' ? ' on' : '') + '" data-s="name">ชื่อร้านค้า (ก–ฮ)</button>' +
+    '<button class="tab' + (SORT === 'n' ? ' on' : '') + '" data-s="n">จำนวนรายการล็อก</button>' +
+    '</span></div>';
+
+  /* ── การ์ดลูกค้า ── */
+  var cs = D.customers.slice();
+  if (SORT === 'name') cs.sort(function (a, b) { return a.name.localeCompare(b.name, 'th'); });
+  else if (SORT === 'n') cs.sort(function (a, b) { return b.n - a.n; });
+  else cs.sort(function (a, b) { return a.margin - b.margin; });
+
+  /* กรองตามเกรด — มาจากการกดเกรดบนหน้าผู้บริหาร หรือกดชิปตรงนี้ */
+  var byG = {};
+  cs.forEach(function (c) { byG[c.grade] = (byG[c.grade] || 0) + 1; });
+  var shown = GFIL ? cs.filter(function (c) { return c.grade === GFIL; }) : cs;
+
+  h += '<div class="card" style="padding:0;border:0;background:transparent">' +
+    '<h3 style="padding:0 2px 9px">' +
+      (GFIL ? 'ลูกค้าเกรด ' + GFIL + ' (' + shown.length + ' เจ้า)'
+            : 'ร้านค้าคู่สัญญาทั้งหมด (' + cs.length + ' ร้านค้า)') +
+    '<span class="sub">กดการ์ดเพื่อเปิดใบราคาของเจ้านั้น</span></h3>' +
+    '<div class="tools" style="margin:0 0 11px">' +
+      '<button class="tab' + (GFIL ? '' : ' on') + '" onclick="setGrade(\'\')">' +
+        'ทุกเกรด (' + cs.length + ')</button>' +
+      ['A','B','C','D','F'].map(function (g) {
+        return '<button class="tab' + (GFIL === g ? ' on' : '') +
+          '" onclick="setGrade(' + jsq(g) + ')"' + (byG[g] ? '' : ' disabled') + '>' +
+          'เกรด ' + g + ' (' + (byG[g] || 0) + ')</button>'; }).join('') +
+      (FILT ? '<button class="tab" style="margin-left:auto" onclick="FILT=\'\';draw()">' +
+        'เลิกกรองเจ้าที่เลือก ✕</button>' : '') +
+    '</div>' +
+    (shown.length
+      ? '<div class="cgrid">' + shown.map(card).join('') + '</div>'
+      : '<p class="hint" style="padding:16px">ไม่มีลูกค้าเกรดนี้</p>') +
+    '</div>';
+
+  /* ── Margin Guard: ทุกบรรทัด ── */
+  var L = D.lines.filter(function (x) { return !FILT || x.cid === FILT; });
+  var pages = Math.max(1, Math.ceil(L.length / PER));
+  if (PG >= pages) PG = 0;
+  var page = L.slice(PG * PER, PG * PER + PER);
+
+  /* ── ข้อเสนอสลับสินค้า ────────────────────────────────────────────
+     พี่หมิงสั่งเอง: "ระบบควร suggest ให้ลูกค้าใช้สินค้าข้างเคียงที่กำไรมากขึ้น ในแง่เมนู"
+     เงื่อนไขคัดตัวแทน: กลุ่มเดียวกัน · ราคาต่างไม่เกิน 30% · margin ดีกว่าอย่างน้อย 3 จุด
+     · ต้องมีคำร่วมในชื่อสินค้า (เลือดหมู 5฿ ใช้แทนหมูแดดเดียว 107฿ ไม่ได้) */
+  var sg = D.suggest || [];
+  if (sg.length) {
+    h += '<div class="row" id="swap"><div class="card">' +
+      '<h3>ข้อเสนอสลับสินค้า<span class="sub">' + sg.length +
+        ' โอกาส · เรียงตามกำไรที่เพิ่มขึ้น</span></h3>' +
+      '<p class="hint"' + W('คัดตัวแทนยังไง',
+        'ต้องอยู่กลุ่มสินค้าเดียวกัน ราคาห่างกันไม่เกิน 30% margin ดีกว่าอย่างน้อย 3 จุด และชื่อต้องมีคำร่วมกัน',
+        'ตาราง contract_lines + products + ทุนล่าสุด',
+        'เป็นตัวที่ใช้แทนกันได้ในเมนูจริง ไม่ใช่แค่ตัวที่กำไรดีกว่า') +
+      '>เจ้าที่ซื้อตัวซ้ายอยู่ ลองเสนอตัวขวาแทน — ทีมขายเห็นรายการนี้ด้วย ' +
+      'แต่เห็นแค่ชื่อกับราคา ไม่เห็น margin</p>' +
+      '<div class="sc"><table class="g" style="min-width:720px"><thead><tr>' +
+        '<th>ลูกค้า</th><th>ตอนนี้ซื้อ</th><th class="rt">margin</th>' +
+        '<th>ลองเสนอ</th><th class="rt">margin</th><th class="rt">ต่างกัน</th>' +
+      '</tr></thead><tbody>' +
+      sg.slice(0, 20).map(function (x) {
+        return '<tr><td style="font-weight:600">' + esc(x.cust) + '</td>' +
+          '<td><a href="#" class="lnk2" onclick="PX.product(' + jsq(x.toId) + ');return false">' + esc(x.from) + '</a>' +
+            '<div style="font-size:10.5px;color:var(--tx-3)">' + x.fromPrice + ' ฿</div></td>' +
+          '<td class="rt neg">' + x.fromMargin.toFixed(1) + '%</td>' +
+          '<td style="font-weight:600">' + esc(x.to) +
+            '<div style="font-size:10.5px;color:var(--tx-3)">' + x.toPrice + ' ฿' +
+            (x.diff ? ' · ' + (x.diff > 0 ? '+' : '') + x.diff + ' ฿' : ' · ราคาเท่าเดิม') +
+            '</div></td>' +
+          '<td class="rt pos">' + x.toMargin.toFixed(1) + '%</td>' +
+          '<td class="rt"><b style="color:var(--green)">+' + x.gain.toFixed(1) + '</b>' +
+            '<span style="font-size:10px;color:var(--tx-3);display:block">จุด</span></td>' +
+        '</tr>';
+      }).join('') + '</tbody></table></div>' +
+      (sg.length > 20 ? '<div class="pgb">แสดง 20 จาก ' + sg.length +
+        ' · เรียงจากที่ได้กำไรเพิ่มมากสุด</div>' : '') +
+      '</div></div>';
+  }
+
+  h += '<div class="row" id="guard"><div class="card">' +
+    '<h3>Margin Guard — ทุกบรรทัดสัญญา' +
+    '<span class="tabs"><span class="tab on">ทั้งหมด (' + L.length + ')</span>' +
+    '<span class="tab" style="background:var(--red-l);color:var(--red);border-color:var(--red-b)">' +
+      'ขาดทุน (' + L.filter(function (x) { return x.state === 'loss'; }).length + ')</span>' +
+    '<span class="tab" style="background:var(--amber-l);color:var(--amber);border-color:var(--amber-b)">' +
+      'ต่ำกว่า ' + D.floorPct + '% (' + L.filter(function (x) { return x.state === 'thin'; }).length + ')</span>' +
+    '</span></h3>' +
+    '<p class="hint"' + W('Margin ของราคาสัญญา',
+      '(ราคาล็อก − ทุนวันนี้) ÷ ราคาล็อก · ราคาล็อกคือราคาที่เจ้านั้นได้จริงจากสามชั้น',
+      'ราคาสัญญา ' + T.lines + ' บรรทัด เทียบทุนชุด ' + esc(D.asOf),
+      'ตรงทุกบรรทัด ราคาและทุนมาจากฐานข้อมูลเดียวกัน') +
+    '>เรียงจากแย่สุด (margin ติดลบ) → คิดตามทุนล่าสุดเพื่อเตือนเจ้าที่ต้องเจรจาราคาด่วน</p>' +
+    '<div class="tw2"><div class="sc"><table class="g"><thead><tr>' +
+    '<th>ลูกค้าสัญญา</th><th>สินค้า</th><th>ราคาล็อก</th><th>ทุนปัจจุบัน</th>' +
+    '<th>MARGIN</th><th>ต้องทำอะไร</th><th>การดำเนินการ</th></tr></thead><tbody>' +
+    (page.length ? page.map(function (x) {
+      var cls = x.state === 'loss' ? 'neg' : x.state === 'thin' ? 'low' : '';
+      var act = x.state === 'loss' ? '<span style="color:var(--red)">● ขาดทุน — เจรจาด่วน</span>'
+              : x.state === 'thin' ? '<span style="color:var(--amber)">● บางกว่าเกณฑ์</span>'
+              : '<span style="color:var(--green)">● ผ่านเกณฑ์</span>';
+      var btn = x.state === 'ok' ? ''
+        : '<button class="mini' + (x.state === 'thin' ? ' a' : '') +
+          '" onclick="askRaise(' + jsq(x.cid) + ',' + jsq(x.pid) + ')">ขอปรับราคา</button>';
+      return '<tr><td>' + esc(x.cust) + '</td>' +
+        '<td><a href="#" class="lnk2" onclick="PX.product(' + jsq(x.pid) + ');return false">' + esc(x.name) + '</a></td>' +
+        '<td>' + x.locked + ' ฿</td><td>' + x.cost + ' ฿</td>' +
+        '<td class="' + cls + '">' + x.margin + '%</td>' +
+        '<td class="act">' + act + '</td><td>' + btn + '</td></tr>';
+    }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--tx-3)">ไม่มีบรรทัด</td></tr>') +
+    '</tbody></table></div>' +
+    '<div class="pgb">แสดง ' + (page.length ? PG * PER + 1 : 0) + '–' + (PG * PER + page.length) +
+      ' จาก ' + L.length + ' บรรทัด' +
+      (FILT ? ' · กรองเฉพาะ ' + esc((D.customers.filter(function(c){return c.id===FILT;})[0]||{}).name || '') : '') +
+      '<span class="sp2">' +
+      '<button ' + (PG === 0 ? 'disabled' : '') + ' data-p="' + (PG - 1) + '">ก่อนหน้า</button>' +
+      Array.from({ length: Math.min(pages, 5) }, function (_, i) {
+        return '<button class="' + (i === PG ? 'on' : '') + '" data-p="' + i + '">' + (i + 1) + '</button>';
+      }).join('') +
+      '<button ' + (PG >= pages - 1 ? 'disabled' : '') + ' data-p="' + (PG + 1) + '">ถัดไป</button>' +
+      '</span></div></div></div></div>';
+
+  document.getElementById('main').innerHTML = h;
+  PX.badge('low', T.loss + ' ขาดทุน');
+  var fs = document.getElementById('floatSub');
+  if (fs) fs.textContent = 'เฝ้าระวัง ' + T.loss + ' บรรทัดขาดทุน';
+  document.querySelectorAll('[data-s]').forEach(function (b) {
+    b.onclick = function () { SORT = b.dataset.s; draw(); };
+  });
+  document.querySelectorAll('[data-p]').forEach(function (b) {
+    b.onclick = function () { PG = +b.dataset.p; draw(); jumpGuard(); };
+  });
+  var cb = document.getElementById('csvBtn');
+  if (cb) cb.onclick = function () { exportCsv(L); };
+  PX.bindTips();
+}
+
+PX.get('/api/guard').then(function (j) { D = j; draw(); }).catch(PX.fail);
+</script>
+</body></html>

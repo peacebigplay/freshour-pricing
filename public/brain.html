@@ -1,0 +1,208 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>สรุป · อยู่ตรงไหน ไปไหนต่อ · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+</head><body>
+<script src="/peach.js"></script>
+<script>
+/* สรุป — เริ่มจากไหน · อยู่ตรงไหน · ไปไหนต่อ
+   หน้านี้ไม่ใช่แดชบอร์ด หน้าที่ของมันคือชี้ว่างานถัดไปคืออะไร และคิดเป็นเงินเท่าไร */
+var esc = PX.esc, money = PX.money, W = PX.why;
+var B = null;
+
+PX.shell('brain',
+  '<div class="float"><div class="ic">🧠</div><b>งานถัดไป</b>' +
+  '<span id="floatSub">กำลังอ่าน…</span>' +
+  '<button onclick="jumpMove()">ไปที่งานแรก</button></div>');
+
+function jumpMove() {
+  var el = document.getElementById('moves');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+var GR = { bad: ['var(--red)', 'ยังไม่ได้'], mid: ['var(--amber)', 'พอไปได้'],
+           good: ['var(--green)', 'ทำได้แล้ว'] };
+
+function draw() {
+  var n = B.now, first = B.moves[0];
+  var h = PX.head('อยู่ตรงไหน แล้วไปไหนต่อ',
+    'อ่านสดจากฐานข้อมูล ' + esc(B.today) + ' · ทุกตัวเลขคิดใหม่ทุกครั้งที่เปิดหน้า',
+    ['หมิง', 'พี่หมิง (MD)', 'ผู้บริหาร ตัดสินใจ']);
+
+  /* ── เส้นทาง: จากไหน → ตอนนี้ → ไปไหนต่อ ── */
+  h += '<div class="road">' +
+    '<div class="rd"><div class="lb">เริ่มจาก</div>' +
+      '<div class="big">' + esc(B.from ? B.from.at : '—') + '</div>' +
+      '<p>' + esc(B.from ? B.from.note : 'ยังไม่ได้บันทึกจุดเริ่ม') + '</p></div>' +
+    '<div class="ar">→</div>' +
+    '<div class="rd"><div class="lb">ตอนนี้</div>' +
+      '<div class="big">' + n.rated + '<span>/' + n.sku + '</span></div>' +
+      '<div class="hd2">รายการที่รู้ราคาตลาด</div>' +
+      '<p>ยืนยันราคาสัญญา ' + n.verified + '/' + n.guardLines + ' บรรทัด · ' +
+      'margin เฉลี่ย ' + n.margin_avg.toFixed(1) + '%<br>' +
+      (n.dispatched ? 'ชุด ' + esc(n.dispatched.label) +
+        (n.dirty ? ' · มีร่างใหม่ยังไม่ประกาศ' : '') : 'ยังไม่เคยประกาศ') + '</p></div>' +
+    '<div class="ar">→</div>' +
+    /* ช่อง "ไปไหนต่อ" ต้องอ่านแล้วรู้สึกว่าถูกสั่ง ไม่ใช่การ์ดข้อมูลอีกใบ
+       ของเก่าเป็นประโยคสั่งตัวใหญ่บนพื้นเข้ม แล้วบอกต่อว่าเริ่มที่ตัวไหน */
+    '<div class="rd next"><div class="lb">ไปไหนต่อ</div>' +
+      '<div class="act">' + esc(first ? actOf(first) : 'ไม่มีงานค้าง') + '</div>' +
+      '<div class="hd2">' + esc(first ? first.title : 'ข้อมูลครบพอสมควรแล้ว') + '</div>' +
+      '<p>' + esc(first && first.targets && first.targets.length
+        ? 'เริ่มที่ ' + first.targets[0].name : (first ? first.unit : '')) + '</p>' +
+      (first ? '<a class="gobtn" href="' + goOf(first) + '">' +
+        esc(actOf(first)) + ' →</a>' : '') + '</div>' +
+    '</div>';
+
+  /* ── สี่แกน เรียงตามเงินที่ค้างอยู่ ── */
+  var ax = B.axes.slice().sort(function (a, b) { return (b.baht || 0) - (a.baht || 0); });
+  h += '<div class="kpi" style="margin-top:14px">' + ax.map(function (a, i) {
+    var g = GR[a.grade] || GR.mid;
+    return '<div class="k' + (i === 0 && a.baht ? ' lead' : '') + '">' +
+      '<div class="kt"><span class="ic">' + ['🥊','🎯','⚡','💰'][i % 4] + '</span>' +
+      '<span class="pill ' + (a.grade === 'good' ? 'g' : a.grade === 'bad' ? 'r' : 'a') + '">' +
+      esc(g[1]) + '</span></div>' +
+      '<div class="lb">' + esc(a.name) + '</div>' +
+      '<div class="v">' + (a.baht ? money(a.baht) + '<small>฿</small>' : '—') + '</div>' +
+      '<div class="c">' + esc(a.one) + '</div></div>';
+  }).join('') + '</div>';
+  h += '<p class="hint" style="margin-top:9px"' + W('เงินที่ค้างอยู่ในแต่ละแกน',
+    'ยอดขาย/สัปดาห์ ของรายการที่ยังมีปัญหาในแกนนั้น — ไม่ใช่เงินที่จะได้เพิ่มทันที',
+    'คิดจากปริมาณขายจริงในระบบ ณ ' + B.today,
+    'รู้ปริมาณจริงแค่ ' + (n.sku - n.blind > 0 ? '' : '') + 'บางรายการ ตัวเลขนี้จึงเป็นขนาดของปัญหา ไม่ใช่กำไรที่รออยู่') +
+    '>ตัวเลขคือ<b> ขนาดของปัญหา</b> ไม่ใช่เงินที่จะได้เพิ่มทันที · เรียงจากก้อนใหญ่ไปเล็ก</p>';
+
+  /* ── งานถัดไป พร้อมหลักฐาน ── */
+  h += '<div class="row" id="moves"><div class="card">' +
+    '<h3>งานถัดไป<span class="sub">' + B.moves.length + ' เรื่อง · เรียงตามเงินที่ค้าง</span></h3>' +
+    '<p class="hint">แต่ละเรื่องบอกว่าทำไมถึงเป็นปัญหา และเริ่มแก้ที่ตัวไหน</p>' +
+    B.moves.map(function (m, i) {
+      return '<div class="mv">' +
+        '<div class="mvn">' + (i + 1) + '</div>' +
+        '<div class="mvb"><div class="mvt">' + esc(m.title) + '</div>' +
+        '<div class="mvw">' + esc(m.why || '') + '</div>' +
+        (m.targets && m.targets.length
+          ? '<div class="mvg">' + m.targets.slice(0, 4).map(function (t) {
+              return '<span class="chip2">' + esc(t.name) +
+                (t.note ? ' <i>' + esc(t.note) + '</i>' : '') + '</span>'; }).join('') + '</div>'
+          : '') + '</div>' +
+        '<div class="mvr"><b>' + (m.baht ? money(m.baht) : '—') + '</b>' +
+        '<span>' + esc(m.unit || '') + '</span>' +
+        '<a class="btn" href="' + goOf(m) + '">' + esc(actOf(m)) + ' →</a></div>' +
+        '</div>';
+    }).join('') + '</div></div>';
+
+  /* ── เงินที่รั่วอยู่ ── */
+  var M = B.money || {};
+  var leak = [
+    ['ยอดขายที่ตั้งราคาโดยไม่รู้ตลาด', M.blindRevenue, 'var(--amber)', '/costs'],
+    ['ขาดทุนจากราคาสัญญา', M.contractBleed, 'var(--red)', '/customers'],
+    ['กำไรที่หายเพราะทุนแพงสู้ไม่ได้', M.squeezedLoss, 'var(--red)', '/pricing'],
+    ['ยอดขายที่ราคายังไม่ยืนยัน', M.unverifiedRevenue, 'var(--blue)', '/customers']
+  ].filter(function (x) { return x[1]; });
+  if (leak.length) {
+    h += '<div class="row"><div class="card"><h3>เงินที่ค้างอยู่ตรงไหนบ้าง' +
+      '<span class="sub">฿ / สัปดาห์</span></h3>' +
+      '<p class="hint">ตัวเลขนี้คือขนาดของสิ่งที่ยังไม่ได้จัดการ ไม่ใช่กำไรที่รออยู่</p>' +
+      '<div class="bars">' + (function () {
+        var mx = Math.max.apply(null, leak.map(function (x) { return x[1]; })) || 1;
+        return leak.map(function (x) {
+          return '<div class="bar"><span class="nm">' + esc(x[0]) + '</span>' +
+            '<span class="tr"><i style="width:' + (x[1] / mx * 100).toFixed(0) +
+            '%;background:' + x[2] + '"></i></span>' +
+            '<span class="vv" style="color:' + x[2] + '">' + money(x[1]) + '</span></div>';
+        }).join('');
+      })() + '</div></div></div>';
+  }
+
+  /* ── ด่านก่อนประกาศ ── */
+  var bl = B.blockers || [], wn = B.warnings || [];
+  h += '<div class="row c2b"><div class="card">' +
+    '<h3>ด่านก่อนประกาศ<span class="sub">' + (B.passed ? 'ผ่านครบ' : 'ยังติด ' + bl.length) + '</span></h3>' +
+    (bl.length
+      ? '<div class="auto">' + bl.map(function (b) {
+          return '<div class="ac off"><div class="st"><i></i>ยังประกาศไม่ได้</div>' +
+            '<span>' + esc(typeof b === 'string' ? b : (b.title || b.msg)) + '</span></div>';
+        }).join('') + '</div>'
+      : '<p class="hint">ผ่านด่านครบ พร้อมประกาศ</p>') + '</div>' +
+    '<div class="card"><h3>ควรดูก่อน<span class="sub">' + wn.length + ' เรื่อง</span></h3>' +
+    (wn.length
+      ? '<div class="auto">' + wn.slice(0, 4).map(function (b) {
+          return '<div class="ac"><div class="st" style="color:var(--tx-3)"><i style="background:var(--tx-3)"></i>' +
+            'เตือนไว้</div><span>' + esc(typeof b === 'string' ? b : (b.title || b.msg)) + '</span></div>';
+        }).join('') + '</div>'
+      : '<p class="hint">ไม่มีอะไรต้องเตือน</p>') + '</div></div>';
+
+  /* ── คุยกับ brain — ของเก่ามี ต้องไม่หายไปตอนย้าย ──
+     ตอบจากตัวเลขในฐานข้อมูลเสมอ ถ้าไม่รู้จะบอกว่าไม่รู้ */
+  h += '<div class="row"><div class="card"><h3>คุยกับ brain' +
+    '<span class="sub">ตอบจากตัวเลขจริง ไม่แต่งเรื่อง</span></h3>' +
+    '<p class="hint">ถามเป็นภาษาคน — ถ้าระบบไม่รู้ มันจะบอกว่าไม่รู้ ไม่เดาให้</p>' +
+    '<div class="chat" id="stream"></div>' +
+    '<div class="hints" id="hints"></div>' +
+    '<div class="ask"><input id="q" autocomplete="off" ' +
+      'placeholder="เช่น ไปไหนต่อ · ติดอะไรอยู่ · เสียเงินตรงไหนบ้าง">' +
+    '<button class="btn pri" id="send">ถาม</button></div>' +
+    '<p class="hint" style="margin-top:9px">บทสนทนาเก่าดูได้ที่ ' +
+    '<a class="lnk2" href="/memory">ความจำ</a></p></div></div>';
+
+  document.getElementById('main').innerHTML = h;
+  bindChat();
+  var fs = document.getElementById('floatSub');
+  if (fs) fs.textContent = first ? first.title.slice(0, 40) : 'ไม่มีงานค้าง';
+  PX.bindTips();
+}
+
+/* ช่องสุดท้ายของเส้นทางต้องเป็นคำสั่ง ไม่ใช่ตัวเลขซ้ำกับข้างล่าง */
+function actOf(m) {
+  var t = m.title || '';
+  if (/ราคาตลาดของ/.test(t)) return 'ไปถามราคาตลาด';
+  if (/ยังไม่มีใครยืนยัน/.test(t)) return 'ยืนยันราคาสัญญา';
+  if (/สู้ตลาดไม่ได้|ทุนแพง/.test(t)) return 'ต่อรองทุนกับโรงงาน';
+  if (/ขายต่ำกว่าทุน|ขาดทุน/.test(t)) return 'เจรจาปรับราคา';
+  if (/เก่ากว่า/.test(t)) return 'อัปเดตราคาตลาด';
+  return 'ดูรายละเอียด';
+}
+function goOf(m) {
+  var t = m.title || '';
+  if (/ราคาตลาด/.test(t)) return '/costs';
+  if (/สัญญา|ขาดทุน/.test(t)) return '/customers';
+  return '/pricing';
+}
+
+function push(who, t) {
+  var s = document.getElementById('stream');
+  var d = document.createElement('div');
+  d.className = 'bub ' + who;
+  d.innerHTML = esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+  s.appendChild(d); s.scrollTop = s.scrollHeight;
+}
+function hints(list) {
+  document.getElementById('hints').innerHTML = (list || []).map(function (x) {
+    return '<button class="tab" data-h="' + esc(x) + '">' + esc(x) + '</button>'; }).join('');
+}
+function ask(t) {
+  if (!t) return;
+  push('me', t);
+  document.getElementById('q').value = '';
+  PX.post('/api/brain/say', { text: t })
+    .then(function (a) { push('br', a.text); hints(a.suggest); })
+    .catch(function (e) { push('br', 'ขัดข้อง — ' + e.message); });
+}
+function bindChat() {
+  push('br', 'ถามมาได้เลย ผมตอบจากตัวเลขในฐานข้อมูล ถ้าไม่รู้จะบอกว่าไม่รู้');
+  hints(['ไปไหนต่อ', 'ติดอะไรอยู่', 'เสียเงินตรงไหนบ้าง', 'เริ่มจากไหน']);
+  document.getElementById('send').onclick = function () {
+    ask(document.getElementById('q').value.trim()); };
+  document.getElementById('q').onkeydown = function (e) {
+    if (e.key === 'Enter') ask(this.value.trim()); };
+  document.getElementById('hints').onclick = function (e) {
+    var b = e.target.closest('[data-h]'); if (b) ask(b.dataset.h); };
+}
+
+PX.get('/api/brain').then(function (j) { B = j; draw(); }).catch(PX.fail);
+</script>
+</body></html>

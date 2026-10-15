@@ -1,0 +1,16 @@
+{
+  "name": "freshour-pricing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Freshour · ระบบตั้งราคาหมูสด — prototype ที่ใช้งานได้จริงจากไฟล์ดีไซน์ล่าสุด",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test test/*.test.js",
+    "reset": "node -e \"require('fs').rmSync('data/journal.jsonl',{force:true});console.log('ล้างข้อมูลทดสอบแล้ว')\"",
+    "build:demo": "node tools/build-demo.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED"
+}

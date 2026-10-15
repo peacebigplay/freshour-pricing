@@ -1,0 +1,1040 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ตั้งราคา · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+</head><body>
+<script src="/peach.js"></script>
+<script src="/catmargin.js"></script>
+<script>
+/* โต๊ะตั้งราคา — งานวันพุธของพี่จุ๋ม
+   ของจริง 78% ของสินค้าขายให้เจ้าเดียว งานจึงเป็น "ใบละเจ้า 43 ใบ" ไม่ใช่กระดานเดียว 363 แถว
+   เปิดมาเจอกองใบก่อน เลือกใบแล้วค่อยไล่ทีละรายการ */
+var esc = PX.esc, money = PX.money, W = PX.why;
+/* ค่าที่ใส่ใน onclick ต้องเป็นสตริง JS ที่ปลอดภัยทั้งในฐานะ JS และ attribute — รหัส/กลุ่มสินค้ามาจากคนพิมพ์ได้ */
+function jsq(v) { return JSON.stringify(String(v == null ? '' : v)).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+var GD = null, EXC = {}, SAVING = false, SEL = {}, CATG = null;   /* EXC = เหตุผลข้อยกเว้นของแถวที่ยืนยันต่ำกว่าขั้นต่ำ */
+var D = null, CUST = '', CQ = '', Q = '', EDIT = {}, ALL = false, VIEW = 'home', G = 'ทั้งหมด', REQ = null, STRATEGY = 'competitive', SORT = 'crisis', CSORT = 'orders', CONF = {}, LASTSAVE = '', PAGE = 0, PER = 20, CUSTOMER_CACHE = {}, HANDED = {};
+var PREV_PERIOD = '03–09/09', CUR_PERIOD = '10–16/09';
+
+(function () {
+  var q = new URLSearchParams(__NAV.search);
+  if (q.get('cust')) CUST = q.get('cust');
+  if (q.get('q')) Q = q.get('q');
+})();
+
+PX.shell('pricing',
+  '<div class="float"><div class="ic">🧮</div><b>กองใบราคา</b>' +
+  '<span id="floatSub">กำลังอ่าน…</span>' +
+  '<button onclick="goHome()">Pricing Home</button></div>');
+
+function deskURL() { return '/api/desk' + (CUST ? '?customer=' + encodeURIComponent(CUST) : ''); }
+
+/* ── ⚠ ตรงนี้เคยเป็น "Prototype data hydration" ของไฟล์เดโม ──────────
+   ในไฟล์เดโมมันเติมช่องที่ว่างให้ครบ เพื่อให้กดเล่นได้ทุกแถวโดยไม่เจอช่องเปล่า
+   แต่บนเว็บจริงมันคือการ "แต่งข้อมูล" — ตอนย้ายมาครั้งแรกทำให้
+     · ราคาตลาดขึ้น 363/363 ทั้งที่ของจริงรู้แค่ 1 รายการ
+     · ปริมาณขายถูกสุ่มใส่ กำไร/สัปดาห์เลยขึ้น 569,314 แทนที่จะเป็น 74,475
+     · ทุน ราคากระดาน จุดคุ้ม เพดานเซลล์ ถูกเติมให้ครบทั้งที่ยังไม่รู้
+   ช่องว่างคือความจริงของระบบนี้ — มันคืองานที่ยังไม่ได้ทำ ห้ามกลบ
+   ถ้าจะกลับไปใช้ในไฟล์เดโม ให้ก๊อปจาก Freshour-ทุกหน้า-ให้พีชแก้.html */
+function hydrateBase(j) {
+  if (j && !(j.targetPct > 0)) j.targetPct = 15;
+  return j;
+}
+
+/* แถวที่ยืนยันไว้แต่ "บริบทเปลี่ยน" (ทุน/ราคากลางเปลี่ยนหลังบันทึก) = ยังไม่ถือว่ายืนยัน ต้องดูใหม่ */
+function staleRow(r) {
+  var v = V(r);
+  return CUST ? !!(v.baseChanged || v.costChanged || v.baseApproved === false)
+              : !!(v.central && v.central.state === 'stale');
+}
+function load(msg) {
+  var want = CUST;
+  return PX.get(deskURL())
+    .then(function (j) {
+      /* กดสลับเจ้าเร็ว ๆ แล้วคำตอบเก่ามาถึงทีหลัง = ทิ้ง (ไม่งั้นจอเป็นเจ้า B แต่ข้อมูลเป็นเจ้า A) */
+      if (want !== CUST) return 'skip';
+      D = hydrateBase(j);
+      CUR_PERIOD = D.round || D.asOf || 'รอบนี้';
+      PREV_PERIOD = D.prevRound || 'รอบก่อน';
+      (D.customers || []).forEach(function(c){ CUSTOMER_CACHE[c.id] = Object.assign({}, c); });
+      /* แถวที่ยืนยันไว้แล้ว (และทุนยังไม่เปลี่ยน) ถือว่ายืนยันแล้วตั้งแต่เปิดหน้า — ไล่ยืนยันซ้ำทุกครั้งไม่ได้ */
+      /* แถวที่บริบทเปลี่ยน (ทุน/ราคากลาง) ต้องกลับไปรอยืนยัน แม้เคยติ๊กไว้บนจอก่อนโหลดใหม่ */
+      rowsInView().forEach(function (r) { if (staleRow(r)) delete CONF[r.id];
+        else if (approvedPrice(r) != null && CONF[r.id] == null) CONF[r.id] = true; });
+      /* ข้อมูลเสริมสองก้อนนี้ล้มได้โดยไม่กระทบใบ — แต่ใบหลักล้มต้องไม่ถูกกลืนไปด้วย (เดิม catch ตัวเดียวกลืนทั้งหมด) */
+      return Promise.all([
+        PX.get('/api/guard').then(function (g) { GD = g; }, function () { GD = null; }),
+        PX.get('/api/price-requests').then(function (r) { REQ = r; }, function () { REQ = null; }),
+        (!CUST ? PX.get('/api/category-guard').then(function (c) { CATG = c; }, function () { CATG = null; }) : null)
+      ]);
+    }, function (e) {
+      if (want !== CUST) return 'skip';
+      /* โหลดใบของเจ้านี้ไม่ได้ — ล้างข้อมูลเก่าออกจากจอ กันกดบันทึกแล้วราคาเจ้าก่อนหน้าไปลงเจ้านี้ */
+      D = null; EDIT = {}; SEL = {}; CONF = {}; EXC = {};
+      document.getElementById('main').innerHTML = '<div class="card" style="margin-top:16px;padding:20px">' +
+        '<b>โหลดข้อมูลไม่สำเร็จ</b><p class="hint" style="margin:6px 0 12px">' + esc(e.message) + '</p>' +
+        '<button class="btn pri" onclick="load()">ลองใหม่</button> <button class="btn" onclick="goHome()">กลับหน้าแรก</button></div>';
+      return 'failed';
+    })
+    .then(function (st) { if (st === 'skip' || st === 'failed' || !D) return; draw(); if (msg) PX.toast(msg); });
+}
+function pick(id) { CUST = id; VIEW = 'customer-detail'; EDIT = {}; SEL = {}; CONF = {}; Q = ''; G = 'ทั้งหมด'; ALL = false; PAGE = 0; load(); }
+function goHome() { VIEW = 'home'; CUST = ''; EDIT = {}; SEL = {}; CONF = {}; Q = ''; CQ = ''; G = 'ทั้งหมด'; ALL = false; PAGE = 0; load(); }
+function openCustomerList() { VIEW = 'customers'; CUST = ''; EDIT = {}; SEL = {}; CONF = {}; Q = ''; G = 'ทั้งหมด'; ALL = false; PAGE = 0; load(); }
+function backStack() {
+  if (VIEW === 'customer-detail' || CUST) { CUST = ''; VIEW = 'customers'; }
+  else if (VIEW === 'board') { VIEW = 'home'; ALL = false; }
+  else { VIEW = 'home'; }
+  EDIT = {}; SEL = {}; CONF = {}; Q = ''; G = 'ทั้งหมด'; PAGE = 0; load();
+}
+
+/* ราคาที่จะออกของแถวนี้ — แก้ค้างไว้ใน EDIT ก่อนบันทึก */
+function basePrice(r) {
+  var a = approvedPrice(r); if (a != null) return a;
+  var g = goalOf(r); if (g && g.price > 0) return g.price;   /* Goal ที่ไม่มีราคา (เช่น แข่งขันได้ แต่ไม่รู้ตลาด) ห้ามคืน undefined ลงช่องราคา */
+  return (CUST && r.cust) ? r.cust.price : r.w2;
+}
+function priceOf(r) { return EDIT[r.id] != null ? EDIT[r.id] : basePrice(r); }
+function mgOf(r, px) { return px > 0 ? Math.round((px - r.cost) / px * 1000) / 10 : 0; }
+function prevOf(r) { return CUST ? (V(r).prevCustomer || 0) : (r.prev || 0); }
+
+/* ราคาตลาดที่ยังใช้ตัดสินได้ — หมดอายุแล้วใช้ฟ้องไม่ได้ */
+function mkt(r) { return (r.cheapest && !r.cheapest.stale) ? r.cheapest : null; }
+
+/* เห็นราคานั้นมากี่วันแล้ว — กฎอายุ 30 วันทั้งกฎแขวนอยู่กับเลขนี้
+   ตอนย้ายดีไซน์เคยตัดทิ้ง เหลือแต่ชื่อเจ้า คนเลยเทียบกับของเก่า 27 วันโดยไม่รู้ตัว */
+function ageOf(r) {
+  if (!r.cheapest) return '';
+  var m = (r.marks || []).filter(function (x) { return x.price === r.cheapest.price; })[0];
+  if (!m || m.age == null) return '';
+  return m.age === 0 ? 'วันนี้' : 'เห็นเมื่อ ' + m.age + ' วัน';
+}
+
+
+/* ── Pricing Strategy v2 ───────────────────────────────────────────
+   เป้าคือให้ระบบ "เสนอ" และให้คนตรวจ exception แทนการไล่คิดทุกแถว
+   สูตรจริงควรอยู่ backend endpoint เดียว เช่น /api/price-suggestions เพื่อให้เว็บ/cron ใช้กฎเดียวกัน */
+var STRATS = {
+  competitive: { name: 'แข่งขันได้',  note: 'ราคากลางตลาด — ถ้าต่ำกว่า floor จะแจ้ง warning · ต้องตัดสินใจเอง (V29)' },
+  hold:        { name: 'ยืนราคาเดิม', note: 'ราคารอบก่อนตรงๆ — ถ้าต่ำกว่า floor จะแจ้ง warning แต่ไม่ยกขึ้นเอง (V29)' },
+  target:      { name: 'กำไรตามเป้า', note: 'ทุน ÷ (1 − เป้าหมวด%) ปัดขึ้น' },
+  protect:     { name: 'ป้องกันกำไร', note: 'ทุน ÷ (1 − floor%) ปัดขึ้น — ราคาต่ำสุดที่ยังอยู่ใน floor' }
+};
+function setStrategy(k) {
+  STRATEGY = k; EDIT = {}; SEL = {};   /* เปลี่ยน Goal ทั้งใบ = ล้างที่เลือกรายแถวด้วย ไม่งั้นราคาใหม่แต่ไฮไลต์ปุ่มเก่า */
+  rowsInView().forEach(function (r) { if (approvedPrice(r) == null) CONF[r.id] = false; });
+  draw();
+  PX.toast('Goal <b>' + esc(STRATS[k].name) + '</b> · ราคาแนะนำคิดใหม่ทุกแถวที่ยังไม่ยืนยัน');
+}
+
+
+function sourceLabel(r) {
+  var m = V(r).market || {};
+  return m.n ? 'ตลาด ' + m.low + '–' + m.high + ' ฿ · median ' + m.median + ' ฿' : 'ไม่มีราคาตลาดที่ยังใช้ได้ · ใช้ทุน + เป้าหมวด';
+}
+
+
+
+function goalControl() {
+  var cc = D.centralCount || {};
+  return '<div class="goalbar"><span class="glb">Goal การตั้งราคา</span>' +
+    Object.keys(STRATS).map(function(k){
+      return '<button class="tab' + (STRATEGY===k?' on':'') + '" title="' + esc(STRATS[k].note) + '" onclick="setStrategy('+jsq(k)+')">' +
+        esc(STRATS[k].name) + '</button>';
+    }).join('') +
+    '<button class="lnk3" style="margin-left:6px" onclick="applyGoalAll()">ใช้กับทุกแถว (รวมที่ยืนยันแล้ว)</button>' +
+    '<span class="ghelp">ขั้นต่ำ = floor ' + D.floorPct + '% หรือเป้าหมวด (ค่าที่สูงกว่า) · ' +
+      (CUST ? 'ฐาน = ราคากลางที่ยืนยันแล้ว' : 'ยืนยันแล้ว ' + (cc.approved || 0) + ' · ต้องยืนยัน ' + (cc.need || 0) +
+        (cc.stale ? ' (ทุนเปลี่ยน ' + cc.stale + ')' : '')) + '</span></div>';
+}
+function csort(v){ CSORT=v; draw(); }
+function setSort(v){ SORT=v; PAGE=0; draw(); }
+function setPage(v){ PAGE=Math.max(0,v); draw(); window.scrollTo(0,document.querySelector('.tw2')?document.querySelector('.tw2').offsetTop-20:0); }
+function goCosts(view){ __NAV.href= view === 'market' ? '/costs?only=nomkt' : '/costs'; }
+function customerOrders(c){ return c.orders || c.orderCount || c.contractItems || c.lines || 0; }
+function customerKg(c){
+  var v = c.kg || c.volume || c.vol || 0;
+  return v > 0 ? money(v) + ' kg/รอบ' : '— kg/รอบ';
+}
+function sortCustomers(a,b){
+  if (CSORT==='az') return a.name.localeCompare(b.name,'en');
+  if (CSORT==='th') return a.name.localeCompare(b.name,'th');
+  return customerOrders(b)-customerOrders(a);
+}
+function sortRows(a,b){
+  if (SORT==='az') return a.name.localeCompare(b.name,'en');
+  if (SORT==='th') return a.name.localeCompare(b.name,'th');
+  if (SORT==='orders') return (b.vol||0)-(a.vol||0);
+  var wa=needsWork(a)?1:0, wb=needsWork(b)?1:0;
+  if (wa!==wb) return wb-wa;
+  var ra=(D.floorPct||12)-mgOf(a,priceOf(a)), rb=(D.floorPct||12)-mgOf(b,priceOf(b));
+  if (ra!==rb) return rb-ra;
+  return (b.costJump||0)-(a.costJump||0);
+}
+function confirmedCount(rows){ return rows.filter(function(r){ return !!CONF[r.id]; }).length; }
+/* ขั้นต่ำ 12% ของทุน (เจ้านี้ถ้าเป็นใบรายเจ้า) — ต่ำกว่านี้ server ไม่รับไม่ว่าใคร (สเปก V21 §7) */
+function floorOfRow(r) { var c = Number(r.cost) || 0, t = Number(D.floorPct) || 12; return c > 0 ? Math.ceil(c / (1 - t / 100) - 1e-9) : 0; }
+function confirmRow(id){
+  var r = D.rows.filter(function (x) { return x.id === id; })[0]; if (!r) return;
+  if (CUST && V(r).baseApproved === false) {
+    PX.toast('ราคากลางของ ' + esc(r.name) + ' ยังไม่ยืนยัน — ยืนยันใน Step 1 ก่อน แล้วค่อยยืนยันใบรายเจ้า', 'bad'); return;
+  }
+  var f12 = floorOfRow(r);
+  if (f12 && priceOf(r) < f12) {
+    PX.toast('ราคา ' + priceOf(r) + ' ฿ ต่ำกว่าขั้นต่ำ ' + (D.floorPct || 12) + '% (' + f12 + ' ฿) — ยืนยันไม่ได้ทุกกรณี · ใช้ Goal หรือพิมพ์ราคา ≥ ' + f12 + ' ฿', 'bad');
+    return;
+  }
+  if (belowGuard(r) && !EXC[id]) {
+    PX.modal({ title: 'ต่ำกว่าขั้นต่ำ · ' + r.name,
+      sub: 'ราคา ' + priceOf(r) + ' ฿ ต่ำกว่าขั้นต่ำ ' + guardOf(r) + ' ฿ (' + esc((V(r).category || {}).name || '') + ' ' + V(r).effectivePct + '%)',
+      fields: [{ k: 'why', label: 'เหตุผลข้อยกเว้น (บังคับ)', type: 'area', rows: 2, ph: 'เช่น ตัวชูโรงของเจ้านี้ · สู้เจ้าอื่นที่ให้ 185' }],
+      okText: 'ยืนยันเป็นข้อยกเว้น',
+      onOk: function (v, close) {
+        if (String(v.why || '').trim().length < 3) { PX.toast('ต้องใส่เหตุผลอย่างน้อยสั้นๆ', 'bad'); return false; }
+        EXC[id] = String(v.why).trim(); CONF[id] = true; close(); draw();
+      } });
+    return;
+  }
+  CONF[id] = true; draw();
+}
+function confirmNormal(){
+  var n = 0;
+  rowsInView().forEach(function(r){ if (V(r).goals && !needsWork(r) && !CONF[r.id]) { CONF[r.id] = true; n++; } });
+  draw(); PX.toast('ยืนยันรายการปกติ ' + n + ' แถว — เหลือเฉพาะรายการที่ต้องตัดสินใจ');
+}
+function formatStamp(){
+  var d=new Date();
+  var z=function(n){return String(n).padStart(2,'0');};
+  return z(d.getDate())+'/'+z(d.getMonth()+1)+'/'+d.getFullYear()+' · '+z(d.getHours())+':'+z(d.getMinutes());
+}
+function saveSheet(){
+  var rows = rowsInView().filter(function (r) { return V(r).goals; });   /* ไม่รู้ทุน = ยืนยันไม่ได้ */
+  var ok = confirmedCount(rows);
+  if (ok < rows.length) {
+    PX.toast('ยังยืนยันราคาไม่ครบ — เหลือ <b>' + (rows.length - ok) + '</b> รายการ', 'bad');
+    var miss = rows.filter(function (r) { return !CONF[r.id]; })[0];
+    if (miss) { var el = document.querySelector('[data-row="' + miss.id + '"]'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    return;
+  }
+  /* Goal ที่บันทึก = Goal ที่แถวนั้นเลือกจริง (rowGoal) — รีวิว Codex 30 ก.ย.: เดิมกดปุ่ม "ยืนราคาเดิม" แล้วบันทึก
+     ได้ 'manual' เพราะนับทุกราคาที่แก้บนจอเป็นพิมพ์เอง → เหตุผลของราคาหาย และโหลดใหม่ไม่ไฮไลต์ Goal ที่เลือก */
+  var payload = rows.map(function (r) {
+    return { product_id: r.id, price: priceOf(r), goal: rowGoal(r) || STRATEGY, exception: EXC[r.id] || (CUST ? (V(r).saved||{}).exception : (V(r).central||{}).exception) || '' };
+  });
+  var loadedCust = D && D.customer ? D.customer.id : '';
+  if ((CUST || '') !== (loadedCust || '')) { PX.toast('ข้อมูลบนจอยังไม่ใช่ของเจ้านี้ — รอโหลดให้เสร็จแล้วบันทึกใหม่', 'bad'); return; }
+  if (SAVING) return;                              /* กดซ้ำระหว่างกำลังบันทึก = ไม่ยิงซ้ำ */
+  SAVING = true;
+  PX.post('/api/save-price-sheet', { customer_id: loadedCust || null, goal: STRATEGY, rows: payload })
+    .then(function (res) {
+      SAVING = false;
+      LASTSAVE = formatStamp(); EDIT = {}; SEL = {}; EXC = {};
+      return load((CUST ? 'บันทึกใบราคา' : 'บันทึกราคากลาง') + 'แล้ว ' + res.saved + ' รายการ' +
+        (res.exceptions ? ' · ข้อยกเว้น ' + res.exceptions : '') + (res.handoffReset ? ' · ราคาเปลี่ยนหลังส่งต่อ → กดส่งต่อ Sales ใหม่' : '') + (CUST ? ' · ส่ง Sales ได้แล้ว' : ' · เป็นฐานของราคารายเจ้าแล้ว'));
+    })
+    .catch(function (e) {
+      SAVING = false;
+      /* บอกให้รู้ว่าติดที่บรรทัดไหน ไม่ใช่แค่ "มีรายการที่ต้องแก้" */
+      var ps = (e.body && e.body.problems) || [];
+      PX.toast('บันทึกไม่สำเร็จ — ' + esc(e.message) + (ps.length ? '<br>' + ps.slice(0, 3).map(function (p) {
+        return '• ' + esc(p.name || p.product_id) + ': ' + esc(p.error); }).join('<br>') + (ps.length > 3 ? '<br>…อีก ' + (ps.length - 3) + ' รายการ' : '') : ''), 'bad');
+    });
+}
+function centralPrintStatus() {
+  var rows = (D && D.rows) || [];
+  var known = rows.filter(function (r) { return V(r).goals; });
+  var left = known.filter(function (r) { var c = V(r).central; return !c || c.state !== 'approved'; }).length;
+  var edits = Object.keys(EDIT).length;
+  return { rows: known, unknown: rows.length - known.length, left: left, edits: edits, ready: !!D && !left && !edits };
+}
+function exportCentralPDF() {
+  if (CUST) return;
+  var s = centralPrintStatus();
+  if (!s.ready) {
+    PX.toast('บันทึกราคากลางให้ครบก่อน — เหลือ ' + s.left + ' รายการ' +
+      (s.edits ? ' · มีการแก้ไขที่ยังไม่บันทึก ' + s.edits + ' รายการ' : ''), 'bad');
+    return;
+  }
+  if (!document.getElementById('printSheetStyle')) {
+    var style = document.createElement('style');
+    style.id = 'printSheetStyle';
+    style.textContent = '#printSheet{display:none;font-family:inherit;font-size:11pt;color:#000;background:#fff}' +
+      '#printSheet table{width:100%;border-collapse:collapse;font:inherit}' +
+      '#printSheet th,#printSheet td{border:1px solid #aaa;padding:5px;text-align:left}' +
+      '#printSheet tr{page-break-inside:avoid}' +
+      '@media print{@page{size:A4;margin:12mm}body > *:not(#printSheet){display:none!important}#printSheet{display:block!important}}';
+    document.head.appendChild(style);
+  }
+  var now = new Date();
+  var stamp = now.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', year: 'numeric' }) +
+    ' · ' + now.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false });
+  var h = '<h1>' + esc('ราคากลาง Freshour · รอบ ' + CUR_PERIOD) + '</h1><p>' + esc('พิมพ์เมื่อ ' + stamp) + '</p>' +
+    '<p>' + esc('ไม่รู้ทุน ' + s.unknown + ' รายการ — ไม่อยู่ในใบนี้') + '</p>' +
+    '<table><thead><tr><th>' + esc('สินค้า') + '</th><th>' + esc('ราคา (฿/กก.)') + '</th></tr></thead><tbody>';
+  var group = null;
+  s.rows.sort(function (a, b) { return String(a.grp || '').localeCompare(String(b.grp || ''), 'th') || String(a.name).localeCompare(String(b.name), 'th'); });
+  s.rows.forEach(function (r) {
+    var g = String(r.grp || '');
+    if (g !== group) { h += '<tr><th colspan="2">' + esc(g) + '</th></tr>'; group = g; }
+    h += '<tr><td>' + esc(r.name) + '</td><td>' + esc(String(Math.round(V(r).central.price))) + '</td></tr>';
+  });
+  h += '</tbody></table><p>' + esc('รวม ' + s.rows.length + ' รายการ') + '</p>';
+  var sheet = document.getElementById('printSheet');
+  if (!sheet) { sheet = document.createElement('div'); sheet.id = 'printSheet'; document.body.appendChild(sheet); }
+  sheet.innerHTML = h;
+  window.print();
+}
+function roundStamp(){
+  return '<div class="roundstamp"><span class="dashround">รอบ '+CUR_PERIOD+'</span>' +
+    '<span>เทียบรอบก่อน <b>'+PREV_PERIOD+'</b></span><span class="dot"></span>' +
+    '<span>ประวัติการบันทึก: <b>'+(LASTSAVE||'ยังไม่มีการบันทึกรอบนี้')+'</b></span></div>';
+}
+/* ── จังหวะสัปดาห์: อังคารทุนมา → พุธจบราคา → พฤหัสประกาศ ──
+   เปิดหน้ามาต้องรู้ก่อนว่าวันนี้อยู่ช่วงไหน ไม่งั้นไม่รู้ว่าสายหรือยัง */
+var BEAT = [
+  { d: 'อังคาร', w: 'ทุนจากโรงงานเข้า', dow: 2, go: '/costs' },
+  { d: 'พุธ',    w: 'ยืนยันราคากลาง',    dow: 3, go: '' },
+  { d: 'พฤหัส',  w: 'ประกาศ → ใบรายเจ้า → ส่ง Sales',  dow: 4, go: '/exec' }
+];
+function beat() {
+  var dow = new Date().getDay(), age = null;
+  /* ต้องเป็นวันที่จริงเท่านั้น — ป้ายชุดราคาเป็นข้อความอิสระ
+     เคยเอามาแปลงเป็นวันแล้วได้ "9104 วัน" ซึ่งไม่มีความหมาย */
+  if (/^\d{4}-\d{2}-\d{2}/.test(D.costUpdated || '')) {
+    var t = Date.parse(D.costUpdated);
+    if (!isNaN(t)) age = Math.round((Date.now() - t) / 864e5);
+  }
+  var open = (D.customers || []).filter(function (c) { return c.work > 0; }).length;
+  var doneOf = [!!D.costUpdated, open === 0, false];
+  return '<div class="beat">' + BEAT.map(function (b, i) {
+    var cls = dow === b.dow ? 'now' : (dow > b.dow ? 'past' : '');
+    var inner = '<span class="d">' + b.d + (doneOf[i] ? ' <i>✓</i>' : '') + '</span>' +
+                '<span class="w">' + b.w + '</span>';
+    return b.go ? '<a class="st ' + cls + '" href="' + b.go + '">' + inner + '</a>'
+                : '<div class="st ' + cls + '">' + inner + '</div>';
+  }).join('') +
+    '<div class="st clock' + (age != null && age > 7 ? ' old' : '') + '">' +
+      '<span class="d">🕐</span><span class="w">' +
+      (age == null ? 'ยังไม่รู้ว่าทุนเข้าเมื่อไร'
+        : 'ทุนชุดนี้เข้ามา ' + age + ' วันแล้ว') + '</span></div>' +
+  '</div>';
+}
+
+/* แถวไหนต้องแตะ — แตะแล้วต้องหลุดออกจากกอง ไม่ใช่ค้างตลอด */
+function needsWork(r) {
+  var p = priceOf(r), pv = prevOf(r), v = V(r);
+  if (!v.goals) return false;                                  /* ไม่รู้ทุน — ไปติดด่านทุนแทน */
+  if (belowGuard(r)) return true;                              /* ต่ำกว่าขั้นต่ำ = ข้อยกเว้น ต้องมีเหตุผล */
+  if (!CUST && v.central && v.central.state === 'stale') return true;
+  if (CUST && v.baseApproved === false) return true;                 /* ฐานยังไม่ยืนยัน */
+  if (CUST && v.baseChanged) return true;                              /* ราคากลางเปลี่ยนหลังบันทึก */
+  if (CUST && v.costChanged) return true;                              /* ทุนของเจ้านี้เปลี่ยนหลังบันทึก */
+  if (pv > 0 && Math.abs(p - pv) >= Math.max(D.jumpBaht || 8, pv * 0.05)) return true;   /* ขยับแรงจากรอบก่อน */
+  return false;
+}
+
+/* ── กองใบราคา ───────────────────────────────────────────────── */
+var SENT = false;   /* ดูกองที่ส่งให้เซลล์ไปแล้ว */
+function seeSent(v) { SENT = v; draw(); }
+
+function homeDashboard(rows){
+  var known=rows.filter(function(r){return r.cost>0 && (r.vol||0)>0;});
+  var rev=known.reduce(function(a,r){return a+r.w2*r.vol;},0);
+  var gp=known.reduce(function(a,r){return a+(r.w2-r.cost)*r.vol;},0);
+  var mg=rev?gp/rev*100:0;
+  /* ⚠ เดิมวัดจาก "ราคากระดาน" ซึ่งเครื่องคิดราคาดันให้พ้นพื้นอยู่แล้ว ค่าจึงเป็น 0 ตลอด
+     โดยโครงสร้าง — การ์ดขึ้นเขียวทั้งที่ราคาสัญญารายเจ้าขายต่ำกว่าทุนอยู่จริง
+     ความเสี่ยงจริงอยู่ที่ "ราคาที่เจ้านั้นได้" ไม่ใช่ราคากลาง */
+/* ความเสี่ยงจริงอยู่ที่ "ราคาที่เจ้านั้นได้" ไม่ใช่ราคากลาง
+     ราคากลางถูกเครื่องคิดราคาดันให้พ้นพื้นอยู่แล้ว วัดตรงนั้นได้ 0 ตลอดโดยโครงสร้าง
+     ใช้เลขเดียวกับหน้าลูกค้า (/api/guard) จะได้ไม่มีสองหน้าพูดไม่ตรงกัน */
+  var risk = (GD && GD.totals) ? GD.totals.low  : 0;
+  var bleed= (GD && GD.totals) ? GD.totals.loss : 0;
+  var decision=rows.filter(needsWork).length;
+  return '<div class="roundstamp" style="margin-top:14px"><span class="dashround">Dashboard รอบ '+CUR_PERIOD+'</span>' +
+    '<span>ข้อมูลสรุปจากการออกราคารอบนี้</span></div>' +
+    '<div class="kpi">' +
+      '<div class="k lead"><div class="kt"><span class="ic">📊</span><span class="pill">รอบ '+CUR_PERIOD+'</span></div>' +
+        '<div class="lb">Margin รวม</div><div class="v">'+(mg?mg.toFixed(1):'—')+'<small>%</small></div>' +
+        '<div class="c">ถ่วงน้ำหนักจากรายการที่มีปริมาณขาย</div></div>' +
+      '<div class="k"><div class="kt"><span class="ic">💰</span><span class="pill g">ประมาณการ</span></div>' +
+        '<div class="lb">กำไรขั้นต้น / สัปดาห์</div><div class="v">'+(known.length?money(gp):'—')+'<small>฿</small></div>' +
+        '<div class="c">อิง volume ที่มีในระบบ</div></div>' +
+      '<div class="k tap" onclick="__NAV.href=\'/customers\'"><div class="kt"><span class="ic">⚠️</span><span class="pill '+(risk?'r':'g')+'">Margin Guard</span></div>' +
+        '<div class="lb">รายการเสี่ยง</div><div class="v" style="color:'+(risk?'var(--red)':'var(--green)')+'">'+risk+'</div>' +
+        '<div class="c">ราคาสัญญารายเจ้าที่ต่ำกว่าพื้น '+D.floorPct+'%'+(bleed?' · <b style="color:var(--red)">ขายต่ำกว่าทุน '+bleed+' บรรทัด</b>':'')+'</div></div>' +
+      '<div class="k tap" onclick="openBoard()"><div class="kt"><span class="ic">🎯</span><span class="pill a">Exception</span></div>' +
+        '<div class="lb">รายการที่ต้องตัดสินใจ</div><div class="v">'+decision+'</div>' +
+        '<div class="c">กดเพื่อเปิดเรียงรายการวิกฤตก่อน →</div></div>' +
+    '</div>';
+}
+
+function stack() {
+  var all = (D.customers || []).slice();
+  var pending = all.filter(function (c) { return !c.handed; });
+  var open = pending.filter(function (c) { return c.work > 0; });
+  var work = pending.reduce(function (a, c) { return a + (c.work || 0); }, 0);
+
+  var h = PX.head('Pricing Home · รอบ ' + CUR_PERIOD,
+    'Dashboard การออกราคา · เทียบข้อมูล' + (D.prevRound ? 'รอบก่อน ' + PREV_PERIOD : 'รอบก่อน') + ' กับรอบปัจจุบัน ' + CUR_PERIOD,
+    ['จุ๋ม', 'พี่จุ๋ม', 'ผู้ออกราคา']);
+  /* แจ้งเตือนด่วนแบบ V21: รายการที่ต้องตรวจก่อนออกราคา — กดแล้วเปิดตารางเรียงวิกฤตก่อน */
+  var crit = (D.rows || []).filter(needsWork);
+  if (crit.length) {
+    var c0 = crit.slice().sort(function (a, b) { return Math.abs(b.costJump || 0) - Math.abs(a.costJump || 0); })[0];
+    h += '<div class="todoalert crit"><div class="nah"><span style="font-size:18px">⚠</span><b>' + crit.length + ' รายการต้องตรวจด่วนก่อนออกราคา</b>' +
+      '<button class="btn pri" style="margin-left:auto" onclick="openBoard()">เปิดรายการวิกฤตก่อน →</button></div>' +
+      '<div class="rnote" style="margin-top:4px">เช่น <b>' + esc(c0.name) + '</b> · ' + why(c0).replace(/<[^>]+>/g, '').slice(0, 140) + '</div></div>';
+  }
+  h += reqCard();
+
+  /* Home ตาม Ref 1 เท่านั้น — ไม่มี customer cards ต่อท้ายหน้านี้ */
+  h += '<div class="kpi">' +
+    '<div class="k lead tap" onclick="openCustomerList()" title="ไปหน้าตั้งราคารายเจ้า">' +
+      '<div class="kt"><span class="ic">📋</span><span class="pill">รอบ ' + CUR_PERIOD + '</span></div>' +
+      '<div class="lb">ใบที่ยังไม่จบ</div><div class="v">' + open.length + '<small>/' + pending.length + '</small></div>' +
+      '<div class="c">เหลือ ' + work + ' รายการ · กดไปหน้าตั้งราคารายเจ้า →</div></div>' +
+    '<div class="k tap" onclick="goCosts(&quot;moved&quot;)" title="ไปหน้ารับทุน ดูเฉพาะทุนที่ขยับ">' +
+      '<div class="kt"><span class="ic">📈</span><span class="pill r">ทุนรอบ '+CUR_PERIOD+'</span></div>' +
+      '<div class="lb">ทุนขยับขึ้น / ลง</div><div class="v">' + D.rows.filter(function(r){return r.costJump;}).length + '</div>' +
+      '<div class="c">โชว์เฉพาะ SKU ที่ทุนเปลี่ยน · กดไปหน้ารับทุน →</div></div>' +
+    '<div class="k tap" onclick="goCosts(&quot;market&quot;)" title="ไปหน้ารับทุน ดูสินค้าที่รู้ราคาตลาด">' +
+      '<div class="kt"><span class="ic">🏪</span><span class="pill a">มีที่มา</span></div>' +
+      '<div class="lb">สินค้าที่รู้ราคาตลาด</div><div class="v">' + D.rows.filter(mkt).length + '<small>/' + D.rows.length + '</small></div>' +
+      '<div class="c">นับเฉพาะข้อมูลตลาดที่ยังใช้ตัดสินได้ · กดดูที่มา →</div></div>' +
+    '<div class="k tap" onclick="openBoard()" title="เปิดตั้งราคากลาง">' +
+      '<div class="kt"><span class="ic">🎯</span><span class="pill ' + ((D.centralCount||{}).need ? 'r' : 'g') + '">Step 1</span></div>' +
+      '<div class="lb">ราคากลางที่ยืนยันแล้ว</div><div class="v">' + ((D.centralCount||{}).approved||0) + '<small>/' + (((D.centralCount||{}).approved||0) + ((D.centralCount||{}).need||0)) + '</small></div>' +
+      '<div class="c">' + ((D.centralCount||{}).need ? 'ยังต้องยืนยัน ' + D.centralCount.need + ' รายการ ก่อนประกาศได้ →' : 'ครบแล้ว · ประกาศได้') + '</div></div>' +
+    '</div>';
+
+  h += '<div class="steps">' +
+    '<button class="st2" onclick="openBoard()"><span class="sn2">1</span><b>ตั้งราคากลาง</b>' +
+      '<em>' + D.rows.length + ' SKU · AI เตรียมราคาให้ แล้วคนตรวจและยืนยัน</em></button>' +
+    '<i class="ar2">→</i>' +
+    '<button class="st2" onclick="openCustomerList()"><span class="sn2">2</span><b>ตั้งราคารายเจ้า</b>' +
+      '<em>' + (D.centralAfterRound ? '<b style="color:var(--amber)">ราคากลางชุดใหม่ยังไม่ได้ประกาศ — ประกาศรอบใหม่ก่อน แล้วค่อยทำใบรายเจ้า</b>'
+                                    : all.length + ' ใบ · เปิดกองลูกค้าเพื่อไล่ตรวจและส่ง Sales') + '</em></button>' +
+    '</div>';
+
+  h += homeDashboard(D.rows);
+  /* เป้า margin รายหมวด (พีช/พี่หมิง) — ชุดเดียวกับหน้า Margin Guard · แก้แล้วโหลดหน้าใหม่ให้ราคาแนะนำคิดใหม่ */
+  h += CatMargin.html(CATG, function () { load(); });
+  h += pricingInsights(D.rows);
+  return h;
+}
+
+/* ── ตั้งราคารายเจ้า: เริ่มที่ customer cards ทันที ไม่มี Margin dashboard ── */
+function customerStack() {
+  var all = (D.customers || []).filter(function (c) {
+    return !CQ || c.name.toLowerCase().indexOf(CQ.toLowerCase()) >= 0;
+  });
+  var handedN = all.filter(function (c) { return c.handed; }).length;
+  var cs = all.filter(function (c) { return SENT ? c.handed : !c.handed; }).sort(sortCustomers);
+  var open = cs.filter(function (c) { return c.work > 0; }).length;
+  var work = cs.reduce(function (a, c) { return a + (c.work || 0); }, 0);
+
+  var h = PX.head('ตั้งราคารายเจ้า · รอบ ' + CUR_PERIOD,
+    'เลือกใบลูกค้าที่ต้องตรวจ · ใช้ราคากลางเป็นฐาน แล้วค่อยปรับตาม history และเงื่อนไขแต่ละเจ้า',
+    ['จุ๋ม', 'พี่จุ๋ม', 'ผู้ออกราคา']);
+  h += '<div class="steps">' +
+    '<button class="st2" onclick="openBoard()"><span class="sn2">1</span><b>ตั้งราคากลาง</b><em>363 SKU · ราคาที่ทุกเจ้าใช้ร่วมกัน</em></button>' +
+    '<i class="ar2">→</i>' +
+    '<div class="st2 on"><span class="sn2">2</span><b>ตั้งราคารายเจ้า</b><em>' + all.length + ' ใบ · เลือกลูกค้าแล้วตรวจราคาตามเงื่อนไข</em></div>' +
+    '</div>';
+  h += '<div class="roundstamp"><button class="lnk3" onclick="goHome()">← Pricing Home</button>' +
+    '<span class="dashround">รอบ '+CUR_PERIOD+'</span><span>ยังไม่จบ <b>'+open+' ใบ</b></span>' +
+    '<span class="dot"></span><span>เหลือ <b>'+work+' รายการ</b> ที่ต้องตรวจ</span></div>';
+
+  /* หน้านี้ไม่มี dashboard — เริ่มจาก filter + customer cards ตาม Ref 3 */
+  h += '<div class="tools" style="margin-top:14px">' +
+    '<button class="tab' + (SENT ? '' : ' on') + '" onclick="seeSent(false)">ยังไม่ได้ส่ง (' + (all.length-handedN) + ')</button>' +
+    '<button class="tab' + (SENT ? ' on' : '') + '" onclick="seeSent(true)">ส่งให้ Sales แล้ว (' + handedN + ')</button>' +
+    '<input id="cfind" class="btn" style="min-width:210px;font-weight:400" placeholder="ค้นชื่อลูกค้า…" value="' + esc(CQ) + '">' +
+    '<span class="sortline" style="margin-left:auto"><span class="slb">เรียงตาม</span>' +
+      [['az','ชื่อ A–Z'],['th','ชื่อ ก–ฮ'],['orders','จำนวนออเดอร์']].map(function(x){
+        return '<button class="tab'+(CSORT===x[0]?' on':'')+'" onclick="csort('+jsq(x[0])+')">'+x[1]+'</button>';
+      }).join('') + '</span></div>';
+
+  h += '<div class="cgrid">' + cs.map(function (c) {
+    /* นับจากด่านเดียวกับปุ่มส่งต่อ: ขาด = ยังไม่บันทึก · ไม่สด = บันทึกแล้วแต่ทุน/ราคากลางเปลี่ยน */
+    var gm = c.gateMissing || 0, gs = c.gateStale || 0, gl = c.lines || 0;
+    var approved=Math.max(0, gl - gm - gs), pct=gl?Math.round(approved/gl*100):100;
+    /* ยังไม่เคยประกาศ = ยังไม่มีรอบให้ตรวจ ห้ามขึ้นว่าพร้อม (เดิมด่านว่าง = ผ่าน) · ต้องมีบรรทัดที่บันทึกจริง */
+    if (!D.round) { approved = Math.min(gl, c.priced || 0); pct = gl ? Math.round(approved / gl * 100) : 0; }
+    var ready = !!D.round && gl > 0 && gm === 0 && gs === 0 && (c.priced || 0) > 0;
+    var hasRisk=(c.low||0)>0;
+    return '<button class="cc lv' + (c.work===0 ? 2 : hasRisk ? 0 : 1) + '" onclick="pick(' +
+      jsq(c.id) + ')">' +
+      '<span class="tag">ลูกค้า</span>' +
+      (hasRisk?'<span class="riskflag">⚠ ต้องดู '+c.low+'</span>':'') +
+      '<div class="nm" title="'+esc(c.name)+'">'+esc(c.name)+'</div>' +
+      '<div class="meta2"><span>ส่ง <b>'+customerKg(c)+'</b></span><span>ออเดอร์ <b>'+customerOrders(c)+'</b></span></div>' +
+      '<div class="approveinfo"><span>บันทึกรอบนี้ <b>'+approved+'/'+c.lines+'</b></span><span><b>'+pct+'%</b></span></div>' +
+      '<span class="bar" style="display:block;height:6px;background:var(--line-2);border-radius:99px;margin-top:6px;overflow:hidden">' +
+        '<i style="display:block;height:100%;width:'+pct+'%;background:'+(pct===100?'var(--green)':'var(--blue)')+';border-radius:99px"></i></span>' +
+      '<div class="row3"><div><div class="big" style="font-size:18px;color:'+(c.work===0?'var(--green)':'var(--red)')+'">' +
+        (c.handed&&!gs?'✓':ready?'→':c.work)+'</div><div class="u">'+(c.handed&&gs?'ส่งแล้วแต่ทุน/ราคากลางเปลี่ยน · ยืนยันใหม่ '+gs:c.handed?'ส่ง Sales แล้ว':ready?'บันทึกครบ · ส่ง Sales ได้':gs?'ทุน/ราคากลางเปลี่ยน ต้องยืนยันใหม่ '+gs:'รายการต้องตรวจ')+'</div></div>' +
+        '<div class="mg2"><b style="color:'+(c.margin<D.floorPct?'var(--red)':c.margin<(D.targetPct||15)?'var(--amber)':'var(--green)')+'">'+c.margin+'%</b><span>margin เฉลี่ย</span></div></div>' +
+      '</button>';
+  }).join('') + '</div>';
+
+  if (!cs.length) h += '<div class="card" style="margin-top:12px;text-align:center;color:var(--tx-3)">ไม่พบลูกค้าที่ตรงกับตัวกรอง</div>';
+  return h;
+}
+
+function openBoard() { VIEW = 'board'; CUST = ''; ALL = true; EDIT = {}; SEL = {}; CONF = {}; Q=''; G='ทั้งหมด'; SORT = 'crisis'; PAGE = 0; load(); }
+
+/* ต่อรองสองทาง (พี่หมิง v15) — ลูกค้าขอลด ≠ ต้องยอมเสียกำไรอย่างเดียว
+   อีกทางคือไปขอโรงงานลดทุน · ตัวเลขทุนมาจากฐานจริง ไม่ใช่ค่าประมาณจากเป้า */
+function reqAnalysis(r) {
+  var a = r.analysis; if (!a) return '';
+  var tone = a.belowFloor ? 'var(--red)' : a.marginAt < a.targetLo ? '#8A5A00' : 'var(--green)';
+  return '<div style="font-size:11px;margin-top:5px;color:' + tone + '">margin ตอนนี้ <b>' + a.marginNow + '%</b> → ที่ราคาที่ขอ <b>' + a.marginAt + '%</b> · เป้า ' + a.targetLo + '%' +
+    (a.costCut > 0 ? ' · จะให้ราคานี้ได้ ทุนต้องไม่เกิน <b>' + a.maxCost + ' ฿</b> (ลด ' + a.costCut + ' ฿)' : ' · ให้ได้โดยไม่หลุดเป้า') + '</div>';
+}
+
+
+/* คำขอลดราคาจากเซลล์ — ต้องขึ้นทั้งหน้ากองใบและหน้าใบ ดีลค้างอยู่ที่พี่จุ๋ม */
+function reqCard() {
+  if (!REQ || !REQ.open) return '';
+  var openRows = REQ.rows.filter(function(r){ return r.status === 'open'; });
+  return '<div class="todoalert' + (REQ.open > 1 ? ' stack' : '') + '">' +
+    '<div class="nah"><span style="font-size:18px">💬</span><b>ลูกค้าต่อรองกลับ · ต้องตัดสินราคาใหม่</b>' +
+      '<span class="ncount">' + REQ.open + ' เรื่อง</span></div>' +
+    '<div class="reqs">' + openRows.slice(0, 5).map(function (r) {
+      var a = r.analysis || {};
+      return '<div class="rq"><div class="rqb"><b>' + esc(r.cust) + '</b>' +
+        '<span>' + esc(r.product) + '</span>' +
+        '<em>ขอ <b>' + Math.round(r.want) + ' ฿</b>' + (a.board ? ' · ใบนี้ออกไว้ ' + a.board + ' ฿' : '') +
+          ' · ' + (r.source === 'customer' ? 'ลูกค้ากดในลิงก์' : 'เซลล์ส่งมา') + '</em>' +
+        '<i>“' + esc(r.reason) + '”</i>' + reqAnalysis(r) + '</div>' +
+        '<div class="rqa"><button class="btn pri" onclick="openNegotiation(' + r.id + ')">เปิดแผนต่อรอง</button>' +
+        '<button class="btn" onclick="decide(' + r.id + ',false)">ไม่ลด</button></div></div>';
+    }).join('') + '</div>' +
+    (REQ.open > 5 ? '<div class="more">+ อีก ' + (REQ.open - 5) + ' เรื่อง</div>' : '') + '</div>';
+}
+
+/* ── ส่งใบให้เซลล์ + ตอบคำขอลดราคา ────────────────────────────────
+   งานของพี่จุ๋มไม่ได้จบที่ตั้งราคา — จบที่ส่งให้เซลล์ไปปิดกับลูกค้า
+   และต้องตอบให้ไวเมื่อเซลล์ขอลดต่ำกว่าเพดาน ไม่งั้นดีลค้าง */
+function handoff() {
+  var nm = (D.customer && D.customer.name) || 'ใบนี้';
+  var rows = rowsInView().filter(function (r) { return V(r).goals; });
+  /* ส่งต่อ = ส่ง "ใบที่บันทึกไว้" ไม่ใช่ตัวเลขบนจอ — มีแก้ค้าง/ราคาบนจอไม่ตรงที่บันทึก/ของที่ใช้คิดเปลี่ยน = บันทึกใหม่ก่อน */
+  var dirty = rows.filter(function (r) { var sv = V(r).saved;
+    return EDIT[r.id] != null || !CONF[r.id] || staleRow(r) || (sv && Math.round(sv.price) !== priceOf(r)); });
+  /* บอกให้ตรงเหตุ: ราคากลางยังไม่ยืนยัน ≠ ยังไม่ได้บันทึก ≠ ทุนเปลี่ยน */
+  var nb = rows.filter(function (r) { return V(r).baseApproved === false; }).length;
+  if (nb) { PX.toast('ยังส่ง Sales ไม่ได้ — ราคากลางยังไม่ยืนยัน ' + nb + ' รายการ · ไปยืนยันใน Step 1 ก่อน แล้วกลับมาบันทึกใบนี้', 'bad'); return; }
+  if (dirty.length) {
+    var ns = dirty.filter(function (r) { return staleRow(r); }).length;
+    PX.toast('ยังส่ง Sales ไม่ได้ — ' + (dirty.length - ns ? (dirty.length - ns) + ' รายการยืนยัน/แก้บนจอแล้วแต่ยังไม่ได้กด 💾 บันทึกใบราคา' : '') +
+      (ns ? (dirty.length - ns ? ' · ' : '') + ns + ' รายการทุน/ราคากลางเปลี่ยนหลังบันทึก ต้องยืนยันใหม่' : ''), 'bad');
+    var el0 = document.querySelector('[data-row="' + dirty[0].id + '"]'); if (el0) el0.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  var unsaved = rows.filter(function (r) { return !V(r).saved; }).length;
+  if (unsaved) { PX.toast('ยังส่ง Sales ไม่ได้ — ยังไม่ได้บันทึกราคา ' + unsaved + ' รายการ (ยืนยันแล้วกดบันทึกใบราคาก่อน)', 'bad'); return; }
+  PX.modal({
+    title: 'ส่งใบราคาให้ Sales', sub: nm + ' — Sales ตรวจแล้วส่งลิงก์ให้ลูกค้ายืนยันหรือต่อรอง',
+    fields: [{ k: 'note', label: 'ฝากบอกเซลล์ (ไม่ใส่ก็ได้)', type: 'area', rows: 2, ph: 'เช่น เจ้านี้ margin บาง อย่ารับต่อรองง่ายๆ' }],
+    okText: 'ส่ง Sales', note: 'เซลล์แก้ราคาเองไม่ได้ — ถ้าลูกค้าขอลด จะเด้งกลับมาให้คุณอนุมัติ',
+    onOk: function (v, close) {
+      return PX.post('/api/handoff', { customer_id: CUST, note: v.note || '' })
+        .then(function () {
+          close(); PX.toast('ส่ง <b>' + esc(nm) + '</b> ให้เซลล์แล้ว');
+          HANDED[CUST] = true; CUST = ''; VIEW = 'customers'; EDIT = {}; SEL = {}; SENT = false;
+          return load();
+        });
+    } });
+}
+
+/* คำขอถูกแก้ระหว่างเปิดฟอร์ม — โหลดคิวใหม่ให้เห็นราคาที่ขอล่าสุดก่อนตัดสิน */
+function reloadRequests() {
+  return PX.get('/api/price-requests').then(function (r) { REQ = r; draw();
+    PX.toast('คำขอนี้เพิ่งเปลี่ยน — โหลดใหม่แล้ว ดูราคาที่ขอล่าสุดก่อนตัดสินอีกครั้ง', 'bad'); });
+}
+function decide(id, ok) {
+  PX.modal({ title: ok ? 'อนุมัติราคานี้' : 'ไม่ลดราคา', sub: ok ? '' : 'ลูกค้าจะเห็นว่าราคาเดิมยังใช้อยู่ · เซลล์เห็นเหตุผล',
+    fields: [{ k: 'note', label: 'เหตุผล', type: 'area', rows: 2, ph: 'เช่น ตัวนี้ทุนขึ้น ลดไม่ได้จริงๆ' }],
+    okText: ok ? 'อนุมัติ' : 'ยืนยันไม่ลด',
+    onOk: function (v, close) {
+      /* seen_rev = รุ่นของคำขอที่เห็นบนจอ · ลูกค้าแก้คำขอระหว่างนี้ = server ไม่รับ ให้โหลดใหม่ */
+      var rq = (REQ.rows || []).filter(function (x) { return x.id === id; })[0] || {};
+      return PX.post('/api/price-decide', { id: id, approve: ok, note: v.note || '', seen_rev: rq.rev })
+        .then(function () { close(); return PX.get('/api/price-requests'); })
+        .then(function (r) { REQ = r; draw(); PX.toast(ok ? 'อนุมัติแล้ว' : 'ตอบว่าไม่ลดแล้ว'); });
+    }, onStale: reloadRequests });
+}
+
+/* เปิดใบแรกที่ยังไม่จบ — เรียงตามงานที่เหลือมากสุดก่อน */
+function openFirstOpen() {
+  var c = (D.customers || []).filter(function (x) { return x.work > 0; })
+    .sort(function (a, b) { return b.work - a.work; })[0];
+  if (c) pick(c.id);
+  else PX.toast('จบครบทุกใบแล้ว 🎉');
+}
+
+/* ── โต๊ะไล่ราคา: สี่โซนตามลำดับที่คนตั้งราคาคิด ─────────────── */
+function zone(r) {
+  var p = priceOf(r), m = mgOf(r, p), v = V(r), d = r.costJump, mm = v.market || {};
+  var dot = '<span style="color:var(--tx-3);font-family:var(--fn)">·</span>';
+  var pv = prevOf(r);
+  var z1 = pv ? '<b>' + pv + '</b><em>' + (CUST ? 'เจ้านี้ได้รอบก่อน' : 'รอบก่อนออก') + '</em>' : dot + '<em>ยังไม่เคยประกาศ</em>';
+  var z2 = d
+    ? '<b style="color:' + (d > 0 ? 'var(--red)' : 'var(--green)') + '"><s style="color:var(--tx-3);font-weight:400;font-size:12px">' + r.costPrev + '</s> ' +
+      r.cost + '</b><em style="color:' + (d > 0 ? 'var(--red)' : 'var(--green)') + '">' + (d > 0 ? 'ขึ้น ' : 'ลง ') + Math.abs(d) + ' ฿</em>'
+    : '<b>' + r.cost + '</b><em>' + (r.costPrev > 0 ? 'ทุนไม่ขยับ' : 'ไม่มีข้อมูลรอบก่อน') + '</em>';
+  var z3 = mm.n ? '<b>' + mm.median + '</b><em>median ' + mm.n + ' เจ้า · ' + mm.low + '–' + mm.high + ' ฿</em>'
+    : r.cheapest ? '<b style="text-decoration:line-through;color:var(--tx-3)">' + r.cheapest.price + '</b><em style="color:var(--amber)">' + esc(r.cheapest.label) + ' · หมดอายุ</em>'
+    : dot + '<em>ยังไม่รู้ตลาด</em>';
+  return { z1: z1, z2: z2, z3: z3, p: p, m: m, mk: mm.n ? mm : null };
+}
+
+function optsOf(r) {
+  var g = V(r).goals; if (!g) return [];
+  // x = [price, name, margin, key, why, disabled, belowFloor, floorPrice, equalProtect]
+  return Object.keys(STRATS).map(function (k) {
+    var gk = g[k] || {};
+    return [gk.price, STRATS[k].name, gk.margin, k, gk.why || gk.reason,
+            !!gk.disabled, !!gk.belowFloor, gk.floorPrice, !!gk.equalProtect];
+  });
+}
+
+function why(r) {
+  var g = goalOf(r), v = V(r), out = [];
+  if (!v.goals) return 'ยังไม่รู้ทุน — ตั้งราคาไม่ได้ ต้องกรอกทุนก่อน';
+  if (g) out.push(g.why);
+  /* บอกเหตุผลที่แถวนี้ "ต้องตรวจ" ให้เห็นในแถวเลย — เดิมมีแค่ป้ายนับรวม ไม่รู้ว่าติดเพราะอะไร */
+  var p0 = priceOf(r), pv0 = prevOf(r);
+  if (pv0 > 0 && Math.abs(p0 - pv0) >= Math.max(D.jumpBaht || 8, pv0 * 0.05))
+    out.push('<b style="color:var(--amber)">ต้องตรวจ: ราคาขยับ ' + (p0 > pv0 ? '+' : '') + Math.round(p0 - pv0) + ' ฿ จากรอบก่อน (' + Math.round(pv0) + ' → ' + Math.round(p0) + ')</b>');
+  if (belowGuard(r)) out.push('<b style="color:var(--red)">ต่ำกว่าขั้นต่ำ ' + guardOf(r) + ' ฿' + (EXC[r.id] ? ' · ข้อยกเว้น: ' + esc(EXC[r.id]) : '') + '</b>');
+  // V29: HOLD/COMPETITIVE ต่ำกว่า floor — แจ้ง warning ให้ผู้ตั้งราคาตัดสินใจเอง
+  var selGoal = rowGoal(r), ggoals = (v.goals || {});
+  if (!belowGuard(r) && (selGoal === 'hold' || selGoal === 'competitive') && ggoals[selGoal] && ggoals[selGoal].belowFloor)
+    out.push('<b style="color:' + (selGoal==='competitive'?'var(--red)':'var(--amber)') + '">⚠ ' + esc(STRATS[selGoal].name) + ' ต่ำกว่า Floor ' + ggoals[selGoal].floorPrice + ' ฿ — ต้องตัดสินใจเอง</b>');
+  if (!CUST && v.central && v.central.state === 'stale') out.push('<b style="color:var(--amber)">ทุนเปลี่ยนหลังยืนยัน ' + Math.round(v.central.price) + ' ฿ — ยืนยันใหม่</b>');
+  if (CUST && v.baseApproved === false) out.push('<b style="color:var(--red)">ราคากลางยังไม่ยืนยัน — จบ Step 1 ก่อน</b>');
+  if (CUST && v.baseChanged) out.push('<b style="color:var(--amber)">ราคากลางเปลี่ยนหลังบันทึกใบนี้ (ตอนนี้ ' + v.base + ' ฿) — ตรวจใหม่</b>');
+  if (CUST && v.costChanged) out.push('<b style="color:var(--amber)">ทุนของเจ้านี้เปลี่ยนหลังบันทึกใบนี้ — ยืนยันใหม่ก่อนส่งต่อ Sales</b>');
+  return out.join(' · ');
+}
+
+/* ── แถบตัวเลขของใบนี้ — ตัดสินใจจากสี่ตัวนี้ก่อนจะไล่ทีละแถว ── */
+function sheetKPI(all, rows) {
+  var withCost = all.filter(function (r) { return r.cost > 0; });
+  /* V29 §8: unpriced_sku_handling — EXCLUDE = นับเฉพาะ row ที่ approve/confirm แล้วในรอบนี้
+     USE_SYSTEM_SUGGESTION = นับทุก row ที่มีทุน (ใช้ suggested goal price ถ้ายังไม่ approve) */
+  var exclude = (D.unpricedSkuHandling || 'EXCLUDE') === 'EXCLUDE';
+  var priced = withCost.filter(function (r) {
+    if (!exclude) return true;
+    return approvedPrice(r) != null || CONF[r.id] === true;
+  });
+  var knownVol = priced.filter(function (r) { return (r.vol || 0) > 0; });
+  var allVol = withCost.filter(function (r) { return (r.vol || 0) > 0; });
+  var rev = knownVol.reduce(function (a, r) { return a + priceOf(r) * r.vol; }, 0);
+  var gp = knownVol.reduce(function (a, r) { return a + (priceOf(r) - r.cost) * r.vol; }, 0);
+  var weighted = rev > 0 ? gp / rev * 100 : 0;
+  var mgs = priced.map(function (r) { return mgOf(r, priceOf(r)); });
+  var fallback = mgs.length ? mgs.reduce(function (a, b) { return a + b; }, 0) / mgs.length : 0;
+  var mgTotal = knownVol.length ? weighted : (priced.length ? fallback : 0);
+  var kpiLabel = knownVol.length
+    ? 'ถ่วงน้ำหนัก ' + knownVol.length + ' จาก ' + allVol.length + ' รายการที่มี vol' + (exclude ? ' (เฉพาะ priced)' : '')
+    : priced.length ? 'เฉลี่ย ' + priced.length + ' รายการที่รู้ทุน' : 'ยังไม่มีรายการที่ยืนยันแล้ว';
+  var low = withCost.filter(function (r) { return mgOf(r, priceOf(r)) < D.floorPct; }).length;
+  var loss = withCost.filter(function (r) { return priceOf(r) <= r.cost; }).length;
+  var up = all.filter(function (r) { return r.costJump > 0; });
+  var stuck = up.filter(function (r) { return r.prev && priceOf(r) <= r.prev; }).length;
+  var work = rows.filter(needsWork).length;
+  var done = all.length - all.filter(needsWork).length;
+  return '<div class="kpi kpi4">' +
+    '<div class="k lead"><div class="kt"><span class="ic">📊</span>' +
+      '<span class="pill">รวมทั้งใบ</span></div>' +
+      '<div class="lb">Margin รวม</div>' +
+      '<div class="v">' + (priced.length ? mgTotal.toFixed(1) : '—') + (priced.length ? '<small>%</small>' : '') + '</div>' +
+      '<div class="c">' + kpiLabel + '</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">💰</span>' +
+      '<span class="pill ' + (gp > 0 ? 'g' : 'r') + '">ประมาณการ</span></div>' +
+      '<div class="lb">กำไรขั้นต้น / สัปดาห์</div>' +
+      '<div class="v">' + (knownVol.length ? money(gp) : '—') + '<small>฿</small></div>' +
+      '<div class="c">ใช้ volume ที่มีอยู่ในระบบ ไม่เดาปริมาณที่ยังไม่รู้</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">⚠️</span>' +
+      '<span class="pill ' + (low || loss ? 'r' : 'g') + '">Margin Guard</span></div>' +
+      '<div class="lb">รายการเสี่ยง</div>' +
+      '<div class="v" style="color:' + (low || loss ? 'var(--red)' : 'var(--green)') + '">' + low + '</div>' +
+      '<div class="c">ต่ำกว่า ' + D.floorPct + '% · ขาดทุนตรงๆ ' + loss + ' รายการ</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">🎯</span>' +
+      '<span class="pill ' + (work ? 'a' : 'g') + '">Exception only</span></div>' +
+      '<div class="lb">ต้องให้คนตรวจ</div>' +
+      '<div class="v">' + work + '</div>' +
+      '<div class="c">จบแล้ว ' + done + ' จาก ' + all.length +
+      (work ? ' · <button class="lnk3" onclick="jumpFirst()">พาไปตัวแรก →</button>' : '') +
+      '</div></div>' +
+    '</div>';
+}
+
+function pricingInsights(all) {
+  var scored = all.filter(function (r) { return r.cost > 0 && (r.vol || 0) > 0; })
+    .map(function (r) { return { r:r, gp:(priceOf(r) - r.cost) * r.vol, m:mgOf(r, priceOf(r)) }; })
+    .sort(function (a,b) { return b.gp - a.gp; });
+  var top = scored.slice(0,5);
+  var risk = all.filter(function (r) { return needsWork(r); })
+    .sort(function (a,b) {
+      var ma=mgOf(a,priceOf(a)), mb=mgOf(b,priceOf(b));
+      return ma-mb || (b.costJump||0)-(a.costJump||0);
+    }).slice(0,5);
+  return '<div class="row c2">' +
+    '<div class="card"><h3>Top 5 รายการทำกำไรสูงสุด<span class="sub">รอบ ' + CUR_PERIOD + '</span></h3>' +
+      '<p class="hint">จัดอันดับจาก contribution = (ราคาขาย − ต้นทุน) × volume ของรอบนี้</p>' +
+      (top.length ? '<div class="profitlist">' + top.map(function (x,i) {
+        return '<div class="profitrow"><span class="rank">' + (i+1) + '</span>' +
+          '<span class="pn">' + esc(x.r.name) + '</span><span class="pv">+' + money(x.gp) + ' ฿</span>' +
+          '<span class="pm">' + x.m.toFixed(1) + '%</span></div>'; }).join('') + '</div>'
+        : '<p class="hint">ยังไม่มี volume พอคำนวณ contribution</p>') + '</div>' +
+    '<div class="card"><h3>รายการที่ต้องตัดสินใจ<span class="sub">รอบ ' + CUR_PERIOD + ' · Margin Guard ' + D.floorPct + '%</span></h3>' +
+      '<p class="hint">ทุนขึ้นแรง / Margin ต่ำ / แพงกว่าตลาด จะถูกดันขึ้นมาก่อน</p>' +
+      (risk.length ? '<div class="risklist">' + risk.map(function (r) {
+        return '<div class="riskitem"><span class="rn">' + esc(r.name) + '</span>' +
+          '<span class="rv">' + mgOf(r, priceOf(r)).toFixed(1) + '%</span>' +
+          '<button class="lnk3" onclick="openBoard()">เปิดตรวจ</button></div>'; }).join('') + '</div>'
+        : '<p class="hint" style="color:var(--green)">✓ ไม่มีรายการที่ต้องตัดสินใจ</p>') + '</div></div>';
+}
+
+/* พาสายตาไปแถวแรกที่ยังต้องตัดสิน — ไม่ใช่ให้ไล่หาเองใน 78 แถว */
+function jumpFirst() {
+  var el = document.querySelector('tr.work');
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('flash');
+  setTimeout(function () { el.classList.remove('flash'); }, 1200);
+}
+
+function desk() {
+  var rows = rowsInView().slice();
+  var all = rows.slice();
+  if (G !== 'ทั้งหมด') rows = rows.filter(function (r) { return r.grp === G; });
+  if (Q) rows = rows.filter(function (r) { return r.name.indexOf(Q) >= 0; });
+  rows.sort(sortRows);
+  var totalFiltered = rows.length;
+  var pages = Math.max(1, Math.ceil(totalFiltered / PER));
+  if (PAGE >= pages) PAGE = pages - 1;
+  var pageRows = rows.slice(PAGE * PER, PAGE * PER + PER);
+
+  var work = rows.filter(needsWork).length;
+  var name = CUST && D.customer ? D.customer.name : 'ราคากลาง';
+  var title = CUST ? 'ตั้งราคา · ' + name + ' · รอบ ' + CUR_PERIOD : 'ตั้งราคากลาง · ร่างสำหรับประกาศครั้งถัดไป';
+  var subtitle = CUST
+    ? 'ฐาน = ราคากลางที่ยืนยันแล้ว → Goal → เงื่อนไขเจ้านี้ → ไม่ต่ำกว่าขั้นต่ำ · ยืนยันครบ บันทึก แล้วส่ง Sales'
+    : 'ทุนล่าสุด + ตลาด + เป้าหมวด → Goal แนะนำราคา → คนตรวจ → ยืนยัน → บันทึก = ฐานของราคารายเจ้า · ประกาศล่าสุด ' + esc(D.round || '—');
+
+  var h = PX.head(title, subtitle, ['จุ๋ม','พี่จุ๋ม','ผู้ออกราคา']);
+  h += '<div class="steps">' +
+    (CUST
+      ? '<button class="st2" onclick="openBoard()"><span class="sn2">1</span><b>ตั้งราคากลาง</b><em>363 SKU · ราคาฐานของรอบนี้</em></button><i class="ar2">→</i>' +
+        '<button class="st2 on" onclick="openCustomerList()"><span class="sn2">2</span><b>ตั้งราคารายเจ้า</b><em>กำลังตรวจ ' + esc(name) + '</em></button>'
+      : '<div class="st2 on"><span class="sn2">1</span><b>ตั้งราคากลาง</b><em>AI เตรียมราคาให้ทุก SKU · คนตรวจและยืนยันก่อนบันทึก</em></div><i class="ar2">→</i>' +
+        '<button class="st2" onclick="openCustomerList()"><span class="sn2">2</span><b>ตั้งราคารายเจ้า</b><em>ใช้ราคากลางเป็นฐาน แล้วตรวจตามเงื่อนไขลูกค้า</em></button>') +
+    '</div>';
+  /* Ref 2 / customer detail: ไม่มี Dashboard — เข้าสู่ Goal + ตารางทันที */
+  h += goalControl();
+
+  var confirmed = confirmedCount(all);
+  var stable = all.filter(function(r){
+    var pv=prevOf(r); return pv>0 && priceOf(r)===pv && !needsWork(r);
+  }).length;
+
+  /* ใบรายเจ้าผูกกับ "รอบที่ประกาศล่าสุด" — ราคากลางชุดใหม่ยืนยันแล้วแต่ยังไม่ประกาศ = กำลังเตรียมรอบหน้า
+     บันทึกใบตอนนี้ = แก้ใบรอบที่ลูกค้าถืออยู่ (และถ้าราคาเปลี่ยน ลิงก์ของลูกค้าจะปิดรอส่งใหม่) */
+  /* ราคากลางยังไม่ยืนยัน = ใบรายเจ้าบันทึก/ส่งต่อไม่ได้ (V21: ต้องเริ่มจากราคากลางที่ยืนยันแล้ว)
+     บอกตั้งแต่เปิดใบ พร้อมปุ่มไป Step 1 — เดิมให้กดยืนยันทีละแถวจนครบแล้วค่อยล้มตอนบันทึก (พีช 30 ก.ย.) */
+  var noBase = CUST ? rowsInView().filter(function (r) { return V(r).goals && V(r).baseApproved === false; }) : [];
+  if (noBase.length)
+    h += '<div class="warn2" style="margin:10px 0;border-color:var(--red);background:var(--red-l)"><b>ราคากลางยังไม่ยืนยัน ' + noBase.length + ' รายการในใบนี้</b> — ' +
+      'ใบรายเจ้าต้องเริ่มจากราคากลางที่ยืนยันแล้ว จึงยังบันทึก/ส่ง Sales ไม่ได้ · เช่น ' +
+      noBase.slice(0, 3).map(function (r) { return esc(r.name); }).join(', ') +
+      ' <button class="btn pri" style="margin-left:8px" onclick="CUST=\'\';openBoard()">ไปยืนยันราคากลาง (Step 1) →</button></div>';
+  if (CUST && D.centralAfterRound)
+    h += '<div class="warn2" style="margin:10px 0">⚠ ราคากลางชุดใหม่ยืนยันแล้ว <b>' + D.centralAfterRound + '</b> รายการ แต่ยังไม่ได้ประกาศ — ' +
+      'ใบที่บันทึกตอนนี้เป็นของรอบ <b>' + esc(D.round || '') + '</b> (ใบที่ลูกค้าถืออยู่) · ถ้าจะทำใบสัปดาห์หน้า ให้ประกาศรอบใหม่ก่อน</div>';
+  h += '<div class="savebar">' +
+    '<button class="btn" onclick="backStack()">← ' + (CUST?'กองลูกค้า':'Pricing Home') + '</button>' +
+    '<span class="decisionchip r">ต้องตรวจ ' + all.filter(needsWork).length + '</span>' +
+    '<span class="decisionchip a">ต่ำกว่าขั้นต่ำ ' + all.filter(belowGuard).length + '</span>' +
+    '<span class="decisionchip g">คงราคาเดิมได้ ' + stable + '</span>' +
+    /* ตัวหารนับเฉพาะแถวที่ยืนยันได้ (รู้ทุน) — เดิมนับ 363 รวม 19 ตัวที่ไม่รู้ทุน ตัวนับเลยไม่มีวันเต็ม */
+    '<span class="decisionchip">ยืนยันแล้ว ' + confirmed + '/' + all.filter(function (r) { return V(r).goals; }).length +
+      (all.some(function (r) { return !V(r).goals; }) ? ' · ไม่รู้ทุน ' + all.filter(function (r) { return !V(r).goals; }).length : '') + '</span>' +
+    '<button class="btn" onclick="confirmNormal()">✓ ยืนยันรายการปกติทั้งหมด</button>' +
+    '<input id="q" class="btn" style="min-width:180px;font-weight:400" placeholder="ค้นชื่อสินค้า…" value="' + esc(Q) + '">' +
+    '<span class="sortline"><span class="slb">เรียง</span>' +
+      [['crisis','วิกฤตก่อน'],['th','ก–ฮ'],['az','A–Z'],['orders','ออเดอร์มาก']].map(function(x){
+        return '<button class="tab'+(SORT===x[0]?' on':'')+'" onclick="setSort('+jsq(x[0])+')">'+x[1]+'</button>';
+      }).join('') + '</span>' +
+    '<button class="btn" onclick="dataAudit()" title="นับจากฐานจริงว่าข้อมูลทุกหน้าผูกกันครบไหม">🔗 ตรวจการเชื่อมข้อมูล</button>' +
+    '<button class="btn pri pushright" onclick="saveSheet()">💾 ' + (CUST?'บันทึกใบราคา':'บันทึกราคากลาง') + '</button>' +
+    (!CUST ? '<button class="btn"' + (centralPrintStatus().ready ? '' : ' style="opacity:.5" aria-disabled="true"') + ' onclick="exportCentralPDF()">' + esc('Export PDF') + '</button>' : '') +
+    (CUST ? '<button class="btn pri" onclick="handoff()">ตรวจครบ & ส่ง Sales →</button>' : '') +
+    '</div>';
+
+  if (LASTSAVE)
+    h += '<div class="roundstamp"><span>✓ บันทึกล่าสุด <b>'+LASTSAVE+'</b></span><span class="dot"></span><span>เก็บเป็น History ของรอบ '+CUR_PERIOD+'</span></div>';
+
+  var grps = {};
+  all.forEach(function (r) { if (r.grp) grps[r.grp] = (grps[r.grp] || 0) + 1; });
+  var gk = Object.keys(grps).sort(function (a, b) { return grps[b] - grps[a]; });
+  if (gk.length > 1)
+    h += '<div class="tools" style="margin-top:-2px">' +
+      '<button class="tab' + (G === 'ทั้งหมด' ? ' on' : '') + '" onclick="G=\'ทั้งหมด\';PAGE=0;draw()">ทั้งหมด (' + all.length + ')</button>' +
+      gk.map(function (k) {
+        return '<button class="tab' + (G === k ? ' on' : '') + '" onclick="G=' +
+          jsq(k) + ';PAGE=0;draw()">' +
+          esc(k) + ' (' + grps[k] + ')</button>'; }).join('') + '</div>';
+
+  var k1 = rows.filter(function (r) { return prevOf(r) > 0; }).length;
+  var k2 = rows.filter(function (r) { return r.costJump; }).length;
+  var k3 = rows.filter(mkt).length;
+  var cnt = function (k) { return '<i class="cnt">' + k + '/' + rows.length + '</i>'; };
+
+  h += '<div class="tw2"><div class="sc"><table class="g zt" style="min-width:1280px">' +
+    '<thead><tr>' +
+      '<th>สินค้า</th>' +
+      '<th class="zh1">ราคาขายรอบก่อน<span class="thperiod">' + PREV_PERIOD + '</span>' + cnt(k1) + '</th>' +
+      '<th class="zh2">ต้นทุนรอบก่อน<span class="thperiod">' + PREV_PERIOD + '</span></th>' +
+      '<th class="zh2">ต้นทุนรอบปัจจุบัน<span class="thperiod">' + CUR_PERIOD + '</span>' + cnt(k2) + '</th>' +
+      '<th class="zh3">ราคาตลาดล่าสุด<span class="thperiod">ข้อมูลล่าสุดที่ยังใช้ได้</span>' + cnt(k3) + '</th>' +
+      '<th class="zh4">ราคาที่จะออก<span class="thperiod">' + (CUST ? 'รอบ ' + CUR_PERIOD : 'ร่างครั้งถัดไป') + '</span></th>' +
+      '<th>Goal 4 แบบ · Logic · ยืนยัน</th>' +
+    '</tr></thead><tbody>' +
+    (rows.length ? pageRows.map(function(r){
+      var z=zone(r), w=needsWork(r), o=optsOf(r), approved=!!CONF[r.id];
+      var v=V(r), gd=v.guard||0, eff=v.effectivePct||D.floorPct;
+      var mgc=z.m<D.floorPct?'var(--red)':z.m<eff?'var(--amber)':'var(--green)';
+      return '<tr data-row="'+r.id+'" class="'+(w?'work ':'')+(approved?'confirmed':'')+'">' +
+        '<td><div style="font-weight:600"><a href="#" class="lnk2" onclick="PX.product('+jsq(r.id)+');return false">'+esc(r.name)+'</a></div>' +
+          '<div style="font-size:10.5px;color:var(--tx-3);font-weight:400">'+
+          (r.vol?money(r.vol)+' กก./สัปดาห์':esc(r.grp))+'</div></td>' +
+        '<td class="zc z1">'+z.z1+'</td>' +
+        '<td class="zc z2">'+(r.costPrev>0?'<b>'+r.costPrev+'</b><em>'+(r.costBasis==='customer'?'ทุนเจ้านี้':'บาท/กก.')+'</em>':'<span style="color:var(--tx-3);font-family:var(--fn)">·</span><em>ไม่มีข้อมูล</em>')+'</td>' +
+        '<td class="zc z2'+(r.costJump>0?' up':r.costJump<0?' cdown':'')+'"><b>'+r.cost+'</b><em style="color:'+
+          (r.costJump>0?'var(--red)':r.costJump<0?'var(--green)':'var(--tx-3)')+'">'+
+          (!(r.costPrev>0)?'ไม่มีข้อมูลรอบก่อน':r.costJump>0?'ขึ้น '+r.costJump+' ฿':r.costJump<0?'ลง '+Math.abs(r.costJump)+' ฿':'ทุนไม่ขยับ')+
+          (r.costBasis==='customer'?' · ทุนเจ้านี้':'')+'</em></td>' +
+        '<td class="zc z3'+(z.mk?'':' blank')+'">'+z.z3+'</td>' +
+        '<td class="zc z4"><input class="pin" data-id="'+r.id+'" value="'+z.p+'" inputmode="numeric"'+(v.goals?'':' disabled')+'>' +
+          '<em style="color:'+mgc+'">กำไร '+z.m.toFixed(1)+'%</em>' +
+          (gd?'<em style="color:'+(z.p<gd?'var(--red)':'var(--tx-3)')+'">ขั้นต่ำ '+gd+' ฿ · '+esc((v.category||{}).name||'')+' '+eff+'%</em>':'') +
+          (!CUST&&v.central?'<em style="color:'+(v.central.state==='approved'?'var(--green)':'var(--amber)')+'">'+(v.central.state==='approved'?'✓ ยืนยันไว้ '+Math.round(v.central.price)+' ฿':'⚠ ทุนเปลี่ยน ยืนยันใหม่')+'</em>':'') +
+          (CUST&&v.saved?'<em style="color:var(--green)">✓ บันทึกรอบนี้ '+Math.round(v.saved.price)+' ฿</em>':'') +
+          (CUST&&v.base?'<em style="color:var(--tx-3)">ราคากลาง '+v.base+' ฿'+(v.baseApproved?'':' (ยังไม่ยืนยัน)')+'</em>':'') +
+        '</td>' +
+        '<td style="font-family:var(--ff);white-space:normal;min-width:260px">' +
+          '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px">' +
+            o.map(function(x){
+              var dis=x[5],bf=x[6],fp=x[7],ep=x[8],sel=rowGoal(r)===x[3];
+              if(dis) return '<button class="opt2" style="opacity:.45;cursor:not-allowed" title="'+esc(x[4]||x[3])+'" disabled>'+
+                '<b style="color:var(--tx-3)">'+esc(STRATS[x[3]].name)+'</b><i>'+esc(x[4]||'ไม่มีข้อมูล')+'</i></button>';
+              var bfCol=x[3]==='competitive'?'var(--red)':'var(--amber)';
+              var cls='opt2'+(sel?' on goalon':'');
+              return '<button class="'+cls+'" title="'+esc(x[4])+'" onclick="apply('+jsq(r.id)+','+x[0]+','+jsq(x[3])+')">'+
+                '<b'+(bf?' style="color:'+bfCol+'"':'')+'>'+x[0]+'</b>'+
+                '<i>'+esc(optLabel(r,x))+(ep?' = protect':'')+(bf?' · ⚠ ต่ำกว่า floor '+fp+' ฿':'')+'</i>'+
+                (x[3]==='target'&&x[2]>0?'<i style="color:var(--green)"> '+x[2]+'%</i>':'<i> '+x[2]+'%</i>')+
+                '</button>';}).join('') +
+            (v.goals?'<button class="lnk3" onclick="showLogic('+jsq(r.id)+')">Logic →</button>':'') +
+          '</div>' +
+          '<div class="tablewhy">'+(why(r)||esc(sourceLabel(r)))+'</div>' +
+          (v.goals?'<div style="margin-top:7px"><button class="confirmbtn'+(approved?' ok':'')+'" onclick="confirmRow('+jsq(r.id)+')">'+
+            (approved?(EXC[r.id]?'✓ ยืนยัน (ข้อยกเว้น)':'✓ ยืนยันแล้ว'):'✓ ยืนยันราคานี้')+'</button></div>':'<div class="tablewhy" style="color:var(--red)">ยังไม่รู้ทุน — ยืนยันไม่ได้</div>') +
+        '</td></tr>';
+    }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--tx-3)">ไม่มีรายการที่ตรงกับตัวกรอง</td></tr>') +
+    '</tbody></table></div>' +
+    (totalFiltered>PER?'<div class="pgb"><span>หน้า '+(PAGE+1)+'/'+pages+' · แสดง '+(PAGE*PER+1)+'–'+Math.min((PAGE+1)*PER,totalFiltered)+' จาก '+totalFiltered+' รายการ</span>' +
+      '<span class="sp2"><button '+(PAGE===0?'disabled':'')+' onclick="setPage('+(PAGE-1)+')">← ก่อนหน้า</button>' +
+      PX.pageNums(PAGE, pages).map(function (i) { return i < 0 ? '<span style="padding:0 4px;color:var(--tx-3)">…</span>'
+        : '<button class="'+(i===PAGE?'on':'')+'" onclick="setPage('+i+')">'+(i+1)+'</button>'; }).join('') +
+      '<button '+(PAGE>=pages-1?'disabled':'')+' onclick="setPage('+(PAGE+1)+')">ถัดไป →</button></span></div>':'') +
+    '</div>';
+  return h;
+}
+
+/* ── บันทึก ── */
+/* Goal ที่แถวนี้ใช้อยู่จริง — กดปุ่ม Goal ไหน = Goal นั้น · พิมพ์เอง = manual · ยืนยันไว้แล้ว = Goal ที่บันทึก · ยังไม่แตะ = Goal ที่เลือกด้านบน */
+function rowGoal(r) {
+  if (SEL[r.id]) return SEL[r.id];
+  if (EDIT[r.id] != null) return 'manual';
+  if (approvedPrice(r) != null) { var g = CUST ? (V(r).saved || {}).goal : (V(r).central || {}).goal; return g || ''; }
+  return STRATEGY;
+}
+/* ป้าย "ยืนราคาเดิม" บอกที่มาของตัวเลข — V29: ยืนตรงๆ ไม่ยกขึ้น floor */
+function optLabel(r, x) {
+  if (x[3] !== 'hold') return x[1];
+  var h = (V(r).goals || {}).hold || {};
+  if (h.disabled) return 'ไม่มีราคาเดิม';
+  if (h.basis === 'prev_low') return 'เดิม ' + h.prev + ' ฿ (ต่ำกว่า floor)';
+  return x[1];  // 'prev' = ยืนราคาปกติ
+}
+function apply(id, price, goal) {
+  var r = D.rows.filter(function (x) { return x.id === id; })[0];
+  if (!r || !(price > 0)) return;
+  EDIT[id] = price; CONF[id] = false; delete EXC[id]; SEL[id] = goal || 'manual';
+  draw();
+  PX.toast('ปรับ ' + esc(r.name) + ' เป็น <b>' + price + ' ฿</b> · รอยืนยันและบันทึก');
+}
+function setAdj(v) {
+  PX.post('/api/customer-adjust', { customer_id: CUST, adjust: Math.round(v) })
+    .then(function () { EDIT = {}; SEL = {}; return load('ปรับทั้งใบเป็น ' +
+      (v === 0 ? 'ราคาเต็ม' : v + ' ฿') + ' แล้ว'); })
+    .catch(function (e) { PX.toast('ไม่สำเร็จ — ' + esc(e.message), 'bad'); });
+}
+
+function draw() {
+  var keepY = window.scrollY;
+  var html = VIEW === 'home' ? stack() : VIEW === 'customers' ? customerStack() : desk();
+  document.getElementById('main').innerHTML = html;
+  if (VIEW === 'board' || VIEW === 'customer-detail') window.scrollTo(0, keepY);
+
+  var cf = document.getElementById('cfind');
+  if (cf) cf.oninput = function () { CQ = this.value.trim(); draw();
+    var e = document.getElementById('cfind'); e.focus();
+    e.setSelectionRange(e.value.length, e.value.length); };
+  var q = document.getElementById('q');
+  if (q) q.oninput = function () { Q = this.value.trim(); PAGE = 0; draw();
+    var e = document.getElementById('q'); e.focus();
+    e.setSelectionRange(e.value.length, e.value.length); };
+  document.querySelectorAll('.pin').forEach(function (el) {
+    el.onchange = function () { apply(el.dataset.id, Math.round(Number(el.value))); };
+    el.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } };
+  });
+
+  var open = (D.customers || []).filter(function (c) { return c.work > 0; }).length;
+  PX.badge('work', open + ' ใบค้าง');
+  var fs = document.getElementById('floatSub');
+  if (fs) fs.textContent = VIEW==='board' ? 'ตั้งราคากลาง · '+D.rows.length+' SKU' : VIEW==='customer-detail' ? ('กำลังตั้งราคา · ' + (D.customer ? D.customer.name : 'ลูกค้า')) : VIEW==='customers' ? ('ตั้งราคารายเจ้า · ยังไม่จบ ' + open + ' ใบ') : (open ? ('Pricing Home · ยังไม่จบ ' + open + ' ใบ') : 'Pricing Home · จบครบทุกใบแล้ว');
+  PX.bindTips();
+}
+
+load().catch(PX.fail);
+
+/* ── V21 (เพิ่มใหม่) ── */
+function rowsInView() {
+  if (!D) return [];
+  if (CUST && !ALL) return D.rows.filter(function (r) { return r.cust && r.cust.source === 'สัญญา'; });
+  return D.rows;
+}
+function V(r) { return r.v21 || {}; }
+function goalOf(r, k) { var g = V(r).goals; return g ? g[k || STRATEGY] : null; }
+function approvedPrice(r) {
+  if (CUST) { var s = V(r).saved; return s ? Math.round(s.price) : null; }
+  var c = V(r).central; return (c && c.state === 'approved') ? Math.round(c.price) : null;
+}
+function guardOf(r) { return V(r).guard || 0; }
+function belowGuard(r) { var gd = guardOf(r); return gd > 0 && priceOf(r) < gd; }
+function applyGoalAll() {
+  var n = 0;
+  rowsInView().forEach(function (r) { var g = goalOf(r); if (g && g.price > 0) { EDIT[r.id] = g.price; CONF[r.id] = false; SEL[r.id] = STRATEGY; n++; } });
+  draw();
+  PX.toast('ใช้ Goal ' + esc(STRATS[STRATEGY].name) + ' กับ ' + n + ' แถว · ต้องยืนยันใหม่ก่อนบันทึก');
+}
+function showLogic(id) {
+  var r = D.rows.filter(function (x) { return x.id === id; })[0]; if (!r) return;
+  var v = V(r), g = goalOf(r), m = v.market || {}, cat = v.category || {};
+  if (!g) { PX.toast('ยังไม่รู้ทุน — ยังคิดราคาแนะนำไม่ได้', 'bad'); return; }
+  /* V29 §7: ทุกช่องต้องมาจากข้อมูลจริง ห้ามมี mock/decorative field */
+  var row = function (label, src, val) {
+    return '<tr><td style="color:var(--tx-2);font-size:12px;padding:3px 8px 3px 0;white-space:nowrap">' + esc(label) + '</td>' +
+           '<td style="color:var(--tx-3);font-size:11px;padding:3px 4px">' + esc(src) + '</td>' +
+           '<td style="font-weight:600;padding:3px 0 3px 4px;font-family:var(--fn)">' + val + '</td></tr>';
+  };
+  var catFloorPct = cat.floor != null ? cat.floor : v.effectivePct;
+  var catTargetPct = cat.target != null ? cat.target : v.targetPct;
+  var mktRows = (m.rows || []);
+  var mktSrc = mktRows.length ? mktRows.map(function (x) { return esc(x.label) + ' ' + x.price + ' ฿'; }).join(' · ') : '—';
+  var prevSrc = CUST ? 'quoted_lines (ราคาที่ตกลงจริง)' : 'dispatches (บอร์ดครั้งก่อน)';
+  var costSrc = v.costUpdated ? 'products · อัปเดต ' + v.costUpdated : 'products (วันอัปเดตไม่มีข้อมูล)';
+  var warns = [];
+  if (g.belowFloor) warns.push('⚠ ต่ำกว่า floor ' + v.guard + ' ฿ (' + catFloorPct + '%) — ต้องตัดสินใจเอง');
+  if (g.equalProtect) warns.push('ℹ Target = Protect (floor = target ของหมวดนี้)');
+
+  PX.modal({ title: 'Logic ราคาแนะนำ · ' + g.price + ' ฿', sub: esc(r.name) + ' · Goal ' + esc(STRATS[STRATEGY].name), ok: false,
+    html: '<table style="width:100%;border-collapse:collapse;margin-bottom:12px">' +
+      row('product_id', 'products.id', esc(r.id || r.product_id || '—')) +
+      row('Margin Policy', 'ระบบ', esc(v.policyVersion || 'V29')) +
+      row('ทุน' + (CUST ? ' (เจ้านี้)' : ''), costSrc, Math.round(r.cost) + ' ฿/กก.') +
+      row('หมวด', 'category_targets', esc(cat.name || cat.key || '—')) +
+      row('floor% (PROTECT ใช้)', 'category_targets.lo', catFloorPct + '%') +
+      row('target% (TARGET ใช้)', 'category_targets.target', catTargetPct + '%') +
+      (CUST
+        ? row('ราคาเจ้านี้รอบก่อน', prevSrc, (v.prevCustomer || '—') + ' ฿') +
+          row('ฐาน (ราคากลาง Step 1)', v.baseApproved ? 'approved' : 'unapproved', (v.base || 0) + ' ฿') +
+          row('เงื่อนไขเจ้านี้ (adj)', 'customers.adjust', (D.customer && D.customer.adjust ? (D.customer.adjust > 0 ? '+' : '') + D.customer.adjust + ' ฿/กก.' : 'ไม่มี'))
+        : row('ราคารอบก่อน', prevSrc, (r.prev || '—') + ' ฿') +
+          row('ค่าที่ระบบคิด (auto)', 'pricing engine', (v.auto || '—') + ' ฿')) +
+      row('ข้อมูลตลาด (' + m.n + ' ราย)', 'competitors · method: ' + (m.method || 'MEDIAN'), m.n ? m.low + '–' + m.high + ' ฿ · median ' + m.median + ' ฿' : 'ไม่มีข้อมูล') +
+      (mktRows.length ? row('แหล่งตลาด', 'competitors', mktSrc) : '') +
+      row('rounding rule', 'config.price_rounding_increment_baht', 'ปัดขึ้นทีละ ' + (v.roundInc || 1) + ' ฿') +
+      row('Goal ที่เลือก', 'user', esc(STRATS[STRATEGY].name)) +
+      row('สูตร', 'pricing engine', esc(g.why || '—')) +
+      (g.rawResult != null && g.rawResult !== g.price
+        ? row('ผลก่อนปัด', 'goalOptions()', g.rawResult + ' ฿') : '') +
+      row('ผลหลังปัด', 'goalOptions()', g.price + ' ฿') +
+      row('Margin ที่ได้', 'goalOptions()', g.margin + '%') +
+      row('สถานะอนุมัติ', 'product_decisions', v.central ? esc(v.central.state || '—') : '—') +
+      (warns.length ? '<tr><td colspan="3" style="padding:6px 0 0;color:var(--amber);font-size:12px">' + warns.map(esc).join('<br>') + '</td></tr>' : '') +
+      '</table>' +
+      '<div class="tablewhy" style="margin-top:8px">ทุก Goal: ' + optsOf(r).map(function (o) {
+        return o[5] ? '<s style="color:var(--tx-3)">' + esc(o[1]) + '</s>' : esc(o[1]) + ' ' + o[0] + ' ฿';
+      }).join(' · ') + '</div>' });
+}
+function openNegotiation(id) {
+  var r = (REQ.rows || []).filter(function (x) { return x.id === id; })[0]; if (!r) return;
+  var a = r.analysis || {}, want = Math.round(r.want);
+  var sug = a.guard ? Math.max(a.guard, want) : want;
+  PX.modal({ title: 'แผนต่อรอง · ' + esc(r.cust), sub: esc(r.product) + ' · ลูกค้าขอ ' + want + ' ฿ (ออกไว้ ' + (a.board || '—') + ' ฿)',
+    html: '<div class="nego2"><div><span>ทุนของเจ้านี้</span><b>' + (a.cost || '—') + ' ฿</b></div>' +
+      '<div><span>เป้าที่ใช้จริง</span><b>' + (a.targetLo || '—') + '% · ' + esc(a.category || '') + '</b></div>' +
+      '<div><span>ราคาต่ำสุดที่ทุนนี้</span><b>' + (a.guard || '—') + ' ฿</b></div>' +
+      '<div><span>ถ้าจะให้ ' + want + ' ฿</span><b>ทุนต้อง ≤ ' + (a.maxCost || '—') + ' ฿</b></div></div>' +
+      '<div class="warn2"><b>สองทางพร้อมกัน</b><br>ทาง 1 ต่อรองลูกค้าขึ้นมาที่ ≥ ' + (a.guard || '—') + ' ฿ · ทาง 2 ขอโรงงานลดทุน ' +
+        (a.costCut || 0) + ' ฿/กก. เพื่อรักษา margin ' + (a.targetLo || '—') + '%</div>' +
+      '<label class="fld" style="flex-direction:row;gap:8px;align-items:center"><input type="checkbox" id="negoExc"> <span>อนุมัติเป็นข้อยกเว้น (ต่ำกว่าเป้า) — ต้องเขียนเหตุผล</span></label>',
+    fields: [
+      { k: 'final_price', label: 'ราคาใหม่ที่อนุมัติ (บาท/กก.)', type: 'num', value: sug },
+      { k: 'supplier_cost_target', label: 'เป้าทุนที่จะขอโรงงาน (บาท/กก.) — เว้นว่างได้', type: 'num', value: a.costCut > 0 ? a.maxCost : '' },
+      { k: 'note', label: 'เหตุผล / แผน (เซลล์ไม่เห็นตัวเลขทุน)', type: 'area', rows: 2, ph: 'เช่น ขอโรงงานลด 3 บาท แล้วให้ลูกค้า 140' }
+    ],
+    okText: 'อนุมัติ & ส่งกลับ Sales',
+    onOk: function (v, close) {
+      var exc = !!(document.getElementById('negoExc') || {}).checked;
+      return PX.post('/api/price-decide', { id: id, approve: true, seen_rev: r.rev, final_price: Math.round(Number(v.final_price)),
+          supplier_cost_target: v.supplier_cost_target ? Math.round(Number(v.supplier_cost_target)) : null,
+          note: v.note || '', exception: exc })
+        .then(function () { close(); return PX.get('/api/price-requests'); })
+        .then(function (x) { REQ = x; draw(); PX.toast('อนุมัติราคาใหม่แล้ว · Sales และลิงก์ลูกค้าเห็นเมื่อเปิด/โหลดหน้าใหม่'); });
+    }, onStale: reloadRequests });
+}
+function dataAudit() {
+  PX.get('/api/data-audit').then(function (a) {
+    var c = a.central || {}, row = function (k, v, bad) { return '<tr><td>' + k + '</td><td class="rt" style="' + (bad ? 'color:var(--red);font-weight:700' : '') + '">' + v + '</td></tr>'; };
+    PX.modal({ title: 'ตรวจการเชื่อมข้อมูล', sub: 'นับจากฐานข้อมูลจริง · ' + esc(a.today) + ' · รอบ ' + esc(a.label || '—'), ok: false,
+      html: '<div class="sc"><table class="g"><tbody>' +
+        row('สินค้าในระบบ (product_id เดียวทุกหน้า)', a.master) +
+        row('ยังไม่รู้ทุน', a.noCost, a.noCost > 0) +
+        row('ราคากลางยืนยันแล้ว / ทุนเปลี่ยนต้องยืนยันใหม่ / ยังไม่เคยยืนยัน', c.approved + ' / ' + c.stale + ' / ' + c.missing, (c.stale + c.missing) > 0) +
+        row('รู้ราคาตลาดที่ยังใช้ได้', a.market.live + ' / ' + a.master, a.market.live < a.master / 3) +
+        row('ชื่อสินค้าซ้ำกัน (อาจเป็นตัวเดียวกัน)', a.nameCollisions + ' กลุ่ม', a.nameCollisions > 0) +
+        row('บรรทัดสัญญาที่ชี้สินค้าที่ไม่มีแล้ว', a.orphanLines, a.orphanLines > 0) +
+        row('รอบนี้: ยืนยันราคารายเจ้า / ส่ง Sales / ส่งลูกค้า', a.round.customersPriced + ' / ' + a.round.handed + ' / ' + a.round.sent + ' เจ้า') +
+        row('หมวด', Object.keys(a.categories).map(function (k) { return k + ' ' + a.categories[k]; }).join(' · ')) +
+        '</tbody></table></div>' +
+        (a.collisions && a.collisions.length ? '<p class="hint" style="margin-top:8px">ชื่อซ้ำ: ' + a.collisions.slice(0, 5).map(function (g) {
+          return g.map(function (x) { return esc(x.name) + ' (' + esc(x.grp || '') + ')'; }).join(' = '); }).join(' · ') + '</p>' : '') });
+  }).catch(function (e) { PX.toast('ตรวจไม่ได้ — ' + esc(e.message), 'bad'); });
+}
+</script>
+</body></html>

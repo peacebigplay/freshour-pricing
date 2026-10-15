@@ -1,0 +1,1225 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>รายงานและตัดสินใจราคา · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+</head><body>
+<script src="/peach.js"></script>
+<style>
+/* ── Priority 04: Delivery + Issues 2-col grid ───────────── */
+.ex-ops-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+@media(max-width:700px){.ex-ops-grid{grid-template-columns:1fr}}
+/* ── Revenue bar chart (Priority 02) ─────────────────────── */
+.ex-rev-barchart{background:var(--bg-2);border-radius:10px;padding:10px 12px 6px;margin-top:12px}
+.ex-rev-wrap{display:flex;align-items:flex-end;gap:5px;height:80px}
+.ex-rev-col{display:flex;flex-direction:column;align-items:center;flex:1;gap:2px;min-width:0}
+.ex-rev-bar{width:100%;background:var(--blue);border-radius:4px 4px 0 0}
+.ex-rev-col span{font-size:9.5px;color:var(--tx-3);white-space:nowrap;overflow:hidden;text-overflow:clip;max-width:100%}
+.ex-rev-col em{font-size:9px;color:var(--tx-2);font-style:normal;white-space:nowrap;display:none}
+.ex-rev-col:hover em{display:block}
+.ex-rev-note{display:block;font-size:11px;color:var(--tx-3);margin-top:6px;text-align:center}
+/* ── Customer Issues summary panel ───────────────────────── */
+.is-kpi-row{display:flex;gap:8px;margin:8px 0 10px}
+.is-kpi{flex:1;background:var(--bg-2);border-radius:8px;padding:8px 10px;text-align:center}
+.is-kpi b{display:block;font-size:20px;font-weight:700;line-height:1.1}
+.is-kpi span{font-size:11px;color:var(--tx-2)}
+.is-kpi.warn b{color:var(--amber)}
+.is-trend-wrap{display:flex;align-items:flex-end;gap:3px;height:42px;margin:8px 0 2px}
+.is-tr-col{display:flex;flex-direction:column;align-items:center;flex:1;gap:1px}
+.is-tr-bar{width:100%;background:var(--red);border-radius:3px 3px 0 0}
+.is-tr-col span{font-size:9.5px;color:var(--tx-3);white-space:nowrap}
+.is-type-list{display:flex;flex-direction:column;gap:4px;margin:6px 0 10px}
+.is-type{display:flex;justify-content:space-between;font-size:12px;padding:4px 8px;background:var(--bg-2);border-radius:6px}
+.is-type b{font-weight:700;color:var(--amber)}
+/* ── Market Benchmark v2 (ref image layout) ──────────────── */
+.ex-mkt2-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.ex-mkt2-row:last-child{border-bottom:none}
+.ex-mkt2-info{min-width:150px;max-width:190px;flex-shrink:0}
+.ex-mkt2-name{font-weight:700;font-size:13px;line-height:1.3}
+.ex-mkt2-meta{font-size:11px;color:var(--tx-2);margin-top:2px}
+.ex-mkt2-track-wrap{flex:1;min-width:0}
+.ex-mkt2-track{position:relative;height:10px;background:var(--bg-2);border-radius:5px;margin-bottom:4px}
+.ex-mkt2-band{position:absolute;top:0;height:100%;background:var(--blue-l,#DBEAFE);border-radius:5px}
+.ex-mkt2-dot{position:absolute;top:50%;transform:translate(-50%,-50%);width:12px;height:12px;background:#1E293B;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.ex-mkt2-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--tx-2)}
+.ex-mkt2-labels span:nth-child(2){font-weight:700;color:var(--tx)}
+.ex-mkt2-src{min-width:70px;max-width:95px;text-align:right;font-size:11px;color:var(--blue);flex-shrink:0;word-break:break-word}
+@media(max-width:600px){.ex-mkt2-src{display:none}.ex-mkt2-info{min-width:90px;max-width:120px}}
+/* ══ V30 · พีช 12 ต.ค. — แท็บขีดเส้นใต้ · การ์ดสีบอกดี/แย่ · ตัวเลขใหญ่ชัด ══
+   ใช้ .exec-v8.exec-v13 (สองคลาส) ให้ชนะ style ที่ draw() ฉีดทีหลัง */
+.exec-v8.exec-v13 .ex-tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);background:var(--card);padding:0;margin:4px 0 2px;overflow-x:auto;position:sticky;top:0;z-index:5;grid-template-columns:none}
+.exec-v8.exec-v13 .ex-tabs button{flex:0 0 auto;border:0;border-radius:0;background:none;box-shadow:none;padding:12px 20px 10px;border-bottom:3px solid transparent;margin-bottom:-1px;text-align:center}
+.exec-v8.exec-v13 .ex-tabs button b{font-size:14.5px;font-weight:600;color:var(--tx-3)}
+.exec-v8.exec-v13 .ex-tabs button span{display:none}
+.exec-v8.exec-v13 .ex-tabs button:hover b{color:var(--ink)}
+.exec-v8.exec-v13 .ex-tabs button.on{background:none;box-shadow:none;border-bottom-color:var(--blue)}
+.exec-v8.exec-v13 .ex-tabs button.on b{color:var(--blue)}
+.exec-v8.exec-v13 .ex-hierarchy span{color:var(--blue)}
+.exec-v8.exec-v13 .ex-period{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.exec-v8.exec-v13 .ex-period .ex-stale{background:var(--red-l);color:var(--red);font-weight:700;border-radius:99px;padding:3px 10px;font-size:11px}
+
+/* Pricing AI — การ์ด KPI สีเต็มแบบเรฟ + เส้นเล็ก */
+@media(min-width:901px){.exec-v8.exec-v13 .ex-perf-grid{grid-template-columns:minmax(250px,320px) minmax(0,1fr);gap:16px}}
+.ex-ktile{border-radius:16px;padding:14px 16px;color:#fff;display:grid;grid-template-columns:minmax(0,1fr) 92px;align-items:center;gap:8px;position:relative;overflow:hidden}
+.ex-ktile+.ex-ktile{margin-top:10px}
+.ex-ktile.c1{background:linear-gradient(135deg,#2563EB,#1D4ED8)}
+.ex-ktile.c2{background:linear-gradient(135deg,#4F46E5,#4338CA)}
+.ex-ktile.c3{background:linear-gradient(135deg,#7C3AED,#6D28D9)}
+.ex-ktile span{display:block;font-size:11px;opacity:.85}
+.ex-ktile b{display:block;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin:3px 0 2px;font-variant-numeric:tabular-nums}
+.ex-ktile b small{font-size:13px;font-weight:600;margin-left:3px;opacity:.85}
+.ex-ktile em{font-style:normal;font-size:10.5px;opacity:.9}
+.ex-ktile em i{font-style:normal;background:rgba(255,255,255,.2);border-radius:99px;padding:1px 7px;margin-right:4px;font-weight:700}
+.ex-ktile svg{width:92px;height:40px;display:block;overflow:visible}
+
+/* การ์ดสรุปราคา: เขียว = ดี · แดง = แย่/ด่วน · ส้ม = ต้องเติม */
+.exec-v8.exec-v13 .ex-sum-card{position:relative;overflow:hidden}
+.exec-v8.exec-v13 .ex-sum-card b{font-size:28px;letter-spacing:-.02em;color:var(--ink)}
+.exec-v8.exec-v13 .ex-sum-card.good{background:var(--green-l);border-color:var(--green-b)}
+.exec-v8.exec-v13 .ex-sum-card.good b{color:#15803D}
+.exec-v8.exec-v13 .ex-sum-card.bad{background:var(--red-l);border-color:var(--red-b)}
+.exec-v8.exec-v13 .ex-sum-card.bad b{color:#B91C1C}
+.exec-v8.exec-v13 .ex-sum-card.warn{background:var(--orange-l);border-color:var(--orange-b)}
+.exec-v8.exec-v13 .ex-sum-card.warn b{color:#C2410C}
+.ex-chip{display:inline-block;font-style:normal;font-size:10.5px;font-weight:700;border-radius:99px;padding:2px 8px;margin-right:5px}
+.ex-chip.up{background:#fff;color:var(--red);border:1px solid var(--red-b)}
+.ex-chip.down{background:#fff;color:var(--green);border:1px solid var(--green-b)}
+
+/* ตำแหน่งราคาในตลาด (Market Benchmark) แบบเรฟ */
+.ex-mb-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.ex-mb-head h3{margin:0}
+.ex-mb-head .ex-mb-all{margin-left:auto;font-size:12px;font-weight:700;color:var(--blue);background:none;border:0;cursor:pointer;font-family:var(--ff)}
+.ex-mb-row{display:grid;grid-template-columns:minmax(120px,170px) minmax(0,1fr) 92px;gap:14px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+.ex-mb-row:last-child{border-bottom:0}
+.ex-mb-name{font-weight:700;font-size:13px;line-height:1.3}
+.ex-mb-name .tag-ex{font-size:9.5px;font-weight:600;color:var(--amber);background:var(--amber-l);border-radius:99px;padding:1px 6px;margin-left:5px;vertical-align:middle}
+.ex-mb-meta{font-size:10.5px;color:var(--tx-3);margin-top:2px}
+.ex-mb-track{position:relative;height:8px;background:var(--line-2);border-radius:99px;margin:14px 0 6px}
+.ex-mb-band{position:absolute;top:0;height:100%;background:#BFDBFE;border-radius:99px}
+.ex-mb-dot{position:absolute;top:50%;width:14px;height:14px;transform:translate(-50%,-50%);background:var(--blue);border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(37,99,235,.5)}
+.ex-mb-us{position:absolute;top:-17px;transform:translateX(-50%);font-size:10.5px;font-weight:700;color:var(--blue);white-space:nowrap}
+.ex-mb-ends{display:flex;justify-content:space-between;font-size:10px;color:var(--tx-3)}
+.ex-mb-src{text-align:right;font-size:10.5px;color:var(--tx-2);line-height:1.35}
+.ex-mb-more{display:block;width:100%;margin-top:12px;text-align:center;font-family:var(--ff);font-size:12.5px;font-weight:700;color:var(--blue);background:var(--blue-l);border:1px solid var(--blue-b);border-radius:12px;padding:10px;cursor:pointer}
+@media(max-width:620px){.ex-mb-row{grid-template-columns:1fr}.ex-mb-src{text-align:left}}
+
+/* ต้นทุนขยับ: ขึ้น = แดง · ลง = เขียว */
+.exec-v8.exec-v13 .ex-mv .ex-bar-row{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 64px;gap:10px}
+.exec-v8.exec-v13 .ex-mv .ex-bar-row span small{display:block;font-size:10px;color:var(--tx-3)}
+.exec-v8.exec-v13 .ex-mv .ex-bar-row.dn .ex-bar i{background:var(--green)}
+.exec-v8.exec-v13 .ex-mv .ex-bar-row.dn b{color:var(--green)}
+.exec-v8.exec-v13 .ex-mv .ex-bar-row b{text-align:right;font-size:13px}
+
+/* การ์ด KPI ที่ยังไม่มีแหล่งข้อมูล = เทา (ไม่ใช่แดง — ยังไม่รู้ ไม่ได้แปลว่าแย่) */
+.exec-v8.exec-v13 .ex-kpi.tone-none{background:#F8FAFC;border-color:var(--line)}
+.exec-v8.exec-v13 .ex-kpi.tone-none::before{background:#CBD5E1}
+.exec-v8.exec-v13 .ex-kpi.tone-none>b{color:var(--tx-3)}
+.exec-v8.exec-v13 .ex-kpi .ex-kpi-badge.none{background:#fff;color:var(--tx-3)}
+
+/* Actual Invoiced Sales (คืนจาก V21) */
+.ex-act-head{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.ex-act-head h3{margin:0}
+.ex-act-head .btn{margin-left:auto}
+.ex-act-note{margin:10px 0 0;background:var(--amber-l);border:1px solid var(--amber-b);color:#8A5A00;border-radius:12px;padding:8px 12px;font-size:11.5px}
+.ex-act-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0 6px}
+.ex-act-kpis>div{border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-width:0}
+.ex-act-kpis span{display:block;font-size:11px;color:var(--tx-3)}
+.ex-act-kpis b{display:block;font-size:26px;font-weight:700;letter-spacing:-.02em;color:var(--ink);margin-top:3px;font-variant-numeric:tabular-nums}
+.ex-act-kpis b.sm{font-size:14px;margin-top:6px}
+.ex-act-kpis em{display:block;font-style:normal;font-size:10.5px;color:var(--tx-3);margin-top:3px}
+.ex-act-kpis .good{background:var(--green-l);border-color:var(--green-b)}.ex-act-kpis .good b{color:#15803D}
+.ex-act-kpis .bad{background:var(--red-l);border-color:var(--red-b)}.ex-act-kpis .bad b{color:#B91C1C}
+.ex-act-bars{display:flex;align-items:flex-end;gap:8px;height:170px;padding:22px 0 0;border-bottom:1px solid var(--line)}
+.ex-act-bars>div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0}
+.ex-act-bars i{display:block;width:100%;background:var(--blue);border-radius:6px 6px 0 0;transform-origin:bottom;animation:exGrowY .8s cubic-bezier(.2,.8,.2,1) both}
+.ex-act-bars>div.peak i{background:var(--indigo)}
+.ex-act-bars em{font-style:normal;font-size:11px;font-weight:700;color:var(--ink);margin-bottom:4px;white-space:nowrap}
+.ex-act-mon{display:flex;gap:8px;margin-top:5px}
+.ex-act-mon span{flex:1;text-align:center;font-size:10.5px;color:var(--tx-3)}
+.ex-act-top{margin-top:16px}
+.ex-act-top .lb2{font-size:10.5px;letter-spacing:.12em;font-weight:700;color:var(--tx-3);text-transform:uppercase;margin-bottom:4px}
+.ex-act-top .r{display:grid;grid-template-columns:minmax(0,1fr) 110px minmax(0,1.2fr);gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12.5px;align-items:center}
+.ex-act-top .r b{text-align:right;font-variant-numeric:tabular-nums}
+.ex-act-top .r em{text-align:right;font-style:normal;font-size:11px;color:var(--tx-3)}
+@keyframes exGrowY{from{transform:scaleY(0)}}
+@media(max-width:900px){.ex-act-kpis{grid-template-columns:repeat(2,1fr)}.ex-act-top .r{grid-template-columns:1fr 90px}.ex-act-top .r em{grid-column:1/-1;text-align:left}}
+
+/* Operation: Delivery เต็มกว้างก่อน แล้วปัญหาลูกค้าใต้ */
+.ex-ops-stack{display:flex;flex-direction:column;gap:14px}
+.ex-ops-stack .ex-delivery-summary{grid-template-columns:repeat(3,1fr)!important}
+.ex-ops-stack .ex-delivery-summary b{font-size:24px!important}
+.ex-ex-tag{font-size:9.5px;font-weight:600;color:var(--amber);background:var(--amber-l);border-radius:99px;padding:1px 7px;vertical-align:middle}
+.ex-iss-top{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.ex-iss-top h3{margin:0}
+.ex-iss-top .act{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ex-seg{display:inline-flex;background:var(--line-2);border-radius:10px;padding:3px}
+.ex-seg button{font-family:var(--ff);border:0;background:none;border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:600;color:var(--tx-2);cursor:pointer}
+.ex-seg button.on{background:var(--blue);color:#fff}
+.ex-iss-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
+.ex-iss-kpis>div{border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.ex-iss-kpis span{display:block;font-size:11px;color:var(--tx-3)}
+.ex-iss-kpis b{display:block;font-size:28px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.ex-iss-kpis .bad b{color:var(--red)}.ex-iss-kpis .warn b{color:var(--orange)}
+.ex-iss-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ex-iss-grid>div{border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-width:0}
+.ex-iss-grid h4{font-size:12.5px;margin:0 0 8px}
+.ex-iss-bar{display:grid;grid-template-columns:minmax(0,1fr) minmax(60px,1fr) 28px;gap:8px;align-items:center;font-size:11.5px;margin-bottom:6px}
+.ex-iss-bar i{display:block;height:7px;border-radius:99px;background:var(--orange)}
+.ex-iss-bar b{text-align:right}
+.ex-iss-trend{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:10px}
+.ex-iss-trend svg{width:100%;height:auto;display:block}
+.ex-iss-trend text{font-family:var(--ff);font-size:10px;fill:var(--tx-3)}
+@media(max-width:700px){.ex-iss-grid,.ex-iss-kpis{grid-template-columns:1fr}.ex-ops-stack .ex-delivery-summary{grid-template-columns:1fr!important}}
+</style>
+<script>
+/* Executive v8 — Business Health + Delivery by carrier + pricing snapshot */
+var esc = PX.esc, money = PX.money, W = PX.why;
+/* ค่าที่ใส่ใน onclick ต้องเป็นสตริง JS ที่ปลอดภัยทั้งในฐานะ JS และ attribute — รหัส/กลุ่มสินค้ามาจากคนพิมพ์ได้ */
+function jsq(v) { return JSON.stringify(String(v == null ? '' : v)).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+var ACT_ERR = '';
+var D = null, GD = null, SD = null, CG = null, SL = null, ACT = null, FINVIEW = 'revenue', EXEC_VIEW = 'overview';
+var EXEC_TAB = 'overview';
+var OPSPERF = null, DLV = null, AR = null, PRS = null, ROLE = '';   /* ข้อมูลจริงจาก /api/ops-perf · deliveries · ar · prospects */
+try { EXEC_TAB = sessionStorage.getItem('exec_tab') || 'overview'; } catch(e) {}
+
+PX.shell('exec',
+  '<div class="float"><div class="ic">⚡</div><b>Executive actions</b>' +
+  '<span id="floatSub">ดูสิ่งที่ต้องจัดการก่อน</span>' +
+  '<button onclick="execDetail(\'attention\')">เปิด Attention Queue</button></div>');
+
+/* EX เหลือเฉพาะเกรดลูกค้า (เติมจาก /api/guard) — ตัวเลขผู้บริหารอื่นทั้งหมดมาจาก API จริง: OPSPERF · DLV · AR · PRS · ACT */
+var EX = { customerGrades: [], carriers: [] };
+/* ข้อมูลส่วนที่รอ source จริง: Attention Queue โหลดจาก DB จริงผ่าน /api/exec-attention */
+var EXEC_DECISIONS = [];
+function loadAttention() {
+  PX.get('/api/exec-attention').then(function(res) {
+    EXEC_DECISIONS = (res && res.items) || [];
+    var el = document.getElementById('exec-att-db');
+    if (!el) return;
+    if (!EXEC_DECISIONS.length) {
+      el.innerHTML = '<div class="ex-att-empty">ไม่มีรายการที่ต้องตัดสินใจ</div>';
+      return;
+    }
+    el.innerHTML = EXEC_DECISIONS.map(function(x) {
+      var sev = x.severity === 'high' ? 'red' : x.severity === 'medium' ? 'amber' : 'green';
+      return '<div class="ex-att-db-row '+sev+'">'+
+        '<span class="ex-att-b"><b>'+esc(x.title)+'</b>'+(x.detail?'<span>'+esc(x.detail)+'</span>':'')+'</div>'+
+        (x.due_at?'<small>ครบกำหนด '+esc(x.due_at)+'</small>':'')+
+        (x.owner?'<small>'+esc(x.owner)+'</small>':'')+
+        '</div>';
+    }).join('');
+  }).catch(function() {
+    var el = document.getElementById('exec-att-db');
+    if (el) el.innerHTML = '<div class="ex-att-empty">โหลดข้อมูลไม่ได้ — ลองรีเฟรช</div>';
+  });
+}
+
+function pct(a,b){ return b ? Math.round(a/b*1000)/10 : 0; }
+function mm(n){ return n >= 1000000 ? (n/1000000).toFixed(2)+'M' : n >= 1000 ? Math.round(n/1000)+'K' : money(n); }
+/* ปัดก่อนโชว์เสมอ — 12.8-15.0 ใน JS ได้ -2.1999999999999993 แล้วโผล่บนจอทั้งพวง */
+function sign(n, suffix){ var v=Math.round(n*10)/10; return (v>0?'+':'') + v + (suffix||''); }
+function avgMargin(){
+  if (!D || !D.spread) return '—';
+  var MID={'<12%':8,'12–15%':13.5,'15–20%':17.5,'20–30%':25,'30%+':35}, n=0,s=0;
+  D.spread.forEach(function(x){n+=x.n;s+=x.n*(MID[x.band]||0);});
+  return n ? (s/n).toFixed(1) : '—';
+}
+function safe(v, fb){ return v===0 || v ? v : fb; }
+function bandClass(n){ var f=(D&&D.floorPct)||12; return n<f?'red':n<15?'amber':n<30?'green':'blue'; }
+function fmtMoney(n){ return '฿'+money(n); }
+function recentDrift(){ var d=(D&&D.drift)||[]; return d.slice(Math.max(0,d.length-7)); }
+function sparkline(points){
+  if(!points || !points.length) return '';
+  /* กราฟนี้ต้องยืดสูงได้ตามการ์ด แต่ "ตัวหนังสือกับจุดห้ามยืดตาม"
+     ท่าเดิมยัดทุกอย่างไว้ใน SVG แล้วสั่ง preserveAspectRatio="none" — เส้นสวยดี
+     แต่ตัวเลขแบนและจุดกลมกลายเป็นวงรีตามส่วนสูงที่ยืด
+     ท่าใหม่: SVG วาดแค่ "เส้น" (non-scaling-stroke กันเส้นหนาผิดส่วน)
+     ส่วนจุด/ตัวเลข/ชื่อรอบ เป็น HTML วางทับด้วย % — ยืดการ์ดแค่ไหนก็คมเท่าเดิม */
+  var n=points.length, vals=points.map(function(x){return +x.cost||0;});
+  var min=Math.min.apply(null,vals), max=Math.max.apply(null,vals); if(min===max){min-=1;max+=1;}
+  var L=7, R=7;                       /* เว้นขอบซ้ายขวา ไม่ให้ตัวเลขหัวท้ายโดนตัด */
+  var TOP=16, BOT=76;                 /* เส้นเดินอยู่ในแถบนี้ เหลือที่บนให้ตัวเลข ล่างให้ชื่อรอบ */
+  function X(i){ return n===1 ? 50 : L + (100-L-R)*(i/(n-1)); }
+  function Y(v){ return BOT - ((v-min)/(max-min))*(BOT-TOP); }
+  var poly=points.map(function(x,i){ return X(i).toFixed(2)+','+Y(+x.cost||0).toFixed(2); }).join(' ');
+  var dots=points.map(function(x,i){
+    var last=(i===n-1), y=Y(+x.cost||0);
+    return '<i class="ex-sp-dot'+(last?' last':'')+'" style="left:'+X(i).toFixed(2)+'%;top:'+y.toFixed(2)+'%"></i>'+
+           '<b class="ex-sp-val'+(last?' last':'')+'" style="left:'+X(i).toFixed(2)+'%;top:'+y.toFixed(2)+'%">'+safe(x.cost,'—')+'</b>';
+  }).join('');
+  /* รอบเยอะเมื่อไหร่ชื่อรอบจะชนกัน — เกิน 8 รอบก็โชว์เว้นอัน แต่รอบล่าสุดโชว์เสมอ */
+  var lw=0; points.forEach(function(x){ lw=Math.max(lw,(x.label||'').length); });
+  var every = (n*(lw*6.2) > 580 || n>8) ? 2 : 1;
+  var axis=points.map(function(x,i){
+    if(i%every && i!==n-1) return '';
+    return '<u class="ex-sp-x" style="left:'+X(i).toFixed(2)+'%">'+esc((x.label||'').replace('_26',''))+'</u>';
+  }).join('');
+  return '<div class="ex-spark">'+
+    '<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">'+
+      '<polyline fill="none" stroke="#2563EB" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" points="'+poly+'"></polyline>'+
+    '</svg>'+dots+axis+'</div>';
+}
+
+function announce() {
+  PX.get('/api/preflight').then(function (pf) {
+    var bl = pf.blockers || [], wn = pf.warnings || [];
+    PX.modal({
+      title: 'ประกาศราคาสัปดาห์นี้',
+      sub: 'ประกาศแล้วทีมขายเห็นทันที และระบบจะออกใบราคาให้ทุกเจ้า',
+      html: (bl.length
+        ? '<div class="warn2"><b>ยังประกาศไม่ได้ ' + bl.length + ' เรื่อง</b><br>' +
+          bl.map(function(b){return '• '+esc(b.title||b.msg||b);}).join('<br>') + '</div>'
+        : '<div class="pre">ผ่านด่านครบ พร้อมประกาศ</div>') +
+        (wn.length ? '<div class="pre"><b>ควรดูก่อน '+wn.length+' เรื่อง</b>\n'+
+          wn.map(function(b){return '• '+esc(b.title||b.msg||b);}).join('\n')+'</div>' : ''),
+      fields:[{k:'label',label:'ชื่อชุดราคา (เว้นว่าง = ระบบตั้งตามสัปดาห์นี้)',value:'',hint:'ใช้อ้างอิงตอนย้อนดูภายหลัง'}],
+      okText: bl.length ? 'ยังประกาศไม่ได้' : 'ประกาศเลย', ok: !bl.length,
+      note: bl.length ? 'แก้เรื่องข้างบนก่อน แล้วกลับมากดใหม่' : 'ประกาศแล้วย้อนกลับไม่ได้ แต่ยังดูชุดเก่าได้เสมอ',
+      onOk:function(v){ return PX.post('/api/dispatch',{label:v.label}).then(function(r){
+        PX.toast('ประกาศชุด <b>'+esc(r.label)+'</b> แล้ว · ขั้นต่อไป: พี่จุ๋มยืนยันใบรายเจ้าของรอบนี้ → ส่ง Sales');
+        setTimeout(function () { location.reload(); }, 1400);   /* ตัวเลขรอบ/การส่ง/ความคืบหน้า เป็นของรอบใหม่แล้ว */
+      }); }
+    });
+  }).catch(function(e){PX.toast('เปิดไม่ได้ — '+esc(e.message),'bad');});
+}
+
+function carrierCards(detail, list){
+  return (list||EX.carriers).map(function(c){
+    var worst = c.rounds.slice().sort(function(a,b){
+      var pr={bad:3,warn:2,ok:1}; return (pr[b.state]||0)-(pr[a.state]||0);
+    })[0] || c.rounds[0];
+    return '<div class="ex-carrier-card '+(c.score<80?'bad':c.score<90?'warn':'ok')+'">'+
+      '<div class="ex-carrier-top"><span>'+esc(c.name)+'</span><b>'+c.score+'</b></div>'+
+      '<div class="ex-carrier-meta"><span>'+(+c.jobs||0)+' รอบขนส่ง</span><span>'+(+c.ontime||0)+'% on-time</span><span>'+(+c.delayed||0)+' delay</span></div>'+
+      '<div class="ex-carrier-last">'+(worst?('ล่าสุดที่ต้องจับตา · '+esc(worst.round)+' · '+esc(worst.delay)):'')+'</div>'+
+      '<div class="ex-rounds">'+c.rounds.map(function(r){var st=['ok','warn','bad'].indexOf(r.state)>=0?r.state:'';return '<div class="ex-round '+st+'"><span>'+esc(r.round)+'</span><b>'+esc(r.promised)+' → '+esc(r.actual)+'</b><em>'+esc(r.delay)+'</em></div>';}).join('')+'</div>'+
+      (detail?'<button onclick="execDetail('+jsq('delivery:'+c.name)+')">ดูรอบของ '+esc(c.name)+' →</button>':'')+
+    '</div>';
+  }).join('');
+}
+
+function execDetail(type){
+  /* ทุกเรื่องมีหน้ารายละเอียดจริงแล้ว (อ่านจาก API) — modal เหลือแค่ Attention Queue */
+  if(type!=='attention'){
+    var to=type.indexOf('delivery')===0?'delivery':type.indexOf('prospect')===0?'prospect':type==='ar-risk'?'ar':
+           type.indexOf('margin')===0?'margin':type==='cash'?'cash':type==='revenue'?'revenue':'overview';
+    return execOpen(to);
+  }
+  var mx=PX.modal({title:'สิ่งที่ต้องจัดการวันนี้',sub:'เรียงตามผลกระทบต่อเงิน ลูกค้า และการส่งมอบ',html:'<div class="ex-modal-list">'+attentionRows(true)+'</div>',ok:false});
+  if(mx && mx.el){ bindExecActions(mx.el); loadAttention(); }
+}
+function execGo(route){
+  /* เดิม postMessage ก่อนเสมอ — เปิดหน้านี้ตรงๆ (ไม่มีกรอบแม่) ข้อความไม่ไปไหน ปุ่มกดแล้วเงียบ */
+  if (window.parent && window.parent !== window) { try { parent.postMessage({go:route}, '*'); return; } catch(e) {} }
+  __NAV.href= route;
+}
+function execOpen(view){
+  EXEC_VIEW = view || 'overview';
+  draw();
+  try { window.scrollTo(0,0); } catch(e) {}
+  try { parent.postMessage({execFit:true}, '*'); } catch(e) {}
+}
+function execBack(){ execOpen('overview'); }
+function execTab(t){
+  EXEC_TAB = t || 'overview';
+  try { sessionStorage.setItem('exec_tab', EXEC_TAB); } catch(e) {}
+  document.querySelectorAll('[data-exec-tab]').forEach(function(b){ b.classList.toggle('on', b.dataset.execTab===EXEC_TAB); });
+  document.querySelectorAll('[data-exec-pane]').forEach(function(p){ p.hidden = p.dataset.execPane!==EXEC_TAB; });
+  try { window.scrollTo(0,0); } catch(e) {}
+  try { parent.postMessage({execFit:true}, '*'); } catch(e) {}
+}
+function execResolve(label){
+  /* ยังไม่มีที่เก็บงานส่งต่อของฝั่งบัญชี/ขนส่ง — ห้ามบอกว่า "บันทึกแล้ว" ทั้งที่ไม่มีอะไรถูกบันทึก */
+  PX.toast('ยังไม่ต่อระบบบัญชี/ขนส่ง — ปุ่มนี้ยังไม่บันทึกอะไร · ปัญหาบริการบันทึกได้ที่ Service Log', 'bad');
+}
+function bindExecActions(root){
+  var base=root||document;
+  base.querySelectorAll('[data-exec-view]').forEach(function(el){
+    if(el.dataset.boundExecView==='1') return;
+    el.dataset.boundExecView='1';
+    el.addEventListener('click',function(e){
+      e.preventDefault(); e.stopPropagation(); execOpen(el.dataset.execView);
+    });
+  });
+  base.querySelectorAll('[data-exec-back]').forEach(function(el){
+    if(el.dataset.boundExecBack==='1') return;
+    el.dataset.boundExecBack='1';
+    el.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); execBack(); });
+  });
+  base.querySelectorAll('[data-go-route]').forEach(function(el){
+    if(el.dataset.boundGo==='1') return;
+    el.dataset.boundGo='1';
+    el.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); execGo(el.dataset.goRoute); });
+  });
+  base.querySelectorAll('[data-resolve-action]').forEach(function(el){
+    if(el.dataset.boundResolve==='1') return;
+    el.dataset.boundResolve='1';
+    el.addEventListener('click',function(e){
+      e.preventDefault(); e.stopPropagation();
+      execResolve(el.dataset.resolveAction);
+    });
+  });
+}
+
+/* ── ของจริงจากฐานข้อมูล (พี่หมิง v15) ───────────────────────────────────
+   Service Log = ปัญหาบริการ/ขนส่งที่ทีมบันทึกจริง · Category Guard = margin รายหมวดเทียบเป้าที่พี่หมิงตั้ง
+   แถวเหล่านี้แทนที่แถวเดิมที่ใช้เลขตัวอย่าง (delay 8 orders / margin at risk ฿128K) */
+function serviceAttention(){
+  if(!SL) return {lv:'amber',ic:'🚚',t:'Service Log',s:'โหลดไม่ได้ — ลองรีเฟรช',a:'เปิด',target:'exec-delivery'};
+  var open=SL.logs.filter(function(x){return x.status!=='ปิดแล้ว';});
+  if(!SL.total) return {lv:'green',ic:'🚚',t:'ยังไม่มีการบันทึกปัญหาบริการ',s:'พอมีลูกค้าแจ้งส่งช้า/ของเสีย ให้บันทึกที่นี่ — ระบบจะนับเรื่องซ้ำให้',a:'บันทึกปัญหา',target:'exec-delivery'};
+  if(!open.length) return {lv:'green',ic:'🚚',t:'ปัญหาบริการปิดครบแล้ว',s:'ทั้งหมด '+SL.total+' เรื่องปิดพร้อมสาเหตุและวิธีแก้',a:'ดู Service Log',target:'exec-delivery'};
+  var rep=open.filter(function(x){return x.repeat_n>1;}).length;
+  return {lv:open.some(function(x){return x.severity==='high';})?'red':'amber',ic:'🚚',t:'Service Log ค้าง '+open.length+' เรื่อง',
+    s:(rep?('เกิดซ้ำ '+rep+' เรื่อง · '):'')+esc(open[0].customer)+' · '+esc(open[0].type),a:'แก้ Delivery',target:'exec-delivery'};
+}
+function categoryAttention(){
+  if(!CG) return {lv:'amber',ic:'📉',t:'Category Margin Guard',s:'โหลดไม่ได้ — ลองรีเฟรช',a:'เปิด',target:'exec-margin'};
+  var bad=CG.groups.filter(function(g){return g.state==='bad'||g.state==='warn';});
+  if(!bad.length) return {lv:'green',ic:'📉',t:'Margin ทุกหมวดถึงเป้า',s:'ทิศทางรวม '+tg(CG.portfolio)+' · ตอนนี้ '+(CG.portfolio.margin==null?'—':CG.portfolio.margin+'%'),a:'ดูเป้ารายหมวด',target:'exec-margin'};
+  return {lv:bad.some(function(g){return g.state==='bad';})?'red':'amber',ic:'📉',t:'Category Margin Guard หลุด '+bad.length+' กลุ่ม',
+    s:bad.map(function(g){return esc(g.name)+' '+g.margin+'% < '+tg(g);}).join(' · '),a:'แก้ Margin',target:'exec-margin'};
+}
+function tg(g){ return g.lo===g.hi ? g.lo+'%' : g.lo+'–'+g.hi+'%'; }
+/* สัญญาณจริงจากข้อมูลใหม่ — ไม่มีข้อมูล = บอกว่าไม่มี (เขียว/เทา) ไม่แต่งเลข */
+function arAttention(){
+  if(!AR) return {lv:'amber',ic:'💸',t:'เงินค้างรับ',s:'โหลดไม่ได้ — ลองรีเฟรช',a:'เปิด',target:'exec-ar'};
+  if(!AR.invoices) return {lv:'green',ic:'💸',t:'ยังไม่มีบิลในระบบ',s:'นำเข้าไฟล์ e-Today แล้วเงินค้างรับ/เกินกำหนดจะขึ้นที่นี่',a:'นำเข้า',target:'exec-ar'};
+  var late=(AR.open||[]).filter(function(x){return x.late;});
+  if(!late.length) return {lv:'green',ic:'💸',t:'ไม่มีบิลเกินกำหนด',s:'ค้างรับทั้งหมด ฿'+mm(AR.outstanding||0)+' · ยังไม่ถึงกำหนด',a:'ดู AR',target:'exec-ar'};
+  return {lv:'red',ic:'💸',t:'บิลเกินกำหนด '+late.length+' ใบ · ฿'+mm(AR.overdue),s:esc(late[0].customer)+' ค้าง ฿'+money(late[0].left)+' ครบกำหนด '+esc(late[0].due),a:'ตามเงิน',target:'exec-ar'};
+}
+function deliveryAttention(){
+  if(!DLV) return {lv:'amber',ic:'🚛',t:'รอบขนส่ง',s:'โหลดไม่ได้ — ลองรีเฟรช',a:'เปิด',target:'exec-delivery'};
+  var pend=(DLV.pending||[]).length, o=DLV.overall||{};
+  if(!o.total&&!pend) return {lv:'green',ic:'🚛',t:'ยังไม่มีรอบขนส่งที่บันทึก',s:'บันทึกรอบส่งที่แท็บ Operation แล้วคะแนนผู้ขนส่งจะคิดให้เอง',a:'บันทึก',target:'exec-delivery'};
+  var weak=(DLV.carriers||[]).filter(function(c){return c.score<80;});
+  if(!weak.length&&!pend) return {lv:'green',ic:'🚛',t:'ขนส่งปกติ · คะแนนรวม '+o.score,s:'ตรงเวลา '+o.onTime+'% · ส่งครบ '+o.inFull+'%',a:'ดู',target:'exec-delivery'};
+  return {lv:weak.length?'red':'amber',ic:'🚛',t:(weak.length?'ผู้ขนส่งคะแนนต่ำ '+weak.length+' เจ้า':'')+(weak.length&&pend?' · ':'')+(pend?'รอใส่เวลาส่งจริง '+pend+' รอบ':''),
+          s:weak.length?weak.map(function(c){return esc(c.name)+' '+c.score;}).join(' · '):'ใส่เวลาส่งจริงให้ครบ คะแนนจึงจะถูก',a:'แก้ Delivery',target:'exec-delivery'};
+}
+function prospectAttention(){
+  if(!PRS) return {lv:'amber',ic:'🧲',t:'Prospect',s:'โหลดไม่ได้ — ลองรีเฟรช',a:'เปิด',target:'exec-prospect'};
+  var P=PRS.summary;
+  if(!PRS.rows.length) return {lv:'green',ic:'🧲',t:'ยังไม่มี prospect ในระบบ',s:'เซลล์เพิ่มได้จากหน้า Sales (ปุ่ม 🧲 เพิ่ม prospect)',a:'เพิ่ม',target:'exec-prospect'};
+  if(!P.idle) return {lv:'green',ic:'🧲',t:'Prospect '+P.active+' ราย ไม่มีรายที่เงียบ',s:'Pipeline ฿'+mm(P.pipeline)+'/เดือน',a:'ดู',target:'exec-prospect'};
+  return {lv:'amber',ic:'🧲',t:'Prospect เงียบเกิน 14 วัน '+P.idle+' ราย',s:'Pipeline รวม ฿'+mm(P.pipeline)+'/เดือน — ให้เซลล์ติดต่อกลับ',a:'ตาม',target:'exec-prospect'};
+}
+function catTable(){
+  if(!CG) return '';
+  var tone={bad:['red','ต่ำกว่าเป้า'],warn:['amber','เฉียดเป้า'],good:['green','ถึงเป้า'],unknown:['gray','ไม่มีข้อมูล']};
+  return '<div class="ex-ws-table"><table><thead><tr><th>หมวด</th><th>เป้า</th><th>ตอนนี้</th><th>สถานะ</th><th>ที่มา</th></tr></thead><tbody>'+
+    [CG.portfolio].concat(CG.groups).map(function(g){var t=tone[g.state];
+      return '<tr><td><b>'+esc(g.name)+'</b>'+(g.examples?'<small>'+esc(g.examples)+'</small>':'')+'</td><td>'+tg(g)+'</td><td class="'+(g.state==='bad'?'danger':'')+'"><b>'+(g.margin==null?'—':g.margin+'%')+'</b></td><td><span class="ex-state '+t[0]+'">'+t[1]+'</span></td><td><small>'+(g.basis==='volume'?'ถ่วงปริมาณขาย '+g.known+'/'+g.n+' รายการ':'เฉลี่ยตามรายการ (ยังไม่รู้ปริมาณ)')+'</small></td></tr>';}).join('')+
+    '</tbody></table></div><p class="hint" style="margin-top:8px">คำนวณจากราคาที่ตั้งไว้ ไม่ใช่ยอดขายจริงจากใบแจ้งหนี้ (ยังไม่มีการนำเข้า e-Today) · แก้เป้าที่ <a class="lnk2" href="/guard">Margin Guard</a>'+
+    (CG.uncovered.n?' · อีก '+CG.uncovered.n+' รายการยังไม่มีเป้ารายหมวด':'')+'</p>';
+}
+function logRow(x){
+  var sev=x.severity==='high'?'bad':'warn';
+  return '<div class="'+sev+'"><span><b>'+esc(x.customer)+'</b><em>'+esc(x.type)+(x.carrier?' · '+esc(x.carrier):'')+'</em></span><span>'+esc(x.detail)+
+    (x.root_cause?'<br><small>สาเหตุ: '+esc(x.root_cause)+' · แก้: '+esc(x.action)+'</small>':'')+'</span><span class="ex-log-meta">'+esc(x.occurred_on||String(x.at||'').slice(0,10))+(x.by_role==='sale'?' · เซลล์แจ้ง':'')+' · '+(x.repeat_n>1?'เกิดซ้ำครั้งที่ '+x.repeat_n+' · ':'')+esc(x.status)+
+    (x.status!=='ปิดแล้ว'?' · <a href="#" class="lnk2" onclick="updateLog('+x.id+');return false">อัปเดต/ปิด</a>':'')+'</span></div>';
+}
+var ISS_RANGE='month';
+function issRange(r){ ISS_RANGE=r; var el=document.getElementById('exIssues'); if(el) el.outerHTML=issuesSummaryPanel(); bindExecActions(document.getElementById('main')); }
+function issuesSummaryPanel(){
+  /* ข้อมูลจริงจาก Service Log (ไม่มี mock) — ว่าง = 0 ตามจริง */
+  var logs=SL?(SL.logs||[]):[];
+  var now=new Date(Date.now()+7*3600e3), ym=now.toISOString().slice(0,7), yy=ym.slice(0,4);
+  var dayOf=function(x){return String(x.occurred_on||x.at||'').slice(0,10);};
+  var inR=logs.filter(function(x){var d=dayOf(x);return ISS_RANGE==='month'?d.slice(0,7)===ym:d.slice(0,4)===yy;});
+  var openN=inR.filter(function(x){return x.status!=='ปิดแล้ว'&&x.status!=='แก้ไขแล้ว';}).length;
+  var byType={}, byCust={};
+  inR.forEach(function(x){byType[x.type]=(byType[x.type]||0)+1; byCust[x.customer]=(byCust[x.customer]||0)+1;});
+  var repeat=Object.keys(byCust).filter(function(c){return byCust[c]>1;}).length;
+  var bars=function(obj){
+    var k=Object.keys(obj).sort(function(a,b){return obj[b]-obj[a];}).slice(0,5), mx=k.length?obj[k[0]]:1;
+    return k.length?k.map(function(t){return '<div class="ex-iss-bar"><span>'+esc(t)+'</span><i style="width:'+Math.max(6,obj[t]/mx*100)+'%"></i><b>'+obj[t]+'</b></div>';}).join(''):'<p class="hint" style="margin:0">ยังไม่มีข้อมูล</p>';
+  };
+  var mnames=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'], m12=[];
+  for(var i=11;i>=0;i--){var d=new Date(now.getFullYear(),now.getMonth()-i,1);m12.push({m:mnames[d.getMonth()],key:d.getFullYear()+'-'+(d.getMonth()<9?'0':'')+(d.getMonth()+1),n:0});}
+  logs.forEach(function(x){var k=dayOf(x).slice(0,7);m12.forEach(function(b){if(b.key===k)b.n++;});});
+  var mx=Math.max(1,Math.max.apply(null,m12.map(function(b){return b.n;}))), W=1000,H=140,L=16,R=16,T=18,B=22;
+  var X=function(i){return L+i*(W-L-R)/11;}, Y=function(v){return T+(1-v/mx)*(H-T-B);};
+  var pts=m12.map(function(b,i){return X(i).toFixed(1)+','+Y(b.n).toFixed(1);});
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="จำนวนปัญหารายเดือน 12 เดือนล่าสุด">'+
+    '<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(0)+'" y2="'+Y(0)+'" style="stroke:var(--line)"/>'+
+    '<polyline points="'+pts.join(' ')+'" fill="none" style="stroke:var(--orange)" stroke-width="2.2" stroke-linejoin="round"/>'+
+    m12.map(function(b,i){return '<circle cx="'+X(i)+'" cy="'+Y(b.n)+'" r="3.5" style="fill:'+(b.n?'var(--orange)':'#fff')+';stroke:var(--orange)" stroke-width="1.5"/>'+
+      '<text x="'+X(i)+'" y="'+(Y(b.n)-7)+'" text-anchor="middle" style="fill:var(--ink);font-weight:700">'+b.n+'</text>'+
+      '<text x="'+X(i)+'" y="'+(H-5)+'" text-anchor="middle">'+b.m+'</text>';}).join('')+'</svg>';
+  var lbl=ISS_RANGE==='month'?'เดือนนี้':'ปีนี้';
+  return '<div class="card" id="exIssues"><div class="ex-iss-top"><div><h3>ปัญหาจากลูกค้า</h3><p class="hint" style="margin:3px 0 0">ข้อมูลจริงจาก Service Log ที่เซลล์/ผู้บริหารบันทึก · ผู้บริหารดูภาพรวม เซลล์เป็นคนบันทึกในหน้าฝ่ายขาย</p></div>'+
+    '<div class="act"><span class="ex-seg"><button type="button" class="'+(ISS_RANGE==='month'?'on':'')+'" onclick="issRange(\'month\')">เดือนนี้</button><button type="button" class="'+(ISS_RANGE==='year'?'on':'')+'" onclick="issRange(\'year\')">ปีนี้</button></span>'+
+    '<a class="btn" href="/sales">เปิดหน้าฝ่ายขาย →</a><button class="btn pri" type="button" onclick="addLog()">＋ บันทึก</button></div></div>'+
+    '<div class="ex-iss-kpis"><div><span>ปัญหาทั้งหมด'+lbl+'</span><b>'+inR.length+'</b></div>'+
+      '<div class="'+(openN?'bad':'')+'"><span>ยังเปิดอยู่</span><b>'+openN+'</b></div>'+
+      '<div class="'+(repeat?'warn':'')+'"><span>ลูกค้าที่เกิดซ้ำ</span><b>'+repeat+'</b></div></div>'+
+    '<div class="ex-iss-grid"><div><h4>ตามประเภทปัญหา</h4>'+bars(byType)+'</div><div><h4>ตามลูกค้า</h4>'+bars(byCust)+'</div></div>'+
+    '<div class="ex-iss-trend"><h4 style="font-size:12.5px;margin:0 0 4px">แนวโน้มรายเดือน <span class="sub" style="font-weight:400;color:var(--tx-3);font-size:11px">12 เดือนล่าสุด</span></h4>'+svg+'</div>'+
+    '<button type="button" class="btn" style="margin-top:12px" data-exec-view="delivery">ดูทั้งหมด →</button></div>';
+}
+function serviceLogFull(){
+  var logs=SL?SL.logs:[];
+  return '<div class="card ex-service-log"><div class="ex-card-head"><div><h3>Service Log จริง <span class="sub">'+(SL?SL.total:0)+' เรื่อง · ค้าง '+(SL?SL.open:0)+'</span></h3></div><button class="btn pri" type="button" onclick="addLog()">＋ บันทึกปัญหา</button></div>'+
+    (logs.length?'<div class="ex-log-list">'+logs.map(logRow).join('')+'</div>':'<p class="hint" style="padding:10px 0">ยังไม่มีการบันทึก</p>')+'</div>';
+}
+function serviceLogPanel(){
+  var logs=SL?SL.logs:[];
+  return '<div class="card ex-service-log"><div class="ex-card-head"><div><h3>Service Log <span class="sub">ป้องกันปัญหาเดิมเกิดซ้ำ</span></h3><p class="hint">บันทึกปัญหาบริการ/ขนส่งผูกกับลูกค้า — ปิดเรื่องต้องมีสาเหตุและวิธีแก้ ไม่งั้นเรื่องเดิมจะเกิดซ้ำ</p></div>'+
+    '<span class="tag '+(SL&&SL.open?'red':'green')+'">'+(SL?SL.open:0)+' open</span></div>'+
+    (logs.length?'<div class="ex-log-list">'+logs.slice(0,4).map(logRow).join('')+'</div>':'<p class="hint" style="padding:10px 0">ยังไม่มีการบันทึก — เริ่มว่างโดยตั้งใจ ไม่ใส่เหตุการณ์ตัวอย่าง</p>')+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" type="button" onclick="addLog()">＋ บันทึกปัญหา</button>'+
+    (logs.length>4?'<button class="btn" type="button" data-exec-view="delivery">ดูทั้งหมด ('+logs.length+') →</button>':'')+'</div></div>';
+}
+function reloadLogs(){
+  return PX.get('/api/service-logs').then(function(j){SL=j;}).catch(function(){}).then(function(){ draw(); });
+}
+function addLog(){
+  /* ชุดประเภทเดียวกับหน้าเซลล์ (PX.ISSUE_TYPES) — ชื่อต่างกัน = นับ "เกิดซ้ำ" ไม่ได้
+     ลูกค้าเลือกจากรายชื่อจริง — พิมพ์ชื่อเพี้ยน = ประวัติแตกเป็นสองเจ้า เซลล์เปิดใบแล้วไม่เห็น */
+  var names=((SD&&SD.customers)||[]).map(function(c){return c.name;});
+  var today=new Date(Date.now()+7*3600e3).toISOString().slice(0,10);
+  var sel='style="width:100%;font-family:var(--ff);font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:10px"';
+  var m=PX.modal({title:'บันทึกปัญหาบริการ',sub:'ผูกกับลูกค้า เพื่อดูว่าเรื่องเดิมเกิดซ้ำกี่ครั้ง',
+    html:'<datalist id="exCust">'+names.map(function(n){return '<option value="'+esc(n)+'"></option>';}).join('')+'</datalist>'+
+      '<label class="fld"><span>ประเภท</span><select data-k="type" '+sel+'>'+PX.ISSUE_TYPES.map(function(t){return '<option>'+esc(t)+'</option>';}).join('')+'</select></label>'+
+      '<label class="fld"><span>ความรุนแรง</span><select data-k="severity" '+sel+'><option value="warn">ปานกลาง</option><option value="high">รุนแรง (กระทบลูกค้าโดยตรง)</option></select></label>',
+    fields:[{k:'customer',label:'ลูกค้า',ph:'พิมพ์ชื่อแล้วเลือก'},{k:'occurred_on',label:'วันที่เกิดเรื่อง',value:today},
+      {k:'carrier',label:'ผู้ขนส่ง',ph:'เช่น รถบริษัท / Lalamove / เจ้าเอกชน',hint:'ต้องใส่ถ้าเป็นเรื่องส่ง/ขนส่ง — จะได้รู้ว่าเจ้าไหนพลาดซ้ำ'},
+      {k:'detail',label:'เกิดอะไรขึ้น',type:'area',rows:3}],
+    okText:'บันทึก',
+    onOk:function(v,close){
+      if(names.length&&names.indexOf(v.customer)<0){PX.toast('เลือกชื่อลูกค้าจากรายการ — กันประวัติแตกเป็นสองชื่อ','bad');return false;}
+      if(PX.issueNeedsCarrier(v.type)&&!v.carrier){PX.toast('เรื่อง "'+esc(v.type)+'" ต้องบอกผู้ขนส่ง','bad');return false;}
+      return PX.post('/api/service-logs',v).then(function(){ close(); PX.toast('บันทึกแล้ว'); return reloadLogs(); }); }});
+  var ci=m.el.querySelector('[data-k="customer"]'); if(ci) ci.setAttribute('list','exCust');
+  var dt=m.el.querySelector('[data-k="occurred_on"]'); if(dt){dt.type='date';dt.max=today;}
+}
+function updateLog(id){
+  var x=SL.logs.filter(function(l){return l.id===id;})[0]; if(!x) return;
+  PX.modal({title:'อัปเดตเรื่อง · '+x.customer,sub:esc(x.type)+' · '+esc(x.detail),
+    html:'<label class="fld"><span>สถานะ</span><select data-k="status" style="width:100%;font-family:var(--ff);font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:10px">'+['เปิด','รอสาเหตุ','แก้ไขแล้ว','ปิดแล้ว'].map(function(o){return '<option'+(o===x.status?' selected':'')+'>'+o+'</option>';}).join('')+'</select><em>ปิดแล้ว = ต้องกรอกสาเหตุและวิธีแก้ทั้งสองช่อง</em></label>',
+    fields:[{k:'root_cause',label:'สาเหตุ (Root cause)',type:'area',rows:2,value:x.root_cause},{k:'action',label:'วิธีแก้ / ป้องกันไม่ให้ซ้ำ',type:'area',rows:2,value:x.action}],
+    okText:'บันทึก',
+    onOk:function(v,close){ v.id=id; return PX.post('/api/service-logs/update',v).then(function(){ close(); PX.toast('อัปเดตแล้ว'); return reloadLogs(); }); }});
+}
+
+/* ── V21 · ยอดขายจริงจาก invoice (Step 8) ─────────────────────────────────
+   รายได้/กำไร/กก. ของผู้บริหารมาจาก invoice ที่บันทึกตอนปิดดีลเท่านั้น
+   ยังไม่มี invoice = บอกตรงๆ ว่ายังไม่มี ไม่เอามูลค่าใบเสนอราคามาเติมแทน */
+function actualRevenueCard(){
+  var y = ACT && ACT.ytd;
+  if (!ACT)
+    return '<button type="button" class="ex-kpi money tone-amber" data-exec-view="revenue"><div class="ex-kpi-top"><span class="ex-kpi-ic">💰</span><span class="ex-kpi-badge amber">โหลดไม่ได้</span></div>'+
+      '<span class="ex-kpi-label">ยอดขายจริง (invoice)</span><b>—</b><span class="ex-kpi-sub">'+esc(ACT_ERR||'')+' · กดดูรายละเอียด</span><span class="ex-kpi-open">ดูรายละเอียด →</span></button>';
+  if (!y || !y.invoices)
+    return '<button type="button" class="ex-kpi money tone-amber" data-exec-view="revenue"><div class="ex-kpi-top"><span class="ex-kpi-ic">💰</span><span class="ex-kpi-badge amber">ยังไม่มี invoice</span></div>'+
+      '<span class="ex-kpi-label">ยอดขายจริง (invoice) ปี '+esc(ACT?ACT.year:'')+'</span><b>฿0</b><span class="ex-kpi-sub">เริ่มนับเมื่อเซลล์บันทึก invoice ตอนปิดดีล · ไม่ใช้มูลค่าใบเสนอราคาแทน</span><span class="ex-kpi-open">ดูที่มา →</span></button>';
+  return '<button type="button" class="ex-kpi money tone-green" data-exec-view="revenue"><div class="ex-kpi-top"><span class="ex-kpi-ic">💰</span><span class="ex-kpi-badge">invoice จริง '+y.invoices+' ใบ</span></div>'+
+    '<span class="ex-kpi-label">ยอดขายจริง ปี '+esc(ACT.year)+'</span><b>฿'+mm(y.revenue)+'</b><span class="ex-kpi-sub">'+kgf(y.kg)+' กก. · กำไรขั้นต้น ฿'+mm(y.gp)+'</span><span class="ex-kpi-open">ดูรายสินค้า / รายบิล →</span></button>';
+}
+function actualMarginCard(){
+  var y = ACT && ACT.ytd, tgt = (CG && CG.portfolio) ? CG.portfolio : { lo: 12, hi: 15 };
+  if (!y || !y.invoices)
+    return kpiCard('📈','Margin จริง (invoice)','—','','ยังไม่มี invoice · ทิศทางรวม '+tgt.lo+'–'+tgt.hi+'%','รอข้อมูลจริง','none','margin');
+  var tone = y.margin < tgt.lo ? 'red' : y.margin < tgt.hi ? 'amber' : '';
+  return kpiCard('📈','Margin จริง (invoice)',y.margin,'%','GP ฿'+mm(y.gp)+' จาก ฿'+mm(y.revenue)+' · เป้า '+tgt.lo+'–'+tgt.hi+'%',
+    sign(Math.round((y.margin-tgt.lo)*10)/10,'% vs ขั้นต่ำ'),tone,'margin');
+}
+function kgf(n){ return Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 1 }); }
+function etodayImport(){ openImport('invoices'); }
+function actualSalesPanel(){
+  var real=!!(ACT&&ACT.ytd&&ACT.ytd.invoices), A=ACT||{ytd:{},months:[],sku:[]}, y=A.ytd||{};
+  var TH=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  var monLabel=function(m){ var x=/^\d{4}-(\d{2})$/.exec(m||''); return x?TH[+x[1]-1]:m; };
+  var tgt=(CG&&CG.portfolio)?CG.portfolio:{lo:12,hi:15};
+  var mTone=y.margin>=tgt.lo?'good':'bad';
+  var months=(A.months||[]).filter(function(m){return real||m.revenue;});
+  var mx=Math.max.apply(null,months.map(function(m){return m.revenue||0;}))||1;
+  var updated=real&&ACT.invoices&&ACT.invoices[0]?esc(ACT.invoices[0].date):'—';
+  var srcs={}; (ACT&&ACT.invoices||[]).forEach(function(x){srcs[x.source]=1;});
+  var srcLabel=Object.keys(srcs).map(function(k){return k==='etoday-import'?'นำเข้า e-Today':k==='sales-capture'?'เซลล์บันทึกตอนปิดดีล':k;}).join(' + ')||'Invoice ในระบบ';
+  if(!real) return '<div class="card ex-actual" style="margin-top:14px"><div class="ex-act-head"><div><h3>Actual Invoiced Sales <span class="sub">YTD '+esc(A.year||'')+'</span></h3>'+
+      '<p class="hint" style="margin:3px 0 0">ผู้บริหารใช้ยอดส่งของ/Invoice จริง ไม่ใช้ยอด Quote เป็น Revenue</p></div>'+
+      '<button type="button" class="btn pri" onclick="etodayImport()">Import e-Today CSV/Excel</button></div>'+
+      '<div class="ex-act-note">ยังไม่มีบิลในระบบ — นำเข้าไฟล์ e-Today (CSV หรือ Excel) แล้วยอดขาย กำไร แท่งรายเดือน และ Top SKU จะขึ้นที่นี่ทันที · หรือเซลล์บันทึก invoice ตอนปิดดีลในหน้า Sales</div></div>';
+  return '<div class="card ex-actual" style="margin-top:14px">'+
+    '<div class="ex-act-head"><div><h3>Actual Invoiced Sales <span class="sub">YTD '+esc(A.year||'')+'</span></h3>'+
+      '<p class="hint" style="margin:3px 0 0">ผู้บริหารใช้ยอดส่งของ/Invoice จริง ไม่ใช้ยอด Quote เป็น Revenue</p></div>'+
+      '<button type="button" class="btn" onclick="etodayImport()">Import e-Today CSV/Excel</button></div>'+
+    '<div class="ex-act-kpis">'+
+      '<div><span>YTD Invoiced</span><b>฿'+mm(y.revenue||0)+'</b>'+(real?'<em>'+y.invoices+' ใบ · '+kgf(y.kg)+' กก.</em>':'')+'</div>'+
+      '<div><span>YTD Gross Profit</span><b>฿'+mm(y.gp||0)+'</b></div>'+
+      '<div class="'+mTone+'"><span>YTD Gross Margin</span><b>'+(y.margin||0)+'%</b><em>Direction '+tgt.lo+'–'+tgt.hi+'%</em></div>'+
+      '<div><span>Data source</span><b class="sm">'+esc(srcLabel)+'</b><em>บิลล่าสุดลงวันที่ '+updated+'</em></div>'+
+    '</div>'+
+    (months.length?'<div class="ex-act-bars">'+months.map(function(m,i){
+        var h=Math.max(4,Math.round((m.revenue||0)/mx*100));
+        return '<div class="'+(m.revenue===mx?'peak':'')+'"><em>'+(m.revenue?mm(m.revenue):'')+'</em><i style="height:'+h+'%;animation-delay:'+(i*.05)+'s"></i></div>';
+      }).join('')+'</div><div class="ex-act-mon">'+months.map(function(m){return '<span>'+esc(monLabel(m.m))+'</span>';}).join('')+'</div>':'')+
+    '<div class="ex-act-top"><div class="lb2">Top SKU by YTD invoiced revenue</div>'+
+      ((A.sku||[]).slice(0,5).map(function(x){
+        return '<div class="r"><span>'+esc(x.name)+'</span><b>฿'+mm(x.revenue||0)+'</b><em>'+kgf(x.kg)+' kg · GP ฿'+mm(x.gp||0)+' · '+x.margin+'%</em></div>';
+      }).join('')||'<p class="hint">ยังไม่มีบิล</p>')+'</div>'+
+    '<button type="button" class="btn" style="margin-top:12px" data-exec-view="revenue">ดูยอดสะสมราย SKU →</button>'+
+  '</div>';
+}
+function resolutionActual(){
+  var y = ACT.ytd || {};
+  var mrow = (ACT.months||[]).map(function(m){ return '<tr><td>'+esc(m.m)+'</td><td class="num">฿'+money(m.revenue)+'</td><td class="num">฿'+money(m.gp)+'</td><td class="num">'+kgf(m.kg)+'</td><td class="num">'+m.n+'</td></tr>'; }).join('');
+  var srow = (ACT.sku||[]).slice(0,20).map(function(x){ return '<tr><td><b>'+esc(x.name)+'</b><small>'+esc(x.grp)+'</small></td><td class="num">'+kgf(x.kg)+'</td><td class="num">฿'+money(x.revenue)+'</td><td class="num">฿'+money(x.gp)+'</td><td class="num'+(x.margin<12?' danger':'')+'">'+x.margin+'%</td></tr>'; }).join('');
+  var irow = (ACT.invoices||[]).slice(0,20).map(function(x){ return '<tr><td><b>'+esc(x.id)+'</b><small>'+esc(x.date)+' · รอบ '+esc(x.label)+'</small></td><td>'+esc(x.customer)+'</td><td class="num">'+kgf(x.kg)+'</td><td class="num">฿'+money(x.net)+'</td><td class="num">฿'+money(x.gp)+'</td><td>'+esc(x.source)+'</td></tr>'; }).join('');
+  var tbl = function (head, rows, empty) { return '<div class="ex-ws-table"><table><thead><tr>'+head+'</tr></thead><tbody>'+(rows||'<tr><td colspan="6" style="color:var(--tx-3)">'+empty+'</td></tr>')+'</tbody></table></div>'; };
+  return '<section class="ex-workspace" id="exec-revenue">'+wsHead('Revenue · Actual','ยอดขายจริงจาก invoice','รายได้ = ราคาที่ลูกค้ายืนยัน × ปริมาณในบิล · กำไรคิดจากทุนของเจ้านั้น ณ วันออกบิล — ไม่ใช้มูลค่าใบเสนอราคา')+
+    '<div class="ex-ws-kpis"><div><span>รายได้ปี '+esc(ACT.year)+'</span><b>฿'+mm(y.revenue||0)+'</b></div><div><span>กำไรขั้นต้น</span><b>฿'+mm(y.gp||0)+' · '+(y.margin||0)+'%</b></div><div><span>ปริมาณ</span><b>'+money(y.kg||0)+' กก. · '+(y.invoices||0)+' ใบ</b></div></div>'+
+    tbl('<th>เดือน</th><th>รายได้</th><th>กำไร</th><th>กก.</th><th>บิล</th>', mrow, 'ยังไม่มี invoice')+
+    tbl('<th>สินค้า</th><th>กก.</th><th>รายได้</th><th>กำไร</th><th>margin</th>', srow, 'ยังไม่มี invoice')+
+    tbl('<th>บิล</th><th>ลูกค้า</th><th>กก.</th><th>รายได้</th><th>กำไร</th><th>ที่มา</th>', irow, 'ยังไม่มี invoice')+
+    '<div class="ex-ws-next"><b>ข้อมูลมาจากไหน</b><span>เซลล์บันทึก invoice ตอนลูกค้ายืนยันราคาครบ (หน้า Sales) · ขั้นถัดไป: นำเข้าไฟล์ e-Today เพื่อกระทบยอดกับบัญชี</span><button type="button" data-go-route="/sales">เปิด Sales →</button></div>'+
+    wsSource('ทีม Sales + บัญชี','Invoice ที่บันทึกในระบบ (sales-capture)', (ACT.invoices&&ACT.invoices[0]) ? esc(ACT.invoices[0].date) : '—', '/sales','เปิด Sales')+'</section>';
+}
+function attentionRows(modal){
+  var pending = SD && SD.pending ? SD.pending : 0;
+  /* ระบบ-derived rows: ราคา/service/category มาจาก DB จริง */
+  var rows = [
+    serviceAttention(),
+    categoryAttention(),
+    arAttention(),
+    deliveryAttention(),
+    prospectAttention(),
+    {lv:pending?'amber':'green',ic:'🧾',t:pending ? ('ใบราคายังไม่ถึงลูกค้า '+pending+' เจ้า') : 'ใบราคาส่งครบแล้ว',s:pending?'ทีมขายยังมีใบที่ต้องส่งจากรอบล่าสุด':'ไม่มีใบราคาค้างส่งในรอบนี้',a:pending?'เปิดรายการค้าง':'ดูสถานะ',target:'exec-sales'}
+  ];
+  var html = rows.map(function(x){
+    return '<button type="button" class="ex-att '+x.lv+' clickable" data-exec-view="'+x.target.replace('exec-','')+'">'+'<span class="ex-att-ic">'+x.ic+'</span><span class="ex-att-b"><b>'+x.t+'</b><span>'+x.s+'</span></span><span class="ex-att-go">'+x.a+' →</span></button>';
+  }).join('');
+  /* DB-backed decisions จาก executive_decisions */
+  html += '<div id="exec-att-db" class="ex-att-db"><span style="color:var(--tx-3);font-size:13px">กำลังโหลด Attention Queue...</span></div>';
+  return html;
+}
+
+function kpiCard(ic,label,value,unit,sub,badge,badgeClass,type){
+  var target={margin:'exec-margin',prospect:'exec-prospect',delivery:'exec-delivery',revenue:'exec-revenue'}[type] || 'exec-top';
+  /* สีทั้งใบ ไม่ใช่แค่ป้ายเล็กมุมขวา — พี่หมิงต้องกวาดตาแล้วรู้ทันทีว่าใบไหนแดง */
+  var tone=' tone-'+(badgeClass||'green');
+  return '<button type="button" class="ex-kpi'+tone+'" data-exec-view="'+target.replace('exec-','')+'"><div class="ex-kpi-top"><span class="ex-kpi-ic">'+ic+'</span>'+ 
+    '<span class="ex-kpi-badge '+(badgeClass||'')+'">'+badge+'</span></div><span class="ex-kpi-label">'+label+'</span>'+ 
+    '<b>'+value+(unit?'<small>'+unit+'</small>':'')+'</b><span class="ex-kpi-sub">'+sub+'</span><span class="ex-kpi-open">ดูรายละเอียด →</span></button>';
+}
+
+function openFinance(view, focus){ execOpen(view==='cash'?'cash':view==='ar'?'ar':'revenue'); }
+function moneyKpiCard(ic,label,value,unit,sub,badge,badgeClass,view){
+  var target=view==='revenue'?'exec-revenue':view==='cash'?'exec-cash':'exec-ar';
+  var tone=' tone-'+(badgeClass||'green');
+  return '<button type="button" class="ex-kpi money'+tone+'" data-exec-view="'+target.replace('exec-','')+'"><div class="ex-kpi-top"><span class="ex-kpi-ic">'+ic+'</span><span class="ex-kpi-badge '+(badgeClass||'')+'">'+badge+'</span></div><span class="ex-kpi-label">'+label+'</span><b>'+value+(unit?'<small>'+unit+'</small>':'')+'</b><span class="ex-kpi-sub">'+sub+'</span><span class="ex-kpi-open">ดูรายละเอียด →</span></button>';
+}
+
+function prospectPanel(){
+  if(!PRS) return '<div class="card"><h3>Prospect Pipeline</h3>'+(opsFail('prs')||'<p class="hint">กำลังโหลด…</p>')+'</div>';
+  var P=PRS.summary;
+  return '<div class="card"><h3>Prospect Pipeline <span class="sub">ข้อมูลจริง</span></h3><p class="hint">ลูกค้าใหม่ที่กำลังคุย และรายที่เงียบเกิน 14 วัน</p>'+
+    '<div class="ex-prospect-head"><div><b>'+P.active+'</b><span>Active prospects</span></div><div><b>฿'+mm(P.pipeline)+'</b><span>Pipeline / เดือน</span></div></div>'+
+    '<div class="ex-mini-grid"><div><b>+'+P.newN+'</b><span>ใหม่ 30 วัน</span></div><div><b>'+P.won+'</b><span>Won</span></div><div><b>'+P.lost+'</b><span>Lost</span></div><div class="'+(P.idle?'danger':'')+'"><b>'+P.idle+'</b><span>เงียบ &gt;14 วัน</span></div></div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn pri" onclick="editProspect(0)">＋ เพิ่ม</button><button type="button" class="btn" data-exec-view="prospect">ดูทั้งหมด →</button></div></div>';
+}
+function marginPanel(){
+  var y=ACT&&ACT.ytd, tgt=(CG&&CG.portfolio)?CG.portfolio:{lo:12,hi:15}, T=(D&&D.totals)||{};
+  return '<div class="card"><h3>Margin & Profit <span class="sub">'+(y&&y.invoices?'จาก invoice ปี '+esc(ACT.year):'ยังไม่มี invoice')+'</span></h3><p class="hint">กำไรจริงจากบิล + จุดที่ราคาสัญญาต่ำกว่าเกณฑ์</p>'+
+    '<div class="ex-margin-main"><div><span>Gross Profit</span><b>'+(y&&y.invoices?'฿'+mm(y.gp):'—')+'</b></div><div><span>Gross Margin</span><b'+(y&&y.invoices&&y.margin<tgt.lo?' style="color:var(--red)"':'')+'>'+(y&&y.invoices?y.margin+'%':'—')+'</b><em>เป้า '+tgt.lo+'–'+tgt.hi+'%</em></div></div>'+
+    '<div class="ex-risk-box"><span>บรรทัดราคาสัญญาต่ำกว่าเกณฑ์</span><b>'+money(T.lineLow||0)+' บรรทัด</b><button type="button" onclick="__NAV.href=\'/customers\'">ดูหน้าลูกค้า →</button></div></div>';
+}
+
+function deliveryPanel(){
+  var real=DLV&&DLV.overall&&DLV.overall.total, dv=real?DLV.overall:null, list=real?DLV.carriers:[];
+  var pend=((DLV&&DLV.pending)||[]).slice(0,6);
+  var actions='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button type="button" class="btn pri" onclick="addDelivery()">＋ บันทึกรอบส่ง</button>'+
+    '<button type="button" class="btn" onclick="openImport(\'deliveries\')">นำเข้า CSV/Excel</button>'+(real?'<button type="button" class="btn" data-exec-view="delivery">ดูรายละเอียด Delivery →</button>':'')+'</div>';
+  var pendHTML=pend.length?'<div class="ex-ws-table" style="margin-top:12px"><table><thead><tr><th>รอบที่ยังไม่ใส่เวลาส่งจริง</th><th>ผู้ขนส่ง</th><th>นัด</th><th></th></tr></thead><tbody>'+
+    pend.map(function(r){return '<tr><td><b>'+esc(r.delivered_on)+' · '+esc(r.round||'')+'</b><small>'+esc(r.customer||'')+'</small></td><td>'+esc(r.carrier)+'</td><td>'+esc(r.promised)+'</td><td><button type="button" class="btn" onclick="finishDelivery('+r.id+')">ใส่เวลาส่งจริง</button></td></tr>';}).join('')+
+    '</tbody></table></div>':'';
+  return '<div class="ex-ops-stack">'+
+    '<div class="card"><h3>Delivery Performance<span class="sub">90 วันล่าสุด · เช็คขนส่งแต่ละเจ้า</span></h3>'+
+    '<p class="hint"><span'+W('คะแนนผู้ขนส่ง','100 × (0.6 × สัดส่วนส่งตรงเวลา + 0.3 × สัดส่วนส่งครบ + 0.1 × สัดส่วนที่ไม่ช้าเกิน 60 นาที) · ตรงเวลา = ช้าไม่เกิน 15 นาที','รอบส่งที่บันทึกในระบบ (ฟอร์มหรือนำเข้าไฟล์)','จริงเท่าที่บันทึก — รอบที่ไม่ได้บันทึกไม่ถูกนับ')+'>คะแนนคิดยังไง</span> · ตรงเวลา = ช้าไม่เกิน 15 นาที</p>'+
+    (real?'<div class="ex-delivery-summary"><div><span>Overall score</span><b>'+dv.score+'/100</b></div><div><span>On-time</span><b>'+dv.onTime+'%</b></div><div><span>Delayed orders</span><b>'+dv.delayed+' <small style="font-size:12px;color:var(--tx-3)">จาก '+dv.total+' รอบ</small></b></div></div>'+
+      '<div class="ex-carrier-grid">'+carrierCards(false, list)+'</div>'
+     :opsFail('dlv')||'<div class="ex-act-note" style="margin-top:6px">ยังไม่มีรอบขนส่งที่บันทึก — เริ่มบันทึกรอบส่ง (วันที่ · รอบ · ผู้ขนส่ง · เวลานัด · เวลาส่งจริง · ส่งครบไหม) แล้วคะแนนแต่ละเจ้าจะคิดให้เอง</div>')+
+    pendHTML+actions+'</div>'+
+    issuesSummaryPanel()+'</div>';
+}
+function pricingSummaryCards(){
+  var T=D.totals||{}, drift=recentDrift(), last=drift[drift.length-1]||{}, prev=drift[drift.length-2]||{}, cov=D.coverage||{}, chg=Math.round((+safe(last.cost,0)-+safe(prev.cost,0))*10)/10;
+  var costTone=chg<0?' good':chg>0?' bad':'', guardTone=!CG?'':CG.below?' bad':' good', mktTone=(cov.usable||0)?'':' warn';
+  var chgChip=chg<0?'<i class="ex-chip down">▼ '+Math.abs(chg)+' ฿</i>':chg>0?'<i class="ex-chip up">▲ '+chg+' ฿</i>':'<i class="ex-chip">ไม่ขยับ</i>';
+  return '<div class="ex-summary-grid">'+
+    '<a class="ex-sum-card lead" href="/pricing"><span>Pricing model · กำไรคาดการณ์/สัปดาห์</span><b>฿'+mm(T.profit||0)+'</b><em>คำนวณจากราคาที่ตั้ง × ปริมาณที่รู้ '+safe(T.volKnown,74)+' รายการ · ไม่ใช่กำไรจริงจากใบแจ้งหนี้</em></a>'+
+    '<a class="ex-sum-card'+costTone+'" href="/costs"><span>ต้นทุนเฉลี่ย / กก.</span><b>'+safe(last.cost,'—')+' ฿</b><em>'+chgChip+'จากรอบก่อน'+(chg<0?' · ทุนลง = ดี':chg>0?' · ทุนขึ้น ต้องดูราคา':'')+'</em></a>'+
+    '<a class="ex-sum-card'+guardTone+'" href="/guard"><span>Category Margin Guard</span><b>'+(CG?(CG.below?CG.below+' กลุ่มหลุดเป้า':'ผ่านทุกกลุ่ม'):'—')+'</b><em>ทิศทางรวม '+(CG?tg(CG.portfolio):'12–15%')+' · บรรทัดหลุด floor '+(D.floorPct||8)+'% อีก '+money(T.lineLow||0)+'</em></a>'+
+    '<a class="ex-sum-card'+mktTone+'" href="/costs"><span>ราคาตลาดที่ใช้ได้วันนี้</span><b>'+money(cov.usable||0)+' รายการ</b><em>หมดอายุ '+money(cov.expired||0)+' · ไม่เคยรู้ '+money(cov.blind||0)+(cov.usable?'':' · ต้องเติมราคาตลาด')+'</em></a>'+
+    '</div>';
+}
+
+function pricingAttention(){
+  var an=(D.anomaly||[])[0]||null, low=(D.totals||{}).lineLow||0, cov=D.coverage||{};
+  return '<div class="ex-flag-wrap"><div class="ex-flag-head">⚠ '+
+    [an?('ทุนผิดปกติ +'+an.pct+'%'):null, low?('ลูกค้าสัญญา '+low+' บรรทัดต่ำกว่าเกณฑ์'):null, cov.blind?('ไม่รู้ราคาคู่แข่ง '+cov.blind+' รายการ'):null].filter(Boolean).length+
+    ' จุดสำคัญที่ต้องตรวจต่อก่อนประกาศ</div><div class="ex-flag-row">'+
+    (an?'<div class="ex-flag-card"><b>'+esc(an.name)+' +'+an.pct+'% (อาจพิมพ์ผิด)</b><span>กระดูกข้อขาหมู 3 → 5 ฿</span><a href="/costs">แก้ →</a></div>':'')+
+    '<div class="ex-flag-card"><b>Margin ต้องดูตามหมวด ไม่ใช้ค่าเดียวเหมาทั้งพอร์ต</b><span>'+(CG?CG.groups.map(function(g){return esc(g.name.replace('ชิ้นส่วน',''))+' '+tg(g);}).join(' · '):'แข่งขันสูง 10% · ยอดนิยม 20% · เครื่องใน 30–50%')+' · และลูกค้าสัญญา '+low+' บรรทัดต่ำกว่า floor</span><a href="/guard">เปิด Margin Guard →</a></div>'+
+    '<div class="ex-flag-card"><b>ไม่รู้ราคาคู่แข่ง '+(cov.blind||0)+' รายการ</b><span>ตั้งราคาอิงทุน+ส่วนเผื่อส่ง ไม่มีใครยืนยันว่าแพงหรือตลาดได้</span><a href="/costs">ดูตลาด →</a></div>'+
+    '</div></div>';
+}
+
+function costTrendPanel(){
+  var pts=recentDrift();
+  return '<div class="card"><h3>แนวโน้มต้นทุนเฉลี่ย <span class="sub">บาท/กก. · ทุกครั้งที่ประกาศราคา</span></h3><p class="hint">จุดสุดท้ายคือรอบล่าสุดที่ประกาศไปแล้ว</p>'+
+    sparkline(pts)+'</div>';
+}
+
+function profitMixPanel(){
+  var arr=(D.profitBy||[]).slice(0,10), total=arr.reduce(function(a,x){return a+(x.baht||0);},0);
+  var colors=['#2563EB','#E0A93A','#16A34A','#7C3AED','#DC2626','#0891B2','#DB2777','#65A30D','#EA580C','#64748B'];
+  var acc=0, stops=[];
+  arr.forEach(function(x,i){var p=total?((x.baht||0)/total*100):0;stops.push(colors[i%colors.length]+' '+acc.toFixed(2)+'% '+(acc+p).toFixed(2)+'%');acc+=p;});
+  var pie='conic-gradient('+stops.join(',')+')';
+  return '<div class="card"><h3>กำไรมาจากไหน <span class="sub">สัดส่วนตามกลุ่มสินค้า</span></h3><p class="hint">ดูภาพรวมพร้อมจำนวนเงินจริงและชื่อกลุ่มสินค้า</p>'+ 
+    '<div class="ex-profit-pie-wrap"><div class="ex-profit-pie" style="background:'+pie+'"></div><div class="ex-profit-total"><b>฿'+mm(total)+'</b><span>กำไร / สัปดาห์</span></div></div>'+ 
+    '<div class="ex-profit-legend">'+arr.map(function(x,i){return '<div><i style="background:'+colors[i%colors.length]+'"></i><span>'+esc(x.grp)+'</span><b>฿'+money(x.baht||0)+'</b><em>'+x.pct+'%</em></div>';}).join('')+'</div></div>';
+}
+
+/* แถบฟ้า = ช่วงราคาตลาด low–high · จุดน้ำเงิน = ราคาเรา (Market Benchmark ตามเรฟของพีช) */
+function marketRow(b){
+  var us=+b.us||0, lo=+b.lo||0, hi=+b.hi||0;
+  var a=Math.min(lo,us), z=Math.max(hi,us), pad=(z-a)*0.25||Math.max(3,us*0.06);
+  var d0=a-pad, dw=(z+pad-d0)||1;
+  function X(v){return Math.max(0,Math.min(100,(v-d0)/dw*100)).toFixed(1);}
+  var bandW=Math.max(1.5,parseFloat(X(hi))-parseFloat(X(lo))).toFixed(1);
+  var pos=us<lo?'ถูกกว่าตลาด':us>hi?'แพงกว่าตลาด':'อยู่ในช่วงตลาด';
+  return '<div class="ex-mb-row">'+
+    '<div><div class="ex-mb-name">'+esc(b.name)+(b.isMock?'<span class="tag-ex">ตัวอย่าง</span>':'')+'</div>'+
+      '<div class="ex-mb-meta">GP '+(b.profit>0?'฿'+mm(b.profit):'—')+(b.margin!=null&&b.margin!==''?' · margin '+b.margin+'%':'')+' · '+pos+'</div></div>'+
+    '<div><div class="ex-mb-track"><i class="ex-mb-band" style="left:'+X(lo)+'%;width:'+bandW+'%"></i>'+
+      '<i class="ex-mb-dot" style="left:'+X(us)+'%"></i><span class="ex-mb-us" style="left:'+X(us)+'%">เรา '+us+' ฿</span></div>'+
+      '<div class="ex-mb-ends"><span>Market low '+lo+' ฿</span><span>Market high '+hi+' ฿</span></div></div>'+
+    '<div class="ex-mb-src">'+esc(b.who||'—')+(b.n?'<br><span style="color:var(--tx-3)">'+b.n+' เจ้า</span>':'')+'</div>'+
+  '</div>';
+}
+function benchItems(){
+  var all=((D&&D.bench)||[]).slice();
+  if(!all.length) return {mock:true, items:[]};
+  all.sort(function(a,b){return (b.profit||0)-(a.profit||0);});
+  return {mock:false, items:all};
+}
+function marketPanel(){
+  var bi=benchItems(), sku=safe((D&&D.totals||{}).sku,0), cnt=bi.mock?0:bi.items.length;
+  return '<div class="card ex-mkt"><div class="ex-mb-head"><h3>ตำแหน่งราคาในตลาด <span class="sub">(Market Benchmark)</span>'+
+'</h3>'+
+    '<button type="button" class="ex-mb-all" data-exec-view="market">ดูครบ '+money(sku)+' SKU →</button></div>'+
+    '<p class="hint">'+(bi.mock?'ยังไม่มีราคาคู่แข่งที่ยังไม่หมดอายุ — เติมราคาตลาดที่หน้า รับทุน &amp; ตลาด แล้วตำแหน่งราคาจะขึ้นที่นี่':
+      'Top 5 ตามกำไรต่อสัปดาห์ · รู้ราคาตลาด '+cnt+' จาก '+sku+' รายการ')+' · แถบฟ้า = ช่วงตลาด low–high · จุดน้ำเงิน = ราคาเรา</p>'+
+    '<div>'+bi.items.slice(0,5).map(marketRow).join('')+'</div>'+
+    (bi.mock?'<a class="ex-mb-more" style="text-decoration:none" href="/costs">ไปเติมราคาตลาด →</a>':'<button type="button" class="ex-mb-more" data-exec-view="market">ดูตำแหน่งราคาในตลาดทั้งหมดทุก item →</button>')+
+    '</div>';
+}
+function resolutionMarket(){
+  var bi=benchItems(), sku=safe((D&&D.totals||{}).sku,0), cnt=bi.mock?0:bi.items.length;
+  var cheaper=0, dearest=0, inside=0;
+  if(!bi.mock) bi.items.forEach(function(b){ if(b.us<b.lo) cheaper++; else if(b.us>b.hi) dearest++; else inside++; });
+  return '<section class="ex-workspace" id="exec-market">'+wsHead('Pricing · Market','ตำแหน่งราคาในตลาดทุก item','เรียงตามกำไรต่อสัปดาห์ · ใช้เฉพาะราคาตลาดที่ยังไม่หมดอายุ')+
+    (bi.mock?'<div class="ex-act-note">ยังไม่มีราคาคู่แข่งที่ใช้ได้ — เติมราคาตลาดที่หน้า รับทุน &amp; ตลาด แล้วหน้านี้จะแสดงทุก item</div>':
+      '<div class="ex-ws-kpis"><div><span>รู้ราคาตลาด</span><b>'+cnt+' / '+sku+' รายการ</b></div><div><span>ถูกกว่าตลาด · ในช่วง · แพงกว่า</span><b>'+cheaper+' · '+inside+' · '+dearest+'</b></div><div><span>ยังไม่รู้ราคาตลาด</span><b>'+Math.max(0,sku-cnt)+' รายการ</b></div></div>')+
+    '<div class="card" style="margin-top:12px">'+bi.items.map(marketRow).join('')+'</div>'+
+    wsSource('ทีม Pricing (พี่จุ๋ม)','ราคาตลาดที่กรอก/ดึงไว้ในหน้า รับทุน & ตลาด', esc(D.today||'—'), '/costs','ไปเติมราคาตลาด')+'</section>';
+}
+
+function moversPanel(){
+  /* server เรียงตามขนาดที่ขยับ (ขึ้นหรือลง) — เดิมเติม "+" ให้ทุกตัว ตัวที่ทุนลง 49 เลยออกมาเป็น "+-49" */
+  var arr=(D.movers||[]).slice(0,15), max=0; arr.forEach(function(x){ max=Math.max(max,Math.abs(x.jump||0)); });
+  var T=D.totals||{};
+  return '<div class="card ex-mv"><h3>ต้นทุนขยับแรงสุด <span class="sub">เทียบรอบก่อน</span></h3><p class="hint">ขึ้น '+safe(T.up,0)+' รายการ · ลง '+safe(T.down,0)+' · แดง = ทุนขึ้น · เขียว = ทุนลง</p>'+
+    (arr.length?'<div class="ex-bars">'+arr.map(function(x){
+      var j=x.jump||0, up=j>0;
+      return '<div class="ex-bar-row'+(up?'':' dn')+'"><span>'+esc(x.name)+'<small>'+x.c0+' → '+x.cost+' ฿/กก.</small></span><div class="ex-bar"><i style="width:'+pct(Math.abs(j),max||1)+'%"></i></div><b>'+(up?'+':'−')+Math.abs(j)+' ฿</b></div>';
+    }).join('')+'</div>':'<p class="hint">ทุนรอบนี้ยังไม่ขยับจากรอบก่อน</p>')+'</div>';
+}
+
+function spreadPanel(){
+  /* เดิมเป็นแท่งตั้ง — การกระจายมันเอียงมาก (238 จาก 363 กองอยู่ช่องเดียว)
+     แท่งตั้งเลยออกมาเป็นตอสั้นๆ แล้วตัวเลขลอยคนละระดับกันทั้งแถว
+     แท่งนอนอ่านง่ายกว่า และใช้ภาษาภาพเดียวกับการ์ด "ต้นทุนขึ้นแรงสุด" ที่อยู่หน้าเดียวกัน */
+  var arr=(D.spread||[]), max=0, sum=0;
+  arr.forEach(function(x){ if((x.n||0)>max) max=x.n||0; sum+=(x.n||0); });
+  return '<div class="card"><h3>Margin ทั้งพอร์ต <span class="sub">'+money(sum)+' รายการ</span></h3>'+
+    '<p class="hint">แบ่งตามช่วง margin เทียบขั้นต่ำ '+safe(D.floorPct,8)+'% — แถบยาวคือช่วงที่ของกองอยู่เยอะที่สุด</p>'+
+    '<div class="ex-bars ex-spread2">'+arr.map(function(x){
+      var band=parseFloat((x.band||'').replace('%',''))||0;
+      return '<div class="ex-bar-row '+bandClass(band)+'"><span>'+esc(x.band)+'</span>'+
+        '<div class="ex-bar"><i style="width:'+Math.max(2,pct(x.n||0,max||1))+'%"></i></div>'+
+        '<b>'+money(x.n||0)+'</b><em>'+pct(x.n||0,sum||1)+'%</em></div>';
+    }).join('')+'</div></div>';
+}
+
+function gradePanel(){
+  return '<div class="card"><h3>เกรดลูกค้า <span class="sub">ติดตามด้วย margin</span></h3><p class="hint">กับรายนี้เกรดดีด้วย แต่ถ้าไหนเด้งเตือนด้วยให้เช็ก</p><div class="ex-grade-grid">'+
+    EX.customerGrades.map(function(x){return '<div class="g'+x[0]+'"><span>'+x[0]+'</span><b>'+x[1]+'</b><em>'+x[2]+'</em></div>';}).join('')+
+    '</div><p class="hint">มีข้อเสนอสินค้าอื่นคล้ายกันกำไรดีกว่า <b>'+(GD&&GD.suggest?GD.suggest.length:0)+' รายการ</b> · ดูที่หน้าลูกค้า</p></div>';
+}
+
+/* Pricing AI ลดงานไปเท่าไหร่ — "ตอนนี้" = เวลาใช้งานจริงจาก activity log (src/ops.js teamTime)
+   "ก่อนมีระบบ" = ตัวเลขที่พี่หมิง/พี่จุ๋มกรอกเอง (perf_baseline) — ระบบไม่เดาให้ */
+function ktileSpark(arr){
+  if(!arr || arr.length<2) return '<svg viewBox="0 0 92 40" aria-hidden="true"><line x1="0" y1="20" x2="92" y2="20" stroke="rgba(255,255,255,.35)" stroke-dasharray="3 4"/></svg>';
+  var w=92,h=40,mx=Math.max.apply(null,arr),mn=Math.min.apply(null,arr),sp=(mx-mn)||1;
+  var pts=arr.map(function(v,i){return (i*(w/(arr.length-1))).toFixed(1)+','+(4+(1-(v-mn)/sp)*(h-8)).toFixed(1);});
+  var last=pts[pts.length-1].split(',');
+  return '<svg viewBox="0 0 '+w+' '+h+'" aria-hidden="true"><polyline points="'+pts.join(' ')+'" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'+
+    '<circle cx="'+last[0]+'" cy="'+last[1]+'" r="3.2" fill="#fff"/></svg>';
+}
+function fmtMin(m){ if(m==null) return '—'; return m>=60? (Math.round(m/6)/10)+' ชม.' : (Math.round(m*10)/10)+' นาที'; }
+function perfBaselineEdit(){
+  var b={}; ((OPSPERF&&OPSPERF.baseline)||[]).forEach(function(x){b[x.step]=x.minutes;});
+  PX.modal({title:'เวลาก่อนมีระบบ (นาที / สัปดาห์)',sub:'ใช้เทียบกับเวลาที่ระบบจับได้จริง — กรอกจากความจำของทีม ระบบไม่เดาให้',
+    fields:[{k:'cost',label:'อัปเดตทุน + ราคาตลาด (พี่จุ๋ม)',value:b.cost,type:'num'},{k:'central',label:'ตั้งราคากลาง + ใบรายเจ้า (พี่จุ๋ม)',value:b.central,type:'num'},
+      {k:'guard',label:'เช็ก margin + ตัดสินใจ (พี่หมิง)',value:b.guard,type:'num'},{k:'sales',label:'ทำ + ส่งใบราคาให้ลูกค้า (เซลล์ทั้งทีม)',value:b.sales,type:'num'},
+      {k:'loops',label:'จำนวนครั้งที่เซลล์วนกลับไปถามราคา / สัปดาห์',value:b.loops,type:'num'},{k:'note',label:'ที่มาของตัวเลข',ph:'เช่น พี่จุ๋มประมาณ 12 ต.ค.'}],
+    okText:'บันทึก',
+    onOk:function(v,close){ return PX.post('/api/perf-baseline',v).then(function(){ close(); PX.toast('บันทึกเวลาก่อนมีระบบแล้ว'); return reloadOps(); }); }});
+}
+function pricingPerformancePanel(){
+  var P=OPSPERF, S=P&&P.summary, isBoss=['boss','admin'].indexOf(ROLE)>=0;
+  var edit=isBoss?'<button type="button" class="btn" style="margin-left:auto" onclick="perfBaselineEdit()">กรอกเวลาก่อนมีระบบ</button>':'';
+  if(!P) return '<div class="card ex-perf"><h3>Pricing AI ลดงานไปเท่าไหร่</h3>'+(opsFail('perf')||'<p class="hint">กำลังโหลด…</p>')+'</div>';
+  var since=P.since?new Date(P.since).toLocaleDateString('th-TH',{day:'numeric',month:'short'}):null;
+  var head='<div class="ex-act-head"><div><h3>Pricing AI ลดงานไปเท่าไหร่ <span class="sub">เวลาใช้งานจริงจาก log'+(since?' · เริ่มเก็บ '+since:'')+'</span></h3>'+
+    '<p class="hint" style="margin:3px 0 0">นับเฉพาะเวลาที่เปิดหน้าและใช้งานจริง แยกตามขั้นของรอบราคา · แถบเทา = ก่อนมีระบบ (ทีมกรอก) · แถบน้ำเงิน = สัปดาห์ล่าสุดที่จับได้</p></div>'+edit+'</div>';
+  if(!S || !S.week)
+    return '<div class="card ex-perf">'+head+'<div class="ex-act-note" style="margin-top:12px">ยังไม่มีเวลาใช้งานที่จับได้ — ระบบเริ่มนับตั้งแต่ตอนนี้ ทุกครั้งที่พี่จุ๋ม/เซลล์/พี่หมิงเปิดหน้าทำงาน ภายในสัปดาห์แรกตัวเลขจะขึ้นเอง'+
+      (isBoss&&S&&S.totalBefore==null?' · ระหว่างนี้กด "กรอกเวลาก่อนมีระบบ" ไว้เทียบได้เลย':'')+'</div></div>';
+  var steps=S.steps, mx=Math.max.apply(null,steps.map(function(x){return Math.max(x.before||0,x.now||0);}).concat([1]));
+  var rows=steps.map(function(x,i){
+    var cut=(!S.partial&&x.before&&x.now!=null)?Math.round((1-x.now/x.before)*100):null;
+    var who=x.key==='guard'?'พี่หมิง':x.key==='sales'?'เซลล์':'พี่จุ๋ม';
+    return '<div class="ex-perf-step"><div class="ex-perf-nm">'+esc(x.label)+'<em>'+who+'</em></div>'+
+      '<div class="ex-perf-bars"><div class="ex-perf-track"><div class="ex-perf-fill before" style="width:'+((x.before||0)/mx*100)+'%;animation-delay:'+(i*.08)+'s"></div></div>'+
+      '<div class="ex-perf-track"><div class="ex-perf-fill now" style="width:'+Math.max(1.5,(x.now||0)/mx*100)+'%;animation-delay:'+(.55+i*.08)+'s"></div></div></div>'+
+      '<div class="ex-perf-t n">'+(x.before!=null?'เคย '+fmtMin(x.before):'ยังไม่กรอก')+'<b>'+fmtMin(x.now)+(cut!=null?'<span class="cut" style="color:'+(cut>=0?'var(--green)':'var(--red)')+'">'+(cut>=0?'−':'+')+Math.abs(cut)+'%</span>':'')+'</b></div></div>';
+  }).join('');
+  var wk=P.weeks||[], tot=function(keys){return wk.map(function(w){return keys.reduce(function(a,k){return a+(w.minutes[k]||0);},0);});};
+  var jumNow=(steps[0].now||0)+(steps[1].now||0), jumBefore=(steps[0].before!=null&&steps[1].before!=null)?steps[0].before+steps[1].before:null;
+  var saleNow=steps[3].now||0, saleBefore=steps[3].before;
+  var full=!S.partial;
+  var chip=function(b,n){ if(b==null) return '<i>ยังไม่กรอก "ก่อน"</i>'; if(!full) return '<i>สัปดาห์ยังไม่จบ</i>เคย '+fmtMin(b); var c=b?Math.round((1-n/b)*100):0; return '<i>'+(c>=0?'▼ ':'▲ ')+Math.abs(c)+'%</i>เคย '+fmtMin(b); };
+  var wkLabel=new Date(S.week+'T00:00:00').toLocaleDateString('th-TH',{day:'numeric',month:'short'});
+  return '<div class="card ex-perf">'+head+
+    (S.partial?'<div class="ex-act-note" style="margin-top:10px">สัปดาห์นี้ยังไม่จบ (เริ่ม '+wkLabel+') — ตัวเลขยังไม่ครบสัปดาห์</div>':'')+
+    '<div class="ex-perf-grid" style="margin-top:12px"><div>'+
+      '<div class="ex-ktile c1"><div><span>'+(full&&S.savedH!=null?'เวลาที่ทีมได้คืน / สัปดาห์':'เวลาที่ทีมใช้'+(full?' / สัปดาห์':' (สัปดาห์นี้ ยังไม่จบ)'))+'</span><b class="n">'+(full&&S.savedH!=null?S.savedH:Math.round(S.totalNow/6)/10)+'<small>ชม.</small></b><em>'+
+        (full&&S.savedH!=null?'<i>'+fmtMin(S.totalBefore)+' → '+fmtMin(S.totalNow)+'</i>':S.totalBefore!=null?'<i>เคย '+fmtMin(S.totalBefore)+'</i>เทียบได้เมื่อจบสัปดาห์':'<i>สัปดาห์ '+wkLabel+'</i>ยังไม่มีตัวเลขก่อนมีระบบ')+'</em></div>'+ktileSpark(tot(['cost','central','guard','sales']))+'</div>'+
+      '<div class="ex-ktile c2"><div><span>ทีมตั้งราคา (พี่จุ๋ม)</span><b class="n">'+fmtMin(jumNow).replace(/ (ชม\.|นาที)$/,'<small>$1</small>')+'</b><em>'+chip(jumBefore,jumNow)+'</em></div>'+ktileSpark(tot(['cost','central']))+'</div>'+
+      '<div class="ex-ktile c3"><div><span>ทีมเซลล์</span><b class="n">'+fmtMin(saleNow).replace(/ (ชม\.|นาที)$/,'<small>$1</small>')+'</b><em>'+chip(saleBefore,saleNow)+'</em></div>'+ktileSpark(tot(['sales']))+'</div>'+
+    '</div><div><div class="ex-perf-steps">'+rows+'</div>'+
+    '<div class="ex-perf-legend"><span><i style="background:#CBD5E1"></i>ก่อนมีระบบ</span><span><i style="background:var(--blue)"></i>สัปดาห์ '+wkLabel+'</span>'+
+      '<span>เซลล์วนถามราคา <b>'+S.loopsNow+'</b> ครั้ง'+(S.loopsBefore!=null?' (เคย '+S.loopsBefore+')':'')+'</span>'+
+      '<span class="sum n">รวม '+fmtMin(S.totalNow)+'</span></div></div></div></div>';
+}
+function pricingPanel(){
+  return '<div class="ex-section"><div class="ex-section-title">Pricing & Market Overview</div>'+
+    pricingSummaryCards()+
+    '<div class="ex-price-panels">'+costTrendPanel()+profitMixPanel()+marketPanel()+moversPanel()+spreadPanel()+gradePanel()+'</div>'+
+    '<div class="card ex-pricing"><h3>Pricing actions <span class="sub">รอบ '+esc(D.round||D.asOf||'—')+'</span></h3><p class="hint">ข้อมูลเดิมของระบบตั้งราคาเก็บไว้ เพื่อช่วยตัดสินใจรอบนี้</p>'+
+      '<div class="ex-price-grid">'+
+      '<a href="/pricing"><span>ไปโต๊ะตั้งราคา</span><b>'+safe((D.totals||{}).sku,0)+' SKU</b><em>Pricing Home / ราคากลาง / รายเจ้า</em></a>'+
+      '<a href="/sales"><span>ไปหน้าทีม Sales</span><b>'+(SD && SD.pending ? SD.pending : 0)+' ใบค้าง</b><em>ตรวจ Quote Link และการต่อรอง</em></a>'+
+      '<a href="/costs"><span>ไปหน้าต้นทุน & ตลาด</span><b>'+safe((D.coverage||{}).usable,0)+' usable</b><em>รู้ราคาตลาดที่ใช้ได้วันนี้</em></a>'+
+      '<button onclick="announce()"><span>ประกาศราคา</span><b>รอบนี้</b><em>เปิด Preflight ก่อนทุกครั้ง →</em></button>'+
+      '</div></div>'+pricingAttention()+'</div>';
+}
+
+
+function wsSource(owner, source, updated, link, linkText){
+  return '<div class="ex-ws-source"><div><span>เจ้าของข้อมูล</span><b>'+owner+'</b></div><div><span>ข้อมูลมาจาก</span><b>'+source+'</b></div><div><span>Sync ล่าสุด</span><b>'+updated+'</b></div>'+
+    (link?(link.charAt(0)==='#'?'<button type="button" data-exec-view="'+link.replace('#exec-','')+'">'+(linkText||'เปิดรายละเอียด')+' →</button>':'<button type="button" data-go-route="'+link+'">'+(linkText||'เปิดหน้าต้นทาง')+' →</button>'):'')+'</div>';
+}
+function wsHead(no,title,sub){
+  return '<div class="ex-ws-head"><button type="button" class="ex-ws-back" data-exec-back="1">← กลับ Executive Overview</button><span>'+no+'</span><h2>'+title+'</h2><p>'+sub+'</p></div>';
+}
+function addDelivery(){ PX.deliveryForm({customers:((SD&&SD.customers)||[]).map(function(c){return c.name;}), carriers:(DLV&&DLV.carrierNames)||[]}, reloadOps); }
+function finishDelivery(id){ var r=((DLV&&DLV.pending)||[]).concat((DLV&&DLV.rows)||[]).filter(function(x){return x.id===id;})[0]; if(r) PX.deliveryFinish(r, reloadOps); }
+function editProspect(id){ PX.prospectForm(id?((PRS&&PRS.rows)||[]).filter(function(x){return x.id===id;})[0]:null, reloadOps); }
+function arOpenTable(onlyLate){
+  if(!AR) return '';
+  var rows=((AR&&AR.open)||[]).filter(function(x){return !onlyLate||x.late;});
+  return '<div class="ex-ws-table"><table><thead><tr><th>ใบแจ้งหนี้ / ลูกค้า</th><th>ยอดบิล</th><th>คงเหลือ</th><th>ครบกำหนด</th><th></th></tr></thead><tbody>'+
+    (rows.length?rows.map(function(x){return '<tr><td><b>'+esc(x.id)+'</b><small>'+esc(x.customer)+' · '+esc(x.date)+'</small></td><td class="num">฿'+money(x.net)+'</td><td class="num'+(x.late?' strong':'')+'">฿'+money(x.left)+'</td><td>'+esc(x.due)+(x.late?' <span class="ex-state red">เกินกำหนด</span>':'')+'</td><td><button type="button" class="btn" onclick="addPayment('+jsq(x.id)+','+x.left+')">บันทึกรับเงิน</button></td></tr>';}).join('')
+     :'<tr><td colspan="5" style="color:var(--tx-3)">'+(AR&&AR.invoices?'ไม่มียอดค้าง':'ยังไม่มีบิลในระบบ — นำเข้าไฟล์ e-Today หรือบันทึก invoice ที่หน้า Sales')+'</td></tr>')+'</tbody></table></div>';
+}
+function addPayment(id,left){
+  var today=new Date(Date.now()+7*3600e3).toISOString().slice(0,10);
+  var ref=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2)).replace(/[^a-z0-9-]/gi,'');   /* กดซ้ำ = รายการเดียว */
+  var m=PX.modal({title:'บันทึกรับเงิน · '+id,sub:'คงเหลือ ฿'+money(left||0),
+    fields:[{k:'amount',label:'ยอดที่รับ (บาท)',value:left||'',type:'num'},{k:'paid_on',label:'วันที่รับ',value:today}],okText:'บันทึก',
+    onOk:function(v,close){ v.invoice_id=id; v.ref=ref; return PX.post('/api/payments',v).then(function(){ close(); PX.toast('บันทึกรับเงินแล้ว'); return reloadOps(); }); }});
+  var d=m.el.querySelector('[data-k="paid_on"]'); if(d){d.type='date';d.max=today;}
+}
+function arKpis(){
+  if(!AR) return opsFail('ar')||'<p class="hint">กำลังโหลด…</p>';
+  var A=AR;
+  return '<div class="ex-ws-kpis"><div><span>รับเงินแล้วทั้งหมด</span><b>฿'+mm(A.received||0)+'</b></div><div><span>ถึงกำหนดแล้ว · เก็บได้</span><b>฿'+mm(A.collected||0)+' / ฿'+mm(A.due||0)+(A.collectPct!=null?' ('+A.collectPct+'%)':'')+'</b></div>'+
+    '<div><span>ค้างรับทั้งหมด · เกินกำหนด</span><b>฿'+mm(A.outstanding||0)+' · <span style="color:var(--red)">฿'+mm(A.overdue||0)+'</span></b></div>'+
+    '<div><span>Aging (เกินกำหนด)</span><b style="font-size:13px">'+((A.aging||[]).map(function(a){return a.b+' วัน ฿'+mm(a.amt);}).join(' · ')||'—')+'</b></div></div>';
+}
+function resolutionAR(){
+  return '<section class="ex-workspace" id="exec-ar">'+wsHead('Cash / AR','เงินค้างรับที่ต้องตาม','คิดจากบิลในระบบ + เงินที่บันทึกรับ · ครบกำหนด = วันที่ในไฟล์ หรือวันที่บิล + 30 วัน')+
+    arKpis()+arOpenTable(false)+
+    '<div class="ex-ws-next"><b>อัปเดตยังไง</b><span>นำเข้าไฟล์ e-Today ที่มีคอลัมน์ยอดรับเงิน หรือกด "บันทึกรับเงิน" รายใบ → ยอดค้าง/เกินกำหนดลดเองทันที</span><button type="button" onclick="openImport(\'invoices\')">นำเข้าไฟล์ →</button></div>'+
+    wsSource('ทีมบัญชี','invoices + payments ในระบบ', AR?esc(AR.today):'—',null,null)+'</section>';
+}
+function resolutionCash(){
+  return '<section class="ex-workspace" id="exec-cash">'+wsHead('Cash In','เงินเข้าเทียบยอดที่ถึงกำหนด','นับเฉพาะเงินที่บันทึกรับกับใบแจ้งหนี้ในระบบ')+
+    arKpis()+arOpenTable(true)+wsSource('ทีมบัญชี','payments ในระบบ', AR?esc(AR.today):'—',null,null)+'</section>';
+}
+function resolutionProspect(){
+  if(!PRS) return '<section class="ex-workspace" id="exec-prospect">'+wsHead('Growth / Prospect','ลูกค้าใหม่ที่กำลังคุย','')+(opsFail('prs')||'<p class="hint">กำลังโหลด…</p>')+'</section>';
+  var rows=(PRS&&PRS.rows)||[], today=PRS?PRS.today:'', ST={new:'ใหม่',contacted:'คุยแล้ว',quoted:'เสนอราคาแล้ว',won:'ได้ลูกค้า',lost:'ไม่ได้'};
+  var ago=function(r){var d=(r.last_contact||r.created_at||'').slice(0,10); return d?Math.round((Date.parse(today)-Date.parse(d))/864e5):null;};
+  return '<section class="ex-workspace" id="exec-prospect">'+wsHead('Growth / Prospect','ลูกค้าใหม่ที่กำลังคุย','เงียบเกิน 14 วัน = เสี่ยงหลุด · กดแก้เพื่ออัปเดตขั้นและวันที่คุยล่าสุด')+
+    '<div style="margin:12px 0"><button type="button" class="btn pri" onclick="editProspect(0)">＋ เพิ่ม prospect</button></div>'+
+    '<div class="ex-ws-table"><table><thead><tr><th>Prospect</th><th>ขั้น</th><th>มูลค่า/เดือน</th><th>คุยล่าสุด</th><th>ผู้ดูแล</th><th>ขั้นต่อไป</th><th></th></tr></thead><tbody>'+
+    (rows.length?rows.map(function(r){var a=ago(r), act=r.stage!=='won'&&r.stage!=='lost';return '<tr><td><b>'+esc(r.name)+'</b><small>'+esc(r.contact||'')+'</small></td><td>'+esc(ST[r.stage]||r.stage)+'</td><td class="num">฿'+money(r.value_month||0)+'</td><td>'+(a!=null?a+' วันก่อน':'—')+(act&&a>14?' <span class="ex-state red">เงียบ</span>':'')+'</td><td>'+esc(r.owner||'—')+'</td><td>'+esc(r.next_step||'')+'</td><td><button type="button" class="btn" onclick="editProspect('+r.id+')">แก้</button></td></tr>';}).join('')
+      :'<tr><td colspan="7" style="color:var(--tx-3)">ยังไม่มี prospect — กด "เพิ่ม prospect"</td></tr>')+'</tbody></table></div>'+
+    wsSource('Sales','ตาราง prospects ในระบบ', today||'—','/sales','เปิด Sales')+'</section>';
+}
+function resolutionRevenue(){
+  if (ACT) return resolutionActual();
+  /* ยอดขายของผู้บริหารมาจาก invoice เท่านั้น — โหลดไม่ได้ก็บอกว่าโหลดไม่ได้ ห้ามเอาตารางตัวอย่างมาแสดงแทน */
+  return '<section class="ex-workspace" id="exec-revenue">'+wsHead('Revenue · Actual','ยอดขายจริงจาก invoice','')+
+    '<div class="ex-ws-next"><b>โหลดยอดขายจริงไม่ได้</b><span>'+esc(ACT_ERR||'ยังไม่มีข้อมูล')+' · <a href="#" onclick="location.reload();return false">ลองใหม่</a></span></div></section>';
+  return '<section class="ex-workspace" id="exec-revenue">'+wsHead('Revenue','ตรวจที่มาของยอดขายเข้า','ยอด Sales ต้องตรวจย้อนกลับได้จาก Order/PO และไม่ถูกนับเป็น Cash จนบัญชีรับเงินจริง')+
+    revenueTable()+wsSource('ทีม Sales','Quote Link / Customer PO / Sales Order','23 Sep · 16:20','/sales','เปิด Sales ต้นทาง')+'</section>';
+}
+function resolutionDelivery(){
+  if(!DLV) return '<section class="ex-workspace" id="exec-delivery">'+wsHead('Operations / Delivery','รอบขนส่งและปัญหาบริการ','')+(opsFail('dlv')||'<p class="hint">กำลังโหลด…</p>')+'</section>';
+  var rows=(DLV&&DLV.rows)||[], st=function(r){ if(!r.actual) return ['ยังไม่ถึง','']; var d=(+r.actual.slice(0,2)*60+ +r.actual.slice(3))-(+r.promised.slice(0,2)*60+ +r.promised.slice(3)); if(d<-720)d+=1440; else if(d>720)d-=1440; return [(d>0?'+':'')+d+' นาที', d<=15?'green':d<=60?'amber':'red']; };
+  return '<section class="ex-workspace" id="exec-delivery">'+wsHead('Operations / Delivery','รอบขนส่งและปัญหาบริการ','รอบส่งจริงที่บันทึก 90 วันล่าสุด + Service Log จากทีม')+
+    '<div class="ex-carrier-grid">'+carrierCards(false,(DLV&&DLV.carriers)||[])+'</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"><button type="button" class="btn pri" onclick="addDelivery()">＋ บันทึกรอบส่ง</button><button type="button" class="btn" onclick="openImport(\'deliveries\')">นำเข้า CSV/Excel</button></div>'+
+    '<div class="ex-ws-table"><table><thead><tr><th>วันที่ / รอบ</th><th>ลูกค้า</th><th>ผู้ขนส่ง</th><th>นัด</th><th>ส่งจริง</th><th>ช้า</th><th>ครบ</th><th>หมายเหตุ</th></tr></thead><tbody>'+
+    (rows.length?rows.map(function(r){var s2=st(r);return '<tr><td><b>'+esc(r.delivered_on)+'</b><small>'+esc(r.round||'')+'</small></td><td>'+esc(r.customer||'—')+'</td><td>'+esc(r.carrier)+'</td><td>'+esc(r.promised)+'</td><td>'+(r.actual?esc(r.actual):'<button type="button" class="btn" onclick="finishDelivery('+r.id+')">ใส่เวลา</button>')+'</td><td>'+(s2[1]?'<span class="ex-state '+s2[1]+'">'+s2[0]+'</span>':s2[0])+'</td><td>'+(r.in_full?'ครบ':'<span class="ex-state red">ไม่ครบ</span>')+'</td><td>'+esc(r.note||'')+'</td></tr>';}).join('')
+      :'<tr><td colspan="8" style="color:var(--tx-3)">ยังไม่มีรอบส่งที่บันทึก</td></tr>')+'</tbody></table></div>'+
+    '<div class="ex-ops-real" style="margin-top:14px">'+serviceLogFull()+'</div>'+
+    wsSource('ทีม Operations / เซลล์','ตาราง deliveries (ฟอร์ม + นำเข้าไฟล์)', rows[0]?esc(rows[0].delivered_on):'—',null,null)+'</section>';
+}
+function resolutionMargin(){
+  var thin=(D&&D.thin?D.thin.slice(0,8):[]);
+  return '<section class="ex-workspace" id="exec-margin">'+wsHead('Pricing / Margin','แก้ Margin ตามเป้ารายหมวด','เป้าที่พี่หมิงตั้ง เทียบกับ margin จากราคาที่ตั้งไว้จริง · ส่วนสาเหตุเป็นบาทด้านล่างยังเป็นตัวอย่าง')+
+    catTable()+
+    (function(){ var y=(ACT&&ACT.ytd)||{}, tg=(CG&&CG.portfolio)?CG.portfolio:{lo:12,hi:15};
+      /* โหลด invoice ไม่ได้ ≠ ยังไม่มี invoice / กำไร 0 */
+      if (!ACT) return '<div class="ex-ws-next"><b>โหลด margin จริงไม่ได้</b><span>'+esc(ACT_ERR||'')+' · <a href="#" onclick="location.reload();return false">ลองใหม่</a></span></div>';
+      return '<div class="ex-ws-kpis"><div><span>Margin จริง (invoice ปีนี้)</span><b>'+(y.invoices?y.margin+'%':'ยังไม่มี invoice')+'</b></div>'+
+        '<div><span>กำไรขั้นต้นจริง</span><b>฿'+mm(y.gp||0)+'</b></div><div><span>ทิศทางรวม</span><b>'+tg.lo+'–'+tg.hi+'%</b></div></div>'; })()+
+    /* ตัวเลข "รั่วไหล" ชุดนี้เป็นตัวอย่างจาก prototype — ไม่แสดงบนหน้าจริงจนกว่าจะมีข้อมูลจริงรองรับ */
+    '<div class="ex-ws-table"><table><thead><tr><th>ลูกค้า</th><th>รายการทั้งหมด</th><th>Margin ต่ำ</th><th>สัดส่วน</th><th>Decision</th><th>ไปแก้ที่</th></tr></thead><tbody>'+thin.map(function(x){return '<tr><td><b>'+esc(x.name)+'</b></td><td>'+x.all+'</td><td>'+x.low+'</td><td class="danger">'+x.pct+'%</td><td><select><option>ปรับราคา</option><option>ถัวกับ SKU อื่น</option><option>คงราคาเพื่อรักษาลูกค้า</option><option>เจรจาเงื่อนไขใหม่</option></select></td><td><a href="/customers">เปิดลูกค้า →</a></td></tr>';}).join('')+'</tbody></table></div>'+
+    '<div class="ex-ws-next"><b>วิธีปิดปัญหา</b><span>เลือกแนวทางต่อราย → กลับไปแก้ราคาหรือเงื่อนไขลูกค้า → Pricing engine คำนวณ Margin ใหม่</span><button type="button" data-go-route="/pricing">เปิด Pricing →</button></div>'+
+    wsSource('Pricing + Sales','ต้นทุน / ราคาลูกค้า / Contract / Negotiation','รอบ '+esc(D.round||D.asOf||'—'),'/customers','เปิดข้อมูลลูกค้า')+'</section>';
+}
+function resolutionSales(){
+  /* รายชื่อจริงของรอบนี้จาก /api/sends — เจ้าที่ยังไม่ได้ส่งลูกค้า เรียงจากที่ติดนานสุด */
+  if (!SD) return '<section class="ex-workspace" id="exec-sales">'+wsHead('Sales / Quote delivery','ใบราคาที่ยังไม่ถึงลูกค้า','')+
+    '<div class="ex-ws-next"><b>โหลดสถานะการส่งไม่ได้</b><span><a href="#" onclick="location.reload();return false">ลองใหม่</a></span></div></section>';
+  var pending = ((SD && SD.customers) || []).filter(function (c) { return !c.sentAt; }).map(function (c) {
+    return { customer: c.name, lines: c.offerLines || c.lines, ready: c.offerLines || 0, issue: c.waiting || 0, owner: '—',
+             state: c.handedAt ? 'Pricing ส่งแล้ว · รอเซลล์ส่งลิงก์' : (c.offerLines ? 'Pricing ยืนยันแล้ว · ยังไม่ส่งต่อ' : 'รอ Pricing ยืนยันใบ') };
+  });
+  return '<section class="ex-workspace" id="exec-sales">'+wsHead('Sales / Quote delivery','แก้ใบราคาที่ยังไม่ถึงลูกค้า','ดูว่าค้างที่ Sales ตรวจ, Quote Link, หรือต่อรอง แล้วเปิดหน้า Sales ไปทำงานต่อ')+
+    '<div class="ex-ws-table"><table><thead><tr><th>ลูกค้า</th><th>SKU</th><th>พร้อมส่ง</th><th>Exception</th><th>Sales owner</th><th>สถานะ</th><th>Action</th></tr></thead><tbody>'+(pending.length?'':'<tr><td colspan="7" style="color:var(--tx-3)">ส่งใบครบทุกเจ้าในรอบนี้แล้ว</td></tr>')+pending.map(function(x){return '<tr><td><b>'+esc(x.customer)+'</b></td><td>'+x.lines+'</td><td>'+x.ready+'/'+x.lines+'</td><td class="'+(x.issue?'warn':'')+'">'+x.issue+'</td><td>'+esc(x.owner)+'</td><td>'+esc(x.state)+'</td><td><a href="/sales">เปิดใบใน Sales →</a></td></tr>';}).join('')+'</tbody></table></div>'+
+    '<div class="ex-ws-next"><b>วิธีปิดปัญหา</b><span>Sales ตรวจ Exception → Generate Quote Link → ส่งลูกค้า → ลูกค้ากดยืนยัน/ต่อรอง → สถานะใบอัปเดตกลับ Executive</span><button type="button" data-go-route="/sales">ไปหน้า Sales Work Queue →</button></div>'+
+    wsSource('ทีม Sales','Pricing handoff + Quote Link status','รอบ '+esc(D.asOf||'—'),'/sales','เปิด Sales Work Queue')+'</section>';
+}
+function roundPill(){
+  /* V30: เดิมโชว์ config.as_of = "ใบเสนอราคา SEP_26" (ชื่อไฟล์ที่นำเข้า) — ไม่ใช่รอบจริง
+     รอบปัจจุบัน = รอบที่ประกาศล่าสุดจริง (dispatches) · รอบถัดไป = สัปดาห์นี้ */
+  var last=D.round||'', at=D.roundAt||'', days=at?Math.floor((Date.now()-new Date(at).getTime())/864e5):null;
+  var d=at?new Date(at):null, MON=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  return '<b>รอบราคาปัจจุบัน '+esc(last||'ยังไม่เคยประกาศ')+'</b>'+
+    '<span>ประกาศเมื่อ '+(d?d.getDate()+' '+MON[d.getMonth()]+' '+(d.getFullYear()+543):'—')+(days!=null?' ('+days+' วันก่อน)':'')+' · รอบถัดไป '+esc(D.nextRound||'—')+'</span>'+
+    (days!=null&&days>8?'<span class="ex-stale">ยังไม่ประกาศรอบใหม่มา '+days+' วัน</span>':'');
+}
+
+/* ── นำเข้าไฟล์ CSV/Excel: เลือกไฟล์ → จับคู่คอลัมน์ (เดาให้ก่อน) → ตรวจ (ยังไม่เขียน) → บันทึกจริง ──
+   ตัวแปลงชื่อ/วันที่/ราคาอยู่ฝั่งเซิร์ฟเวอร์ (src/ops.js) ที่เดียว หน้าเว็บแค่ส่งแถวที่จับคู่แล้ว */
+var IMPORT_KINDS={
+  invoices:{title:'นำเข้าบิล e-Today', url:'/api/import/invoices', fields:[
+    ['invoice_no','เลขที่ใบแจ้งหนี้',/เลขที่|invoice|inv|เอกสาร|no\.?$/i,1],['date','วันที่บิล',/วันที่|date/i,1],['customer','ลูกค้า',/ลูกค้า|customer|ชื่อ/i,1],
+    ['product','สินค้า',/สินค้า|product|item|รายการ|sku/i,1],['kg','จำนวน (กก.)',/จำนวน|qty|kg|กก|ปริมาณ|น้ำหนัก/i,1],['price','ราคาต่อกก.',/ราคา|price|unit/i,0],
+    ['amount','ยอดเงิน',/ยอด|amount|จำนวนเงิน|total|มูลค่า/i,0],['due_date','ครบกำหนด',/ครบกำหนด|due/i,0],['paid_amount','ยอดรับแล้ว',/รับ|paid|ชำระ/i,0],['paid_date','วันที่รับเงิน',/วันที่รับ|วันที่ชำระ|paid.?date/i,0]],
+    sample:[['invoice_no','date','customer','product','kg','price','amount','due_date','paid_amount','paid_date'],['IV6910-001','12/10/2569','ชื่อลูกค้าตามระบบ','ชื่อสินค้าตามระบบ','25.5','189','','11/11/2569','','']]},
+  deliveries:{title:'นำเข้ารอบขนส่ง', url:'/api/deliveries', fields:[
+    ['delivered_on','วันที่ส่ง',/วันที่|date/i,1],['round','รอบ',/รอบ|round|trip/i,0],['carrier','ผู้ขนส่ง',/ขนส่ง|carrier|รถ|driver/i,1],['customer','ลูกค้า',/ลูกค้า|customer/i,0],
+    ['promised','เวลานัด',/นัด|promised|plan|เวลาส่ง/i,1],['actual','เวลาส่งจริง',/จริง|actual|arriv/i,0],['in_full','ส่งครบ',/ครบ|in.?full|complete/i,0],['note','หมายเหตุ',/หมายเหตุ|note|remark/i,0]],
+    sample:[['delivered_on','round','carrier','customer','promised','actual','in_full','note'],['12/10/2569','รอบเช้า','รถบริษัท','ชื่อลูกค้า','07:00','07:12','ครบ','']]}
+};
+function parseCSV(text){
+  var rows=[],row=[],f='',q=false,i,c;
+  text=text.replace(/^﻿/,'');
+  for(i=0;i<text.length;i++){c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i++;} else q=false; } else f+=c; }
+    else if(c==='"') q=true; else if(c===','){row.push(f);f='';} else if(c==='\n'||c==='\r'){ if(c==='\r'&&text[i+1]==='\n') i++; row.push(f); rows.push(row); row=[]; f=''; }
+    else f+=c; }
+  if(f!==''||row.length){row.push(f);rows.push(row);}
+  return rows.filter(function(r){return r.some(function(x){return String(x).trim()!=='';});});
+}
+function loadXLSX(){
+  if(window.XLSX) return Promise.resolve(window.XLSX);
+  return new Promise(function(ok,no){var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=function(){ok(window.XLSX);};s.onerror=function(){no(new Error('โหลดตัวอ่าน Excel ไม่ได้ — ลอง Save as CSV แล้วนำเข้าแทน'));};document.head.appendChild(s);});
+}
+function readTable(file){
+  if(/\.(xlsx|xls)$/i.test(file.name))
+    return loadXLSX().then(function(X){return file.arrayBuffer().then(function(b){
+      var wb=X.read(b,{type:'array',cellDates:true}), ws=wb.Sheets[wb.SheetNames[0]];
+      var z=function(n){return String(n).padStart(2,'0');};
+      return X.utils.sheet_to_json(ws,{header:1,raw:true,defval:''}).map(function(r){ return r.map(function(v){
+        if(!(v instanceof Date)) return v;
+        return v.getFullYear()<1901 ? z(v.getHours())+':'+z(v.getMinutes())                       /* ช่องเวลาอย่างเดียว */
+                                    : v.getFullYear()+'-'+z(v.getMonth()+1)+'-'+z(v.getDate());   /* ช่องวันที่ */
+      }); });
+    });});
+  return file.text().then(parseCSV);
+}
+function openImport(kind){
+  var K=IMPORT_KINDS[kind], TBL=null;
+  var m=PX.modal({title:K.title,sub:'CSV หรือ Excel (.xlsx) · แถวแรก = หัวคอลัมน์ · ตรวจก่อน ยังไม่บันทึกจนกว่าจะกดยืนยัน',
+    html:'<div id="impBox"><label class="fld"><span>ไฟล์</span><input type="file" id="impFile" accept=".csv,.xlsx,.xls,text/csv"></label>'+
+      '<p class="hint">ยังไม่มีไฟล์? <a href="#" class="lnk2" id="impSample">ดาวน์โหลดแม่แบบ CSV</a></p><div id="impMap"></div><div id="impRep"></div></div>',
+    okText:'ตรวจไฟล์',
+    onOk:function(v,close){
+      if(!TBL) { PX.toast('เลือกไฟล์ก่อน','bad'); return false; }
+      var map={}; m.el.querySelectorAll('[data-map]').forEach(function(s){ if(s.value!=='') map[s.getAttribute('data-map')]=+s.value; });
+      var miss=K.fields.filter(function(f){return f[3]&&map[f[0]]==null;});
+      if(miss.length){ PX.toast('ยังไม่ได้เลือกคอลัมน์: '+miss.map(function(f){return f[1];}).join(', '),'bad'); return false; }
+      var used={}, dup=Object.keys(map).filter(function(k){ if(used[map[k]]) return true; used[map[k]]=1; return false; });
+      if(dup.length){ PX.toast('คอลัมน์เดียวกันถูกเลือกให้หลายช่อง — ตรวจการจับคู่อีกครั้ง','bad'); return false; }
+      var rows=TBL.slice(1).map(function(r){var o={}; Object.keys(map).forEach(function(k){o[k]=r[map[k]];}); return o;});
+      var send=function(commit){ return PX.post(K.url,{rows:rows,commit:commit}); };
+      var okBtn=m.el.querySelector('.mdl-o'), rep=m.el.querySelector('#impRep');
+      /* ตรวจก่อน (ไม่เขียน) — ต้องไม่คืน promise ให้ PX.modal ไม่งั้นมันปิดหน้าต่างเองทันทีที่ตรวจเสร็จ */
+      okBtn.disabled=true; okBtn.textContent='กำลังตรวจ…';
+      send(false).then(function(r){
+        okBtn.disabled=false; okBtn.textContent='ตรวจใหม่';
+        var probs=r.problems||[], okN=kind==='invoices'?r.fresh:r.ok;
+        rep.innerHTML='<div class="ex-act-note" style="background:var(--blue-l);border-color:var(--blue-b);color:var(--ink)">'+
+          (kind==='invoices'?'<b>บิลใหม่ '+r.fresh+' ใบ</b> · '+r.lines+' บรรทัด · ยอด ฿'+money(r.net||0)+' · กำไร ฿'+money(r.gp||0)+
+            (r.duplicates&&r.duplicates.length?' · ข้าม '+r.duplicates.length+' ใบที่มีแล้ว':'')+(r.payments?' · ยอดรับเงิน '+r.payments+' ใบ':'')+'<br><small>'+esc(r.costNote||'')+'</small>'
+            :'<b>บันทึกได้ '+r.ok+' รอบ</b>')+
+          (probs.length?'<br><b style="color:var(--red)">มีปัญหา '+(r.problemCount||probs.length)+' แถว (จะไม่ถูกบันทึก)</b><br><small>'+probs.slice(0,12).map(function(p){return (p.row?'แถว '+(p.row+1)+': ':'')+esc(p.reason);}).join('<br>')+'</small>':'')+'</div>';
+        if(!(okN>0) && !(kind==='invoices'&&r.payments)){ PX.toast('ไม่มีแถวที่บันทึกได้ — แก้ไฟล์ตามรายการด้านบน','bad'); return; }
+        rep.insertAdjacentHTML('beforeend','<button type="button" class="btn pri" id="impGo" style="margin-top:10px">ยืนยันบันทึกจริง</button>');
+        m.el.querySelector('#impGo').addEventListener('click',function(){
+          var go=this; go.disabled=true; go.textContent='กำลังบันทึก…';
+          send(true).then(function(res){ m.close(); PX.toast(kind==='invoices'?'นำเข้าแล้ว '+res.saved+' ใบ · '+res.lines+' บรรทัด':'บันทึกแล้ว '+res.saved+' รอบ');
+              return Promise.all([reloadOps(), kind==='invoices'?PX.get('/api/invoices').then(function(a){ACT=a;}):null]).then(draw); })
+            .catch(function(e){ go.disabled=false; go.textContent='ยืนยันบันทึกจริง'; PX.toast(esc(e.message),'bad'); });
+        });
+      }).catch(function(e){ okBtn.disabled=false; okBtn.textContent='ตรวจไฟล์'; PX.toast(esc(e.message),'bad'); });
+      return false;
+    }});
+  m.el.querySelector('#impSample').addEventListener('click',function(e){ e.preventDefault(); PX.csv(kind+'-template.csv',K.sample); });
+  m.el.querySelector('#impFile').onchange=function(){
+    var f=this.files[0]; if(!f) return;
+    readTable(f).then(function(t){
+      TBL=t; if(!t.length){ PX.toast('ไฟล์ว่าง','bad'); return; }
+      var hd=t[0].map(function(h){return String(h).trim();});
+      var taken={}, low=hd.map(function(h){return h.toLowerCase();}), guessOf={};
+      K.fields.forEach(function(fd){ var i=low.indexOf(fd[0]); if(i>=0){ guessOf[fd[0]]=i; taken[i]=1; } });          /* 1) ชื่อตรงตัว */
+      K.fields.forEach(function(fd){ if(guessOf[fd[0]]!=null) return;                                                   /* 2) เดาจากคำ — ไม่ซ้ำคอลัมน์ */
+        var i=hd.findIndex(function(h,k){return !taken[k]&&fd[2].test(h);}); if(i>=0){ guessOf[fd[0]]=i; taken[i]=1; } });
+      m.el.querySelector('#impMap').innerHTML='<p class="hint">'+(t.length-1)+' แถว · จับคู่คอลัมน์ (ระบบเดาให้แล้ว ตรวจอีกที)</p>'+K.fields.map(function(fd){
+        var guess=guessOf[fd[0]]!=null?guessOf[fd[0]]:-1;
+        return '<label class="fld"><span>'+fd[1]+(fd[3]?' *':'')+'</span><select data-map="'+fd[0]+'" style="width:100%;font-family:var(--ff);padding:8px 10px;border:1px solid var(--line);border-radius:10px"><option value="">— ไม่มี —</option>'+
+          hd.map(function(h,i){return '<option value="'+i+'"'+(i===guess?' selected':'')+'>'+esc(h||('คอลัมน์ '+(i+1)))+'</option>';}).join('')+'</select></label>';
+      }).join('');
+      m.el.querySelector('#impRep').innerHTML='';
+    }).catch(function(e){ PX.toast(esc(e.message),'bad'); });
+  };
+}
+var OPS_ERR={};   /* โหลดไม่ได้ ≠ ไม่มีข้อมูล — การ์ดต้องบอกว่าโหลดไม่ได้ ห้ามโชว์ 0 */
+function opsLoad(url,set,key){ return PX.get(url).then(function(x){ set(x); delete OPS_ERR[key]; }).catch(function(e){ set(null); OPS_ERR[key]=(e&&e.message)||'โหลดไม่ได้'; }); }
+function opsFail(key){ return OPS_ERR[key]?'<div class="ex-act-note" style="background:var(--red-l);border-color:var(--red-b);color:#991B1B">โหลดข้อมูลไม่ได้ ('+esc(OPS_ERR[key])+') · <a href="#" class="lnk2" onclick="reloadOps();return false">ลองใหม่</a></div>':''; }
+function reloadOps(){
+  return Promise.all([
+    opsLoad('/api/ops-perf',function(x){OPSPERF=x;},'perf'),
+    opsLoad('/api/deliveries',function(x){DLV=x;},'dlv'),
+    opsLoad('/api/ar',function(x){AR=x;},'ar'),
+    opsLoad('/api/prospects',function(x){PRS=x;},'prs')
+  ]).then(function(){ draw(); });
+}
+function resolutionFor(view){
+  if(view==='market') return resolutionMarket();
+  if(view==='revenue') return resolutionRevenue();
+  if(view==='cash') return resolutionCash();
+  if(view==='ar') return resolutionAR();
+  if(view==='prospect') return resolutionProspect();
+  if(view==='delivery') return resolutionDelivery();
+  if(view==='margin') return resolutionMargin();
+  if(view==='sales') return resolutionSales();
+  return resolutionAR();
+}
+
+
+function draw(){
+  if (GD && GD.dist) {
+    var fl=D.floorPct||12, tg=D.targetPct||15;
+    var gdesc={'A':'margin ≥ '+tg+'%','B':'margin '+(tg-3)+'–'+tg+'%','C':'margin '+fl+'–'+(tg-3)+'%','D':'margin < '+fl+'%','F':'ขาดทุน'};
+    EX.customerGrades = GD.dist.map(function(x){ return [x.grade, x.n, gdesc[x.grade]||'']; });
+  }
+  var h='<style>'+
+  '.exec-v8{max-width:100%}.exec-v8 .ex-period{display:flex;align-items:center;gap:10px;margin:-5px 0 16px;flex-wrap:wrap}.exec-v8 .ex-period b{font-size:12px;background:var(--ink);color:#fff;padding:5px 10px;border-radius:99px}.exec-v8 .ex-period span{font-size:11.5px;color:var(--tx-3)}'+
+  '.exec-v8 .ex-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 4px;position:sticky;top:0;z-index:5;background:var(--card);padding:6px 0}.exec-v8 .ex-tabs button{font-family:var(--ff);text-align:left;border:1px solid var(--line);background:#fff;border-radius:14px;padding:10px 14px;cursor:pointer;min-width:0;transition:.14s}.exec-v8 .ex-tabs button b{display:block;font-size:13.5px;color:var(--ink)}.exec-v8 .ex-tabs button span{display:block;font-size:10.5px;color:var(--tx-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.exec-v8 .ex-tabs button:hover{border-color:var(--blue-b)}.exec-v8 .ex-tabs button.on{background:var(--blue);border-color:var(--blue);box-shadow:0 6px 16px -8px rgba(37,99,235,.7)}.exec-v8 .ex-tabs button.on b{color:#fff}.exec-v8 .ex-tabs button.on span{color:#C7DAFE}'+
+  '.exec-v8 .ex-decision-first{margin-top:18px}'+
+  '.exec-v8 .ex-perf{margin-bottom:12px}.exec-v8 .ex-perf-tag{font-size:9.5px;font-weight:600;color:var(--amber);background:var(--amber-l);padding:1px 7px;border-radius:99px;white-space:nowrap}.exec-v8 .ex-perf-grid{display:grid;grid-template-columns:230px minmax(0,1fr);gap:14px;align-items:stretch}.exec-v8 .ex-perf-hero{background:var(--blue);color:#fff;border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;justify-content:center}.exec-v8 .ex-perf-hero span{font-size:11px;color:#C7DAFE}.exec-v8 .ex-perf-hero b{font-size:34px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin:4px 0}.exec-v8 .ex-perf-hero b small{font-size:13px;margin-left:3px}.exec-v8 .ex-perf-hero em{font-style:normal;font-size:10.5px;color:#DCE7FF;line-height:1.4}.exec-v8 .ex-perf-teams{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.exec-v8 .ex-perf-teams>div{background:rgba(255,255,255,.12);border-radius:10px;padding:7px 9px}.exec-v8 .ex-perf-teams i{font-style:normal;font-size:9.5px;color:#C7DAFE;display:block}.exec-v8 .ex-perf-teams b{font-size:15px;margin:0}.exec-v8 .ex-perf-teams b small{font-size:9.5px;color:#C7DAFE}'+
+  '.exec-v8 .ex-perf-steps{display:flex;flex-direction:column;gap:8px}.exec-v8 .ex-perf-step{display:grid;grid-template-columns:160px minmax(0,1fr) 100px;gap:12px;align-items:center}.exec-v8 .ex-perf-nm{font-size:12px;font-weight:600;line-height:1.3}.exec-v8 .ex-perf-nm em{display:block;font-style:normal;font-size:10px;color:var(--tx-3);font-weight:400}.exec-v8 .ex-perf-bars{display:flex;flex-direction:column;gap:3px}.exec-v8 .ex-perf-track{height:7px;background:var(--line-2);border-radius:99px;position:relative;overflow:hidden}.exec-v8 .ex-perf-fill{position:absolute;top:0;bottom:0;left:0;border-radius:99px;transform-origin:left center;animation:exPerfGrow 1s cubic-bezier(.2,.8,.2,1) both}.exec-v8 .ex-perf-fill.before{background:#CBD5E1}.exec-v8 .ex-perf-fill.now{background:var(--blue)}.exec-v8 .ex-perf-t{text-align:right;font-size:10.5px;color:var(--tx-3);line-height:1.35}.exec-v8 .ex-perf-t b{display:block;font-size:12.5px;color:var(--ink)}.exec-v8 .ex-perf-t b .cut{color:var(--green);font-size:10.5px;margin-left:3px}.exec-v8 .ex-perf-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:10.5px;color:var(--tx-2);margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}.exec-v8 .ex-perf-legend i{display:inline-block;width:10px;height:6px;border-radius:99px;margin-right:5px;vertical-align:middle}.exec-v8 .ex-perf-legend .sum{margin-left:auto;font-weight:600;color:var(--ink)}'+
+  '@keyframes exPerfGrow{from{transform:scaleX(0)}}@media(prefers-reduced-motion:reduce){.exec-v8 .ex-perf-fill{animation:none}}'+
+  '@media(max-width:900px){.exec-v8 .ex-perf-grid{grid-template-columns:1fr}}@media(max-width:620px){.exec-v8 .ex-tabs{grid-template-columns:1fr;position:static}.exec-v8 .ex-tabs button span{white-space:normal}.exec-v8 .ex-perf-step{grid-template-columns:1fr 90px;row-gap:5px}.exec-v8 .ex-perf-bars{grid-column:1/-1;grid-row:2}}'+
+  '.exec-v8 .ex-section{margin-top:18px}.exec-v8 .ex-section-title{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--tx-3);font-weight:700;margin:0 0 9px}'+
+  '.exec-v8 .ex-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.exec-v8 .ex-kpi{font-family:var(--ff);text-align:left;border:1px solid var(--line);background:#fff;border-radius:16px;padding:14px 15px;cursor:pointer;min-width:0;transition:.14s}.exec-v8 .ex-kpi:hover{border-color:var(--blue-b);transform:translateY(-1px);box-shadow:var(--sh)}'+
+  '.exec-v8 .ex-kpi-top{display:flex;align-items:center;gap:6px;margin-bottom:11px}.exec-v8 .ex-kpi-ic{font-size:16px}.exec-v8 .ex-kpi-badge{margin-left:auto;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:99px;background:var(--green-l);color:var(--green);white-space:nowrap}.exec-v8 .ex-kpi-badge.red{background:var(--red-l);color:var(--red)}.exec-v8 .ex-kpi-badge.amber{background:var(--amber-l);color:var(--amber)}'+
+  /* Service Log (พี่หมิง v15) */
+  '.exec-v8 .ex-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:6px}.exec-v8 .ex-card-head h3{margin:0}'+
+  '.exec-v8 .ex-log-list{display:flex;flex-direction:column;gap:8px;margin:10px 0 12px}'+
+  '.exec-v8 .ex-log-list>div{display:grid;grid-template-columns:1.1fr 2fr auto;gap:10px;align-items:start;border:1px solid var(--line);border-left-width:5px;border-radius:12px;padding:10px 12px;background:#fff}'+
+  '.exec-v8 .ex-log-list>div.bad{border-left-color:var(--red);background:#FFF7F7}.exec-v8 .ex-log-list>div.warn{border-left-color:var(--amber);background:#FFFCF2}'+
+  '.exec-v8 .ex-log-list b{display:block;font-size:12.5px}.exec-v8 .ex-log-list em{font-style:normal;font-size:10.5px;color:var(--tx-3)}.exec-v8 .ex-log-list>div>span:nth-child(2){font-size:11.5px;color:var(--tx-2);line-height:1.5}.exec-v8 .ex-log-list small{color:var(--tx-3)}'+
+  '.exec-v8 .ex-log-meta{font-size:10.5px;color:var(--tx-3);white-space:nowrap;text-align:right}'+
+  '.exec-v8 .ex-ops-real{margin-bottom:14px}'+
+  '@media(max-width:700px){.exec-v8 .ex-log-list>div{grid-template-columns:1fr}.exec-v8 .ex-log-meta{text-align:left;white-space:normal}}'+
+  /* สีการ์ดบอกสถานะทั้งใบ — แถบข้าง + พื้น + สีตัวเลข ให้กวาดตารอบเดียวรู้ว่าใบไหนวิกฤติ */
+  '.exec-v8 .ex-kpi{position:relative;overflow:hidden;padding-left:20px}'+
+  '.exec-v8 .ex-kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--green)}'+
+  '.exec-v8 .ex-kpi.tone-green{background:#E9F9F0;border-color:#9FE0BC}.exec-v8 .ex-kpi.tone-green>b{color:#137A46}'+
+  '.exec-v8 .ex-kpi.tone-red{background:#FDECEC;border-color:#F2B5B5}.exec-v8 .ex-kpi.tone-red>b{color:#B91C1C}.exec-v8 .ex-kpi.tone-red::before{background:var(--red)}'+
+  '.exec-v8 .ex-kpi.tone-amber{background:#FFF4DA;border-color:#EFCE8A}.exec-v8 .ex-kpi.tone-amber>b{color:#8A5A00}.exec-v8 .ex-kpi.tone-amber::before{background:var(--amber)}'+
+  '.exec-v8 .ex-kpi .ex-kpi-badge{background:rgba(255,255,255,.82)}'+
+  /* กราฟซ้ายยืดเต็มการ์ด ให้สูงเท่าโดนัทฝั่งขวา ไม่เหลือที่ว่างข้างล่าง */
+  '.exec-v8 .ex-price-panels>.card{display:flex;flex-direction:column}'+
+  /* แท่งช่วงราคาตลาด: แท่งเทา = ช่วงคู่แข่ง · จุด = ราคาเรา · ขีด = รู้เจ้าเดียว วาดช่วงไม่ได้ */
+  '.exec-v8 .ex-mkt-list{display:flex;flex-direction:column;gap:14px;margin-top:4px}'+
+  '.exec-v8 .ex-mkt-head{display:flex;align-items:baseline;gap:8px}.exec-v8 .ex-mkt-head b{font-size:13px}.exec-v8 .ex-mkt-head em{margin-left:auto;font-style:normal;font-size:10.5px;font-weight:700}'+
+  '.exec-v8 .ex-mkt-row.green .ex-mkt-head em{color:var(--green)}.exec-v8 .ex-mkt-row.red .ex-mkt-head em{color:var(--red)}.exec-v8 .ex-mkt-row.amber .ex-mkt-head em{color:#8A5A00}.exec-v8 .ex-mkt-row.blue .ex-mkt-head em{color:var(--blue)}'+
+  '.exec-v8 .ex-mkt-track{position:relative;height:10px;border-radius:99px;background:var(--line);margin:8px 0 6px}'+
+  '.exec-v8 .ex-mkt-band{position:absolute;top:0;bottom:0;background:#C7D2E4;border-radius:99px}'+
+  '.exec-v8 .ex-mkt-tick{position:absolute;top:-3px;bottom:-3px;width:3px;margin-left:-1px;background:#94A3B8;border-radius:2px}'+
+  '.exec-v8 .ex-mkt-us{position:absolute;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:var(--blue);box-shadow:0 0 0 3px #fff}'+
+  '.exec-v8 .ex-mkt-row.green .ex-mkt-us{background:var(--green)}.exec-v8 .ex-mkt-row.red .ex-mkt-us{background:var(--red)}.exec-v8 .ex-mkt-row.amber .ex-mkt-us{background:var(--amber)}'+
+  '.exec-v8 .ex-mkt-foot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:10.5px;color:var(--tx-3)}.exec-v8 .ex-mkt-foot b{font-size:11.5px;color:var(--ink)}'+
+  '.exec-v8 .ex-mkt-more{margin-top:14px}.exec-v8 .ex-mkt-more>summary{cursor:pointer;font-size:11.5px;color:var(--blue);font-weight:700}.exec-v8 .ex-mkt-more .ex-mkt-list{margin-top:12px}'+
+  '.exec-v8 .ex-kpi-label{display:block;font-size:11.5px;color:var(--tx-3)}.exec-v8 .ex-kpi>b{display:block;font-family:var(--ff);font-size:30px;font-weight:700;color:var(--ink);letter-spacing:-.04em;line-height:1.15;margin-top:2px}.exec-v8 .ex-kpi>b small{font-family:var(--ff);font-size:12px;color:var(--tx-3);margin-left:3px}.exec-v8 .ex-kpi-sub{display:block;font-size:10.5px;color:var(--tx-2);line-height:1.4;margin-top:5px}'+
+  '.exec-v8 .ex-att-list{display:flex;flex-direction:column;gap:7px}.exec-v8 .ex-att{width:100%;font-family:var(--ff);color:var(--tx);text-align:left;display:flex;align-items:center;gap:11px;border:1px solid var(--line);border-left:3px solid var(--green);border-radius:12px;padding:10px 12px;background:#fff;cursor:pointer;transition:.14s}.exec-v8 .ex-att.clickable:hover{transform:translateY(-1px);box-shadow:var(--sh);border-right-color:var(--blue-b)}.exec-v8 .ex-att.red{border-left-color:var(--red);background:var(--red-l)}.exec-v8 .ex-att.amber{border-left-color:var(--amber);background:var(--amber-l)}.exec-v8 .ex-att-ic{width:28px;height:28px;border-radius:9px;background:rgba(255,255,255,.65);display:grid;place-items:center;flex:0 0 auto}.exec-v8 .ex-att-b{flex:1;min-width:0}.exec-v8 .ex-att-b b{display:block;font-size:13px}.exec-v8 .ex-att-b span{display:block;font-size:11px;color:var(--tx-2);margin-top:1px}.exec-v8 .ex-att a,.exec-v8 .ex-att button{border:0;background:none;color:var(--blue);font-family:var(--ff);font-size:11.5px;font-weight:700;cursor:pointer;text-decoration:none;white-space:nowrap}'+
+  '.exec-v8 .ex-business-grid{display:grid;grid-template-columns:1.25fr .75fr;gap:13px}.exec-v8 .ex-business-grid2{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:13px}'+
+  '.exec-v8 .ex-flow{display:flex;align-items:stretch;gap:7px;margin:15px 0 12px}.exec-v8 .ex-flow-step{flex:1;position:relative;background:var(--line-2);border-radius:12px;padding:11px 12px;overflow:hidden;min-width:0}.exec-v8 .ex-flow-step span{font-size:10.5px;color:var(--tx-3);display:block}.exec-v8 .ex-flow-step b{font-family:var(--ff);font-weight:700;font-size:17px;display:block;margin-top:2px}.exec-v8 .ex-flow-step em{font-style:normal;font-size:10px;color:var(--tx-3)}.exec-v8 .ex-flow-step i{position:absolute;left:0;bottom:0;height:3px;background:var(--blue)}.exec-v8 .ex-flow-arrow{display:grid;place-items:center;color:var(--tx-3)}'+
+  '.exec-v8 .ex-cash-foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.exec-v8 .ex-cash-foot span{font-size:11.5px;color:var(--tx-2)}.exec-v8 .ex-cash-foot span b{font-family:var(--ff);font-weight:700;color:var(--red);margin-right:4px}.exec-v8 .ex-cash-foot .btn{margin-left:auto}'+
+  '.exec-v8 .ex-prospect-head{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.exec-v8 .ex-prospect-head>div{background:var(--blue-l);border:1px solid var(--blue-b);border-radius:12px;padding:10px 12px}.exec-v8 .ex-prospect-head b{font-family:var(--ff);font-weight:700;font-size:21px;display:block}.exec-v8 .ex-prospect-head span{font-size:10.5px;color:var(--tx-3)}.exec-v8 .ex-mini-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}.exec-v8 .ex-mini-grid>div{border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}.exec-v8 .ex-mini-grid b{font-family:var(--ff);font-weight:700;font-size:16px;display:block}.exec-v8 .ex-mini-grid span{font-size:9.5px;color:var(--tx-3)}.exec-v8 .ex-mini-grid .danger{background:var(--red-l);border-color:var(--red-b)}.exec-v8 .ex-mini-grid .danger b{color:var(--red)}'+
+  '.exec-v8 .ex-margin-main{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:13px 0}.exec-v8 .ex-margin-main>div{border:1px solid var(--line);border-radius:12px;padding:12px}.exec-v8 .ex-margin-main span{font-size:10.5px;color:var(--tx-3);display:block}.exec-v8 .ex-margin-main b{font-family:var(--ff);font-weight:700;font-size:23px;display:block}.exec-v8 .ex-margin-main em{font-style:normal;font-size:10px;color:var(--amber)}.exec-v8 .ex-risk-box{display:flex;align-items:center;gap:10px;background:var(--red-l);border:1px solid var(--red-b);border-radius:12px;padding:10px 12px}.exec-v8 .ex-risk-box span{font-size:11px;color:var(--red)}.exec-v8 .ex-risk-box b{font-family:var(--ff);font-weight:700;color:var(--red);font-size:18px}.exec-v8 .ex-risk-box button{margin-left:auto;border:0;background:none;color:var(--red);font-weight:700;font-family:var(--ff);cursor:pointer}.exec-v12 .ex-risk-box a{margin-left:auto;color:var(--red);font-weight:700;text-decoration:none;font-size:11px}'+
+  '.exec-v8 .ex-delivery-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.exec-v8 .ex-delivery-summary>div{border:1px solid var(--line);background:var(--line-2);border-radius:12px;padding:10px 12px}.exec-v8 .ex-delivery-summary span{font-size:10px;color:var(--tx-3);display:block}.exec-v8 .ex-delivery-summary b{font-family:var(--ff);font-size:20px;font-weight:700;display:block}.exec-v8 .ex-carrier-grid,.ex-modal-carriers{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.exec-v8 .ex-carrier-card,.ex-modal-carriers .ex-carrier-card{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff}.exec-v8 .ex-carrier-card.ok{border-color:var(--green-b);background:linear-gradient(180deg,#fff, #F5FFF8)}.exec-v8 .ex-carrier-card.warn{border-color:var(--amber-b);background:linear-gradient(180deg,#fff,#FFFCF2)}.exec-v8 .ex-carrier-card.bad{border-color:var(--red-b);background:linear-gradient(180deg,#fff,#FFFAFA)}.exec-v8 .ex-carrier-top,.ex-modal-carriers .ex-carrier-top{display:flex;justify-content:space-between;align-items:flex-end;gap:8px}.exec-v8 .ex-carrier-top span,.ex-modal-carriers .ex-carrier-top span{font-size:12px;font-weight:600}.exec-v8 .ex-carrier-top b,.ex-modal-carriers .ex-carrier-top b{font-family:var(--ff);font-weight:700;font-size:26px}.exec-v8 .ex-carrier-meta,.ex-modal-carriers .ex-carrier-meta{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.exec-v8 .ex-carrier-meta span,.ex-modal-carriers .ex-carrier-meta span{font-size:10px;background:var(--line-2);border-radius:99px;padding:4px 8px}.exec-v8 .ex-carrier-last,.ex-modal-carriers .ex-carrier-last{font-size:11px;color:var(--tx-2);margin-bottom:8px}.exec-v8 .ex-rounds,.ex-modal-carriers .ex-rounds{display:flex;flex-direction:column;gap:6px}.exec-v8 .ex-round,.ex-modal-carriers .ex-round{display:grid;grid-template-columns:1.2fr 1fr auto;gap:8px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:7px 8px;background:#fff}.exec-v8 .ex-round span,.ex-modal-carriers .ex-round span{font-size:10px;color:var(--tx-2)}.exec-v8 .ex-round b,.ex-modal-carriers .ex-round b{font-size:11px}.exec-v8 .ex-round em,.ex-modal-carriers .ex-round em{font-style:normal;font-size:10px;font-weight:700}.exec-v8 .ex-round.ok em,.ex-modal-carriers .ex-round.ok em{color:var(--green)}.exec-v8 .ex-round.warn em,.ex-modal-carriers .ex-round.warn em{color:var(--amber)}.exec-v8 .ex-round.bad em,.ex-modal-carriers .ex-round.bad em{color:var(--red)}.exec-v8 .ex-carrier-card button,.ex-modal-carriers .ex-carrier-card button{margin-top:10px;border:0;background:none;color:var(--blue);font-family:var(--ff);font-size:11.5px;font-weight:700;cursor:pointer;padding:0}'+
+  '.exec-v8 .ex-pricing{margin-top:13px}.exec-v8 .ex-price-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.exec-v8 .ex-price-grid>a,.exec-v8 .ex-price-grid>button{font-family:var(--ff);text-decoration:none;text-align:left;border:1px solid var(--line);background:var(--line-2);border-radius:12px;padding:10px 12px;cursor:pointer;color:var(--tx)}.exec-v8 .ex-price-grid span{font-size:10px;color:var(--tx-3);display:block}.exec-v8 .ex-price-grid b{font-family:var(--ff);font-weight:700;font-size:18px;display:block;color:var(--ink);margin:2px 0}.exec-v8 .ex-price-grid em{font-style:normal;font-size:9.5px;color:var(--tx-2);display:block}.exec-v8 .ex-price-grid>button{background:var(--ink);color:#fff}.exec-v8 .ex-price-grid>button span,.exec-v8 .ex-price-grid>button em{color:#94A3B8}.exec-v8 .ex-price-grid>button b{color:#fff}'+
+  '.exec-v8 .ex-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.exec-v8 .ex-sum-card{text-decoration:none;color:var(--tx);border:1px solid var(--line);background:#fff;border-radius:16px;padding:14px 15px}.exec-v8 .ex-sum-card.lead{background:var(--blue);color:#fff;border-color:var(--blue)}.exec-v8 .ex-sum-card span{display:block;font-size:11px;color:var(--tx-3)}.exec-v8 .ex-sum-card.lead span,.exec-v8 .ex-sum-card.lead em{color:#DCE7FF}.exec-v8 .ex-sum-card b{display:block;font-family:var(--ff);font-weight:700;font-size:24px;margin:6px 0 2px}.exec-v8 .ex-sum-card em{font-style:normal;font-size:10.5px;color:var(--tx-2)}'+
+  '.exec-v8 .ex-flag-wrap{margin-top:12px;background:#FFFBEA;border:1px solid #F6D36C;border-radius:16px;padding:12px}.exec-v8 .ex-flag-head{font-size:13px;font-weight:700;margin-bottom:10px}.exec-v8 .ex-flag-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.exec-v8 .ex-flag-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px}.exec-v8 .ex-flag-card b{display:block;font-size:12px}.exec-v8 .ex-flag-card span{display:block;font-size:10.5px;color:var(--tx-2);margin:5px 0 6px}.exec-v8 .ex-flag-card a{text-decoration:none;color:var(--blue);font-size:11px;font-weight:700}'+
+  '.exec-v8 .ex-price-panels{display:grid;grid-template-columns:1.2fr .8fr;gap:12px;margin-top:12px}.exec-v8 .ex-price-panels .card{min-height:100%}.exec-v8 .ex-price-panels .card h3{margin-bottom:4px}.exec-v8 .ex-price-panels .card .sub{font-size:11px;color:var(--tx-3)}.exec-v8 .ex-price-panels .card .hint{margin-bottom:10px}.exec-v8 .ex-spark{position:relative;width:100%;flex:1 1 auto;min-height:230px;margin-top:8px}.exec-v8 .ex-spark>svg{position:absolute;inset:0;width:100%;height:100%}.exec-v8 .ex-sp-dot{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;background:#2563EB;box-shadow:0 0 0 2px #fff}.exec-v8 .ex-sp-dot.last{width:12px;height:12px;margin:-6px 0 0 -6px;background:var(--red)}.exec-v8 .ex-sp-val{position:absolute;transform:translate(-50%,-185%);font-family:var(--ff);font-size:12px;font-weight:700;color:var(--tx-2);white-space:nowrap}.exec-v8 .ex-sp-val.last{color:var(--red);font-size:14.5px}.exec-v8 .ex-sp-x{position:absolute;bottom:0;transform:translateX(-50%);text-decoration:none;font-size:10px;color:var(--tx-3);white-space:nowrap}'+
+  '.exec-v8 .ex-mix-list{display:flex;flex-direction:column;gap:8px}.exec-v8 .ex-mix-list div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed var(--line);padding-bottom:6px}.exec-v8 .ex-mix-list span{font-size:11.5px}.exec-v8 .ex-mix-list b{font-family:var(--ff);font-weight:700}.exec-v8 .ex-donut-head{display:flex;align-items:baseline;gap:6px;margin:10px 0 12px}.exec-v8 .ex-donut-head b{font-family:var(--ff);font-size:34px;font-weight:700}.exec-v8 .ex-donut-head span{font-size:11px;color:var(--tx-3)}'+
+  '.exec-v8 .ex-bench-row{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:12px}.exec-v8 .ex-bench-row span{display:block;font-size:10.5px;color:var(--tx-3)}.exec-v8 .ex-bench-row b{display:block;font-size:14px}.exec-v8 .ex-bench-row em{font-style:normal;font-size:11px;color:var(--blue);font-weight:700}'+
+  '.exec-v8 .ex-bars{display:flex;flex-direction:column;gap:8px}/* แท่งนอนของ Margin ทั้งพอร์ต: เพิ่มคอลัมน์ % และระบายสีตามช่วง margin ไม่ใช่แดงหมดเหมือนการ์ดต้นทุน */.exec-v8 .ex-spread2{gap:10px;margin-top:4px}.exec-v8 .ex-spread2 .ex-bar-row{grid-template-columns:78px 1fr 54px 40px}.exec-v8 .ex-spread2 .ex-bar{height:14px}.exec-v8 .ex-spread2 .ex-bar-row b{text-align:right;font-size:15px;color:var(--ink)}.exec-v8 .ex-spread2 .ex-bar-row em{font-style:normal;text-align:right;font-size:10.5px;color:var(--tx-3)}.exec-v8 .ex-spread2 .red .ex-bar i{background:var(--red)}.exec-v8 .ex-spread2 .amber .ex-bar i{background:var(--amber)}.exec-v8 .ex-spread2 .green .ex-bar i{background:#65A30D}.exec-v8 .ex-spread2 .blue .ex-bar i{background:#2563EB}.exec-v8 .ex-bar-row{display:grid;grid-template-columns:1.4fr 1fr auto;gap:8px;align-items:center}.exec-v8 .ex-bar-row span{font-size:11px}.exec-v8 .ex-bar{height:8px;background:var(--line);border-radius:999px;overflow:hidden}.exec-v8 .ex-bar i{display:block;height:100%;background:var(--red)}.exec-v8 .ex-bar-row b{font-family:var(--ff);font-weight:700;color:var(--red)}'+
+  '.exec-v8 .ex-spread{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:end;min-height:160px}.exec-v8 .ex-spread>div{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px}.exec-v8 .ex-spread>div i{display:block;width:100%;max-width:72px;background:var(--amber);border-radius:10px 10px 0 0}.exec-v8 .ex-spread>div.red i{background:var(--red)}.exec-v8 .ex-spread>div.green i{background:#65A30D}.exec-v8 .ex-spread>div.blue i{background:#2563EB}.exec-v8 .ex-spread b{font-family:var(--ff);font-weight:700;font-size:24px}.exec-v8 .ex-spread span{font-size:10px;color:var(--tx-3)}'+
+  '.exec-v8 .ex-grade-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.exec-v8 .ex-grade-grid>div{border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center;background:#fff}.exec-v8 .ex-grade-grid span{display:block;font-size:28px;font-weight:700}.exec-v8 .ex-grade-grid b{display:block;font-family:var(--ff);font-weight:700;font-size:28px;line-height:1}.exec-v8 .ex-grade-grid em{display:block;font-style:normal;font-size:10px;color:var(--tx-3);margin-top:5px}.exec-v8 .ex-grade-grid .gA span{color:#16A34A}.exec-v8 .ex-grade-grid .gB span{color:#65A30D}.exec-v8 .ex-grade-grid .gC span{color:#D97706}.exec-v8 .ex-grade-grid .gD span{color:#EA580C}.exec-v8 .ex-grade-grid .gF span{color:#DC2626}'+
+  '.exec-v8 .ex-send{margin-top:10px}.exec-v8 .ex-send-bar{height:8px;background:var(--line);border-radius:999px;overflow:hidden}.exec-v8 .ex-send-bar i{display:block;height:100%;background:var(--blue)}.exec-v8 .ex-send-num{margin-top:10px;font-size:13px}.exec-v8 .ex-send-num b{font-family:var(--ff);font-weight:700;font-size:26px;margin-right:6px}.exec-v8 .ex-send-foot{margin-top:10px;font-size:11px;color:var(--tx-2)}'+
+'.exec-v8 .ex-att-go{color:var(--blue);font-size:11.5px;font-weight:700;white-space:nowrap}.exec-v8 .ex-fix-btn,.ex-fin-modal .ex-fix-btn{font-family:var(--ff);border:1px solid var(--blue-b);background:var(--blue-l);color:var(--blue);border-radius:8px;padding:5px 8px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap}.exec-v8 .ex-fix-btn.done,.ex-fin-modal .ex-fix-btn.done{background:var(--green-l);color:var(--green);border-color:var(--green-b)}.exec-v8 .ex-fix-btn:disabled,.ex-fin-modal .ex-fix-btn:disabled{cursor:default;opacity:.85}'+
+  '.exec-v8 .ex-profit-pie-wrap{display:flex;align-items:center;gap:20px;margin:14px 0}.exec-v8 .ex-profit-pie{width:170px;height:170px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(15,23,42,.05);flex:0 0 auto}.exec-v8 .ex-profit-total b{display:block;font-size:28px;font-weight:700}.exec-v8 .ex-profit-total span{font-size:11px;color:var(--tx-3)}.exec-v8 .ex-profit-legend{display:grid;grid-template-columns:1fr 1fr;gap:7px 20px;margin-top:2px}.exec-v8 .ex-profit-legend>div{display:grid;grid-template-columns:10px 1fr auto 42px;gap:8px;align-items:center;border-bottom:1px dashed var(--line);padding-bottom:5px}.exec-v8 .ex-profit-legend i{width:8px;height:8px;border-radius:50%}.exec-v8 .ex-profit-legend span{font-size:11px}.exec-v8 .ex-profit-legend b{font-size:11px;font-weight:700}.exec-v8 .ex-profit-legend em{font-style:normal;font-size:10px;color:var(--tx-3);text-align:right}'+
+    '.ex-modal-list{display:flex;flex-direction:column;gap:7px}.ex-detail-kpi{background:var(--blue-l);border:1px solid var(--blue-b);border-radius:12px;padding:13px;margin-bottom:12px}.ex-detail-kpi b{font-family:var(--ff);font-weight:700;font-size:25px;display:block}.ex-detail-kpi span{font-size:11px;color:var(--tx-3)}'+
+  '.exec-v8 .ex-hierarchy{margin:0 0 10px}.exec-v8 .ex-hierarchy span{display:block;font-size:10px;color:var(--tx-3);text-transform:uppercase;letter-spacing:.12em;font-weight:700;margin-bottom:4px}.exec-v8 .ex-hierarchy b{font-size:15px}.exec-v8 .ex-kpi-row-label{font-size:10.5px;color:var(--tx-3);font-weight:600;margin:12px 0 6px}.exec-v8 .ex-kpi.money{position:relative}.exec-v8 .ex-kpi-open{display:block;margin-top:8px;color:var(--blue);font-size:10.5px;font-weight:700}.exec-v8 .ex-finance{margin-top:12px;scroll-margin-top:18px}.exec-v8 .ex-fin-tabs{display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px}.exec-v8 .ex-fin-tabs button{font-family:var(--ff);border:1px solid var(--line);background:#fff;border-radius:10px;padding:7px 11px;font-size:11.5px;font-weight:600;cursor:pointer}.exec-v8 .ex-fin-tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}.exec-v8 .ex-fin-tabs>span{margin-left:auto;font-size:10.5px;color:var(--tx-3)}.exec-v8 .ex-fin-head{display:flex;justify-content:space-between;gap:18px;align-items:start;margin-bottom:12px}.exec-v8 .ex-fin-head b{display:block;font-size:15px}.exec-v8 .ex-fin-head span{font-size:10.5px;color:var(--tx-3)}.exec-v8 .ex-source-note{text-align:right;font-size:10.5px;color:var(--tx-2);background:var(--line-2);padding:8px 10px;border-radius:10px}.exec-v8 .ex-fin-mini{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0 12px}.exec-v8 .ex-fin-mini>div{border:1px solid var(--line);border-radius:12px;padding:9px 11px;background:#fff}.exec-v8 .ex-fin-mini>div.warn{background:var(--amber-l);border-color:var(--amber-b)}.exec-v8 .ex-fin-mini>div.danger{background:var(--red-l);border-color:var(--red-b)}.exec-v8 .ex-fin-mini span{font-size:10px;color:var(--tx-3);display:block}.exec-v8 .ex-fin-mini b{font-size:18px;font-weight:700;display:block;margin-top:2px}.exec-v8 .ex-fin-mini b.sm{font-size:12px}.exec-v8 .ex-fin-table{overflow:auto;border:1px solid var(--line);border-radius:12px}.exec-v8 .ex-fin-table table{width:100%;border-collapse:collapse;min-width:930px}.exec-v8 .ex-fin-table th{font-size:9.5px;letter-spacing:.04em;color:var(--tx-3);font-weight:600;text-align:left;background:var(--line-2);padding:8px 9px;border-bottom:1px solid var(--line)}.exec-v8 .ex-fin-table td{font-size:10.5px;padding:9px;border-bottom:1px solid var(--line);vertical-align:top}.exec-v8 .ex-fin-table tr:last-child td{border-bottom:0}.exec-v8 .ex-fin-table td.num{text-align:right;white-space:nowrap}.exec-v8 .ex-fin-table td.strong{font-weight:700;color:var(--red)}.exec-v8 .ex-fin-table td small{display:block;color:var(--tx-3);font-size:9px;margin-top:2px}.exec-v8 .ex-row-status{display:block;font-weight:600}.exec-v8 .ex-state{display:inline-block;border-radius:99px;padding:3px 7px;font-size:9.5px;font-weight:700;background:var(--line-2);white-space:nowrap}.exec-v8 .ex-state.green{background:var(--green-l);color:var(--green)}.exec-v8 .ex-state.red{background:var(--red-l);color:var(--red)}.exec-v8 .ex-state.amber{background:var(--amber-l);color:var(--amber)}.exec-v8 .ex-owner-strip{display:grid;grid-template-columns:1fr auto 1fr auto 1fr auto 1fr;gap:8px;align-items:center;margin:12px 0}.exec-v8 .ex-owner-strip>div{border:1px solid var(--line);border-radius:11px;padding:8px 10px}.exec-v8 .ex-owner-strip b{display:block;font-size:11px}.exec-v8 .ex-owner-strip span{font-size:9.5px;color:var(--tx-3)}.exec-v8 .ex-owner-strip i{font-style:normal;color:var(--tx-3)}.exec-v8 .ex-data-health{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}.exec-v8 .ex-health-head{display:flex;justify-content:space-between;gap:12px}.exec-v8 .ex-health-head b{display:block;font-size:12px}.exec-v8 .ex-health-head span{font-size:10px;color:var(--tx-3)}.exec-v8 .ex-reconcile{background:var(--green-l);color:var(--green)!important;border-radius:99px;padding:4px 8px;height:max-content}.exec-v8 .ex-sync-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.exec-v8 .ex-sync-grid>div{border:1px solid var(--line);border-radius:11px;padding:8px 9px}.exec-v8 .ex-sync-grid>div.warn{border-color:var(--amber-b);background:var(--amber-l)}.exec-v8 .ex-sync-grid span,.exec-v8 .ex-sync-grid em,.exec-v8 .ex-sync-grid small{display:block}.exec-v8 .ex-sync-grid span{font-size:9.5px;color:var(--tx-3)}.exec-v8 .ex-sync-grid b{font-size:11px}.exec-v8 .ex-sync-grid em{font-size:9px;color:var(--tx-2);font-style:normal;margin-top:2px}.exec-v8 .ex-sync-grid small{font-size:8.5px;color:var(--tx-3);margin-top:4px}.exec-v8 .ex-checks{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}.exec-v8 .ex-checks span{font-size:9.5px;background:var(--amber-l);color:var(--amber);padding:5px 8px;border-radius:99px}.exec-v8 .ex-checks b{font-weight:700}.exec-v8 .ex-group-note{font-size:11px;color:var(--tx-3);margin:2px 0 10px}.exec-v8 .ex-decision-first{background:linear-gradient(180deg,#fff,#FCFCFD);border:1px solid var(--line);border-radius:16px;padding:12px;margin-bottom:14px}'+
+  '@media(max-width:1180px){.exec-v8 .ex-summary-grid,.exec-v8 .ex-flag-row,.exec-v8 .ex-price-grid,.exec-v8 .ex-carrier-grid,.ex-modal-carriers{grid-template-columns:repeat(2,1fr)}.exec-v8 .ex-price-panels{grid-template-columns:1fr}.exec-v8 .ex-business-grid,.exec-v8 .ex-business-grid2{grid-template-columns:1fr}}'+
+  '@media(max-width:900px){.exec-v8 .ex-kpis{grid-template-columns:repeat(2,1fr)}.exec-v8 .ex-delivery-summary,.exec-v8 .ex-mini-grid{grid-template-columns:repeat(2,1fr)}.exec-v8 .ex-flow{display:grid;grid-template-columns:1fr 1fr}.exec-v8 .ex-flow-arrow{display:none}}'+
+  '@media(max-width:900px){.exec-v8 .ex-fin-mini,.exec-v8 .ex-sync-grid{grid-template-columns:repeat(2,1fr)}.exec-v8 .ex-owner-strip{grid-template-columns:1fr}.exec-v8 .ex-owner-strip i{display:none}.exec-v8 .ex-fin-head,.exec-v8 .ex-health-head{flex-direction:column}.exec-v8 .ex-source-note{text-align:left}}'+
+  '@media(max-width:620px){.exec-v8 .ex-kpis,.exec-v8 .ex-summary-grid,.exec-v8 .ex-flag-row,.exec-v8 .ex-price-grid,.exec-v8 .ex-carrier-grid,.ex-modal-carriers,.exec-v8 .ex-delivery-summary,.exec-v8 .ex-fin-mini,.exec-v8 .ex-sync-grid{grid-template-columns:1fr}.exec-v8 .ex-fin-tabs{flex-wrap:wrap}.exec-v8 .ex-fin-tabs>span{width:100%;margin-left:0}}'+
+  '.exec-v12 .ex-att{text-decoration:none;color:var(--tx);width:100%;font-family:var(--ff);text-align:left;cursor:pointer}.exec-v12 .ex-att-go{color:var(--blue);font-size:11.5px;font-weight:700;white-space:nowrap}.exec-v12 .ex-kpi{text-decoration:none;color:var(--tx)}'+
+  '.exec-v12 .ex-resolution-center{margin-top:0}.exec-v12 .ex-workspace{display:block;background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;min-height:560px}'+
+  '.exec-v12 .ex-ws-head{border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:14px}.exec-v12 .ex-ws-back{display:inline-block;color:var(--blue);background:none;border:0;padding:0;font-family:var(--ff);cursor:pointer;font-size:11.5px;font-weight:700;margin-bottom:13px}.exec-v12 .ex-ws-head>span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--tx-3);font-weight:700}.exec-v12 .ex-ws-head h2{font-size:22px;margin:4px 0 3px;color:var(--ink)}.exec-v12 .ex-ws-head p{font-size:12px;color:var(--tx-2);margin:0}'+
+  '.exec-v12 .ex-ws-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:12px 0}.exec-v12 .ex-ws-kpis>div{border:1px solid var(--line);border-radius:12px;padding:11px 12px;background:var(--line-2)}.exec-v12 .ex-ws-kpis span{display:block;font-size:10px;color:var(--tx-3)}.exec-v12 .ex-ws-kpis b{display:block;font-size:20px;margin-top:2px}'+
+  '.exec-v12 .ex-ws-table{overflow:auto;border:1px solid var(--line);border-radius:13px;margin-top:12px}.exec-v12 .ex-ws-table table{width:100%;border-collapse:collapse;min-width:960px}.exec-v12 .ex-ws-table th{background:var(--line-2);font-size:9.5px;color:var(--tx-3);text-align:left;padding:9px;border-bottom:1px solid var(--line)}.exec-v12 .ex-ws-table td{font-size:10.5px;padding:9px;border-bottom:1px solid var(--line);vertical-align:middle}.exec-v12 .ex-ws-table tr:last-child td{border-bottom:0}.exec-v12 .ex-ws-table td small{display:block;color:var(--tx-3);font-size:9px;margin-top:2px}.exec-v12 .ex-ws-table td.danger{color:var(--red);font-weight:700}.exec-v12 .ex-ws-table td.warn{color:var(--amber);font-weight:700}.exec-v12 .ex-ws-table select,.exec-v12 .ex-ws-table input{font-family:var(--ff);font-size:10.5px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:#fff}.exec-v12 .ex-ws-table a{color:var(--blue);font-weight:700;text-decoration:none;white-space:nowrap}'+
+  '.exec-v12 .ex-ws-source{display:grid;grid-template-columns:1fr 1.5fr 1fr auto;gap:8px;align-items:center;background:#F8FAFC;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:12px}.exec-v12 .ex-ws-source span{display:block;font-size:9px;color:var(--tx-3)}.exec-v12 .ex-ws-source b{display:block;font-size:10.5px}.exec-v12 .ex-ws-source a,.exec-v12 .ex-ws-source button{color:var(--blue);font-size:10.5px;font-weight:700;text-decoration:none;white-space:nowrap;background:none;border:0;font-family:var(--ff);cursor:pointer}'+
+  '.exec-v12 .ex-ws-next{display:flex;gap:12px;align-items:center;border:1px solid var(--blue-b);background:var(--blue-l);border-radius:12px;padding:11px 12px;margin-top:12px}.exec-v12 .ex-ws-next b{font-size:11px;white-space:nowrap}.exec-v12 .ex-ws-next span{font-size:10.5px;color:var(--tx-2);flex:1}.exec-v12 .ex-ws-next a,.exec-v12 .ex-ws-next button{background:var(--blue);color:#fff;text-decoration:none;border:0;border-radius:9px;padding:7px 10px;font-family:var(--ff);cursor:pointer;font-size:10.5px;font-weight:700;white-space:nowrap}.exec-v12 .ex-ws-next button.done{background:var(--green)}'+
+  '.exec-v12 .ex-margin-causes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.exec-v12 .ex-margin-causes>div{border:1px solid var(--red-b);background:var(--red-l);border-radius:12px;padding:10px}.exec-v12 .ex-margin-causes span{display:block;font-size:10px;color:var(--tx-2)}.exec-v12 .ex-margin-causes b{display:block;color:var(--red);font-size:18px;margin-top:3px}'+
+  '@media(max-width:900px){.exec-v12 .ex-ws-kpis,.exec-v12 .ex-margin-causes{grid-template-columns:1fr}.exec-v12 .ex-ws-source{grid-template-columns:1fr 1fr}.exec-v12 .ex-ws-next{align-items:flex-start;flex-direction:column}}'+
+  '</style>';
+
+  if(EXEC_VIEW!=='overview'){
+    h += '<div class="exec-v8 exec-v12 exec-v13">' + PX.head('Executive Resolution Center',
+      'แก้ปัญหาเฉพาะเรื่อง · เห็นรายการ เจ้าของข้อมูล ที่มา และ action ที่ต้องทำ',
+      ['หมิง','พี่หมิง (MD)','ผู้บริหาร ตัดสินใจ'], {back:'execBack', backLabel:'กลับภาพรวม'});
+    h += '<div class="ex-resolution-center">'+resolutionFor(EXEC_VIEW)+'</div></div>';
+  document.getElementById('main').innerHTML=h;
+    bindExecActions(document.getElementById('main'));
+    PX.bindTips();
+    return;
+  }
+
+  h += '<div class="exec-v8 exec-v12 exec-v13"><div id="exec-top"></div><div class="ex-overview">' + PX.head('ภาพรวมธุรกิจ (Executive)',
+    'ยอดขาย · เงินเข้า · Prospect · Margin · Delivery · Pricing ในหน้าตัดสินใจเดียว',
+    ['หมิง','พี่หมิง (MD)','ผู้บริหาร ตัดสินใจ']);
+  h += '<div class="ex-period">'+roundPill()+'</div>';
+
+  var p1 = '<div class="ex-decision-first"><div class="ex-hierarchy"><span>Decide now</span><b>สิ่งที่ต้องตัดสินใจหรือส่งต่อเจ้าของงานวันนี้</b></div><div class="ex-att-list">'+attentionRows(false)+'</div></div>';
+
+  var p2 = '<div class="ex-section"><div class="ex-hierarchy"><span>Business health</span><b>เงินวันนี้ → กำไร/อนาคต → คุณภาพการส่งมอบ</b></div>'+
+    '<div class="ex-kpi-row-label">เงินวันนี้ · Sales → Invoice → Cash</div><div class="ex-kpis">'+
+    actualRevenueCard()+
+    (AR&&AR.invoices?moneyKpiCard('🏦','เงินเข้าแล้ว','฿'+mm(AR.received),'','บิลที่ถึงกำหนด ฿'+mm(AR.due)+' เก็บได้ ฿'+mm(AR.collected),(AR.collectPct!=null?'เก็บได้ '+AR.collectPct+'% ของที่ถึงกำหนด':'ยังไม่มีบิลถึงกำหนด'),AR.collectPct!=null&&AR.collectPct<90?'red':'','cash')
+      :moneyKpiCard('🏦','เงินเข้าแล้ว','—','','ยังไม่มีบิล — นำเข้าไฟล์ e-Today แล้วยอดเงินเข้าขึ้นเอง','ยังไม่มีข้อมูล','none','cash'))+
+    (AR&&AR.invoices?moneyKpiCard('⏰','เงินค้างรับ','฿'+mm(AR.outstanding),'','เกินกำหนด ฿'+mm(AR.overdue)+' · จ่ายไม่ครบ ฿'+money(AR.shortPaid),'฿'+mm(AR.overdue)+' overdue',AR.overdue?'red':'','ar')
+      :moneyKpiCard('⏰','เงินค้างรับ','—','','ยังไม่มีบิล — ค้างรับ/เกินกำหนดคิดจากบิล + เงินรับ','ยังไม่มีข้อมูล','none','ar'))+
+    '</div><div class="ex-kpi-row-label">กำไร · โอกาสเติบโต · การส่งมอบ</div><div class="ex-kpis">'+
+    actualMarginCard()+
+    (PRS&&PRS.rows&&PRS.rows.length?kpiCard('🧲','Prospect Health',PRS.summary.active,' ราย','Pipeline ฿'+mm(PRS.summary.pipeline)+'/เดือน · เงียบ '+PRS.summary.idle+' ราย',PRS.summary.idle+' at risk',PRS.summary.idle?'red':'','prospect')
+      :kpiCard('🧲','Prospect Health','—','','ยังไม่มี prospect — กดเพื่อเพิ่ม','ยังไม่มีข้อมูล','none','prospect'))+
+    (DLV&&DLV.overall&&DLV.overall.total?kpiCard('🚚','Delivery Score',DLV.overall.score,'/100','On-time '+DLV.overall.onTime+'% · In-full '+DLV.overall.inFull+'%',DLV.overall.delayed+' delayed',DLV.overall.score<80?'red':DLV.overall.delayed?'amber':'','delivery')
+      :kpiCard('🚚','Delivery Score','—','','ยังไม่มีรอบส่งที่บันทึก — บันทึกที่แท็บ Operation','ยังไม่มีข้อมูล','none','delivery'))+
+    '</div>'+actualSalesPanel()+'</div>';
+
+  var p3 = '<div class="ex-section"><div class="ex-hierarchy"><span>Growth & customer</span><b>Pipeline ใหม่ ลูกค้าที่เสี่ยงหาย และ margin จากฐานลูกค้า</b></div><div class="ex-business-grid">'+prospectPanel()+marginPanel()+'</div></div>';
+  var p4 = '<div class="ex-section"><div class="ex-hierarchy"><span>Operations</span><b>ขนส่งเจ้าไหนทำงานดี รอบไหนเริ่มผิด SLA และปัญหาที่ลูกค้าเคยแจ้ง</b></div>'+deliveryPanel()+'</div>';
+  var p5 = '<div class="ex-section"><div class="ex-hierarchy"><span>Pricing intelligence</span><b>ต้นทุน ตลาด Margin Guard และสถานะใบราคา ใช้เป็นข้อมูลประกอบการตัดสินใจ</b></div>'+pricingPerformancePanel()+pricingPanel()+'</div>';
+
+  var TABS=[
+    ['overview','Overview','ออกราคา · Pricing AI'],
+    ['health','Business health','เงิน · ลูกค้า · ตัดสินใจ'],
+    ['ops','Operation','ปัญหาลูกค้า · ขนส่ง']
+  ];
+  if(!TABS.some(function(t){return t[0]===EXEC_TAB})) EXEC_TAB='overview';
+  h += '<div class="ex-tabs" role="tablist">'+TABS.map(function(t){
+    return '<button type="button" role="tab" data-exec-tab="'+t[0]+'" class="'+(EXEC_TAB===t[0]?'on':'')+'" onclick="execTab('+jsq(t[0])+')"><b>'+t[1]+'</b><span>'+t[2]+'</span></button>';
+  }).join('')+'</div>';
+  h += '<div data-exec-pane="overview"'+(EXEC_TAB==='overview'?'':' hidden')+'>'+p5+'</div>';
+  h += '<div data-exec-pane="health"'+(EXEC_TAB==='health'?'':' hidden')+'>'+p2+p3+p1+'</div>';
+  h += '<div data-exec-pane="ops"'+(EXEC_TAB==='ops'?'':' hidden')+'>'+p4+'</div>';
+  h += '</div></div>';
+
+  document.getElementById('main').innerHTML=h;
+  bindExecActions(document.getElementById('main'));
+  if(D.totals) PX.badge('low',(D.totals.lineLow||0)+' หลุดเกณฑ์');
+  var fs=document.getElementById('floatSub');
+  if(fs) fs.textContent=[AR&&AR.overdue?'เกินกำหนด ฿'+mm(AR.overdue):'', PRS&&PRS.summary.idle?PRS.summary.idle+' prospect เงียบ':'',
+    DLV&&(DLV.pending||[]).length?(DLV.pending.length+' รอบรอใส่เวลา'):''].filter(Boolean).join(' · ')||'ไม่มีเรื่องเร่งด่วน';
+  PX.bindTips();
+}
+
+/* โหลดพร้อมกันทุกเส้น (เดิมต่อคิวทีละเส้น) — /api/review คือแกน ถ้าล้มทั้งหน้าบอกว่าเปิดไม่ได้ เส้นอื่นล้ม = ส่วนนั้นบอกว่าโหลดไม่ได้ */
+Promise.all([
+  PX.get('/api/review').then(function(j){ D=j; }),
+  PX.get('/api/guard').then(function(g){GD=g;}).catch(function(){GD=null;}),
+  PX.get('/api/sends').then(function(sd){SD=sd;}).catch(function(){SD=null;}),
+  PX.get('/api/category-guard').then(function(c){CG=c;}).catch(function(){CG=null;}),
+  PX.get('/api/service-logs').then(function(l){SL=l;}).catch(function(){SL=null;}),
+  PX.get('/api/invoices').then(function(a){ACT=a;ACT_ERR='';}).catch(function(e){ACT=null;ACT_ERR=(e&&e.message)||'โหลดไม่ได้';}),
+  PX.get('/api/me').then(function(me){ROLE=me&&me.role||'';}).catch(function(){})
+]).then(reloadOps).then(loadAttention).catch(PX.fail);
+
+</script>
+</body></html>

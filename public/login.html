@@ -1,0 +1,125 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>เข้าระบบ · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+</head><body class="lg">
+<script src="/peach.js"></script>
+<script>
+/* หน้าเข้าระบบ — ประตูเดียวของทั้งระบบ
+   บนเว็บจริงทุกบทบาทต้องมีรหัส · ในเครื่องไม่ต้องมี หน้าจึงต้องรู้เองว่าอยู่ที่ไหน
+   เคยพลาด: ย้ายดีไซน์แล้วลืมหน้านี้ไว้กับของเก่า ทุกคนเลยเจอ 401 แล้วเข้าไม่ได้เลย */
+var esc = PX.esc;
+var R = [
+  { k: 'boss',  ic: '👔', t: 'Executive · พี่หมิง', s: 'ประกาศราคา · ตัดสินใจ', go: '/exec' },
+  { k: 'ops',   ic: '🧮', t: 'พี่จุ๋ม',              s: 'ออกราคา · พุธ',         go: '/pricing' },
+  { k: 'sale',  ic: '📊', t: 'ทีมขาย',              s: 'ดูราคาที่ประกาศ · เปิดใบราคา', go: '/sales' },
+  { k: 'admin', ic: '🔧', t: 'อิ๊บ',                s: 'ผู้ดูแลระบบ',            go: '/exec' }
+];
+var NEED = true, PICK = null, BUSY = false;
+
+function nextUrl(def) {
+  var q = new URLSearchParams(__NAV.search).get('next');
+  /* รับเฉพาะเส้นทางในเว็บนี้ — กันคนยัดลิงก์นอกมาเป็น next แล้วพาคนออกไปที่อื่น */
+  return (q && /^\/[A-Za-z0-9\-\/]*$/.test(q) && q.indexOf('//') < 0) ? q : def;
+}
+
+function draw() {
+  document.body.innerHTML =
+    '<div class="lgw"><div class="lgc">' +
+      '<div class="lgl">' +
+        '<div class="brand"><span class="mk">F</span>' +
+          '<span><b>Freshour</b><span>ราคาหมูสด</span></span></div>' +
+        '<h1>ตั้งราคาทั้งสัปดาห์<br>จากที่เดียว</h1>' +
+        '<p>ทุน ราคาตลาด สัญญาลูกค้า และกำไรที่เหลือจริง — ' +
+          'อยู่ในกระดานเดียวกัน ทุกตัวเลขบอกได้ว่ามาจากไหน</p>' +
+        '<ul class="lgf">' +
+          '<li><i>📦</i><span><b>อังคาร</b> โรงงานส่งทุน</span></li>' +
+          '<li><i>🧮</i><span><b>พุธ</b> จบราคาทีละเจ้า</span></li>' +
+          '<li><i>📢</i><span><b>พฤหัส</b> ประกาศ + ออกใบราคา</span></li>' +
+        '</ul>' +
+      '</div>' +
+      '<div class="lgr">' +
+        '<div class="lgh"><b>เข้าในฐานะใคร</b>' +
+          '<span id="lgSub">' + (NEED ? 'เลือกชื่อ แล้วใส่รหัสของตัวเอง'
+                                       : 'เครื่องนี้ไม่ต้องใส่รหัส — เลือกแล้วเข้าได้เลย') + '</span></div>' +
+        '<div class="lgs">' + R.map(function (r) {
+          return '<button class="lgb' + (PICK === r.k ? ' on' : '') + '" data-r="' + r.k + '">' +
+            '<i>' + r.ic + '</i><span><b>' + esc(r.t) + '</b><em>' + esc(r.s) + '</em></span>' +
+            '<u>' + (PICK === r.k ? '✓' : '›') + '</u></button>';
+        }).join('') + '</div>' +
+        (NEED && PICK
+          /* เป็น form จริง เพราะกด Enter ต้องเข้าได้ ไม่ใช่ต้องเล็งปุ่ม
+             เคยผูกแค่ onkeydown แล้ว Enter เงียบ — คนพิมพ์รหัสแล้วนึกว่าระบบค้าง */
+          ? '<form class="lgp" id="pinF"><label for="pin">รหัสของ' + esc(nameOf(PICK)) + '</label>' +
+            '<input id="pin" type="password" inputmode="text" autocomplete="current-password" ' +
+              'placeholder="ใส่รหัส แล้วกด Enter">' +
+            '<button class="go" type="submit">เข้าระบบ</button>' +
+            '<p class="msg" id="msg"></p></form>'
+          : '') +
+        '<p class="lgn">ลืมรหัส — ให้ผู้ดูแลตั้งใหม่ให้ ระบบไม่เก็บรหัสไว้ให้ดู · ' +
+          'ใส่ผิดจะถูกบันทึกว่าใครใส่เมื่อไร</p>' +
+      '</div>' +
+    '</div></div>';
+  bind();
+}
+function nameOf(k) { for (var i = 0; i < R.length; i++) if (R[i].k === k) return R[i].t; return ''; }
+function goOf(k) { for (var i = 0; i < R.length; i++) if (R[i].k === k) return R[i].go; return '/exec'; }
+
+function bind() {
+  document.querySelectorAll('[data-r]').forEach(function (b) {
+    b.onclick = function () {
+      PICK = b.dataset.r;
+      if (!NEED) return send('');
+      draw();
+      var el = document.getElementById('pin');
+      if (el) el.focus();
+    };
+  });
+  var frm = document.getElementById('pinF');
+  if (frm) frm.onsubmit = function (e) {
+    e.preventDefault();
+    send(document.getElementById('pin').value);
+  };
+}
+
+function say(t, bad) {
+  var m = document.getElementById('msg');
+  if (!m) return;
+  m.textContent = t;
+  m.className = 'msg' + (bad ? ' bad' : '');
+}
+
+function send(pin) {
+  if (BUSY) return;
+  BUSY = true; say('กำลังตรวจ…', false);
+  fetch('/api/login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(pin ? { role: PICK, pin: pin } : { role: PICK })
+  }).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (j) {
+      BUSY = false;
+      if (r.ok) { __NAV.href= nextUrl(goOf(PICK)); return; }
+      say(j.error || (r.status === 401 ? 'รหัสไม่ถูกต้อง' : 'เข้าไม่ได้ (' + r.status + ')'), true);
+      var c = document.querySelector('.lgp');
+      if (c) { c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake'); }
+      var el = document.getElementById('pin');
+      if (el) { el.value = ''; el.focus(); }
+    });
+  }).catch(function () { BUSY = false; say('ต่อเน็ตไม่ได้ ลองใหม่อีกครั้ง', true); });
+}
+
+/* ล็อกอินอยู่แล้วไม่ต้องมาถามซ้ำ — พาไปหน้าที่บทบาทนั้นเริ่มงานจริงเลย */
+fetch('/api/me', { credentials: 'same-origin' })
+  .then(function (r) { return r.json(); })
+  .then(function (me) {
+    if (me && me.role) { location.replace(nextUrl(goOf(me.role))); return; }
+    NEED = me.needPin !== false;
+    draw();
+  })
+  .catch(function () { draw(); });
+</script>
+</body></html>

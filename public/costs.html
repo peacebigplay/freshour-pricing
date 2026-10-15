@@ -1,0 +1,438 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>รับทุน &amp; ตลาด · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+</head><body>
+<script src="/peach.js"></script>
+<script>
+/* รับทุน & ตลาด — งานวันอังคาร
+   หน้านี้ไม่ออกราคา มีหน้าที่เดียวคือรับตัวเลขเข้าระบบให้ครบและถูก */
+var esc = PX.esc, money = PX.money, W = PX.why;
+/* ค่าที่ใส่ใน onclick ต้องเป็นสตริง JS ที่ปลอดภัยทั้งในฐานะ JS และ attribute — รหัสสินค้า/ลูกค้ามาจากคนพิมพ์ได้ */
+function jsq(v) { return JSON.stringify(String(v == null ? '' : v)).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+var D = null, G = 'all', Q = '', PG = 0, PER = 20, ONLY = '';
+(function () {
+  var q = new URLSearchParams(__NAV.search);
+  if (q.get('q')) Q = q.get('q');
+  if (q.get('g')) G = q.get('g');
+  if (q.get('only')) ONLY = q.get('only');
+})();
+
+PX.shell('cost',
+  '<div class="float"><div class="ic">📦</div><b>ทุนเข้าครบหรือยัง</b>' +
+  '<span id="floatSub">กำลังอ่าน…</span>' +
+  '<button onclick="pasteCost()">วางทุนจาก Excel</button></div>');
+
+/* ── บันทึกจริงทุกช่อง ────────────────────────────────────────────
+   ทุน/ปริมาณ → /api/products/:id · ราคาตลาด → /api/competitor-prices
+   บันทึกทันทีที่ออกจากช่อง แล้วดึงข้อมูลใหม่ให้ตัวเลขสรุปข้างบนขยับตาม */
+function reload(msg) {
+  return PX.get('/api/pricelist').then(function (j) {
+    var v = {}; D.rows.forEach(function (r) { v[r.id] = r.vol; });
+    D = j; D.rows.forEach(function (r) { r.vol = v[r.id] || 0; });
+    return PX.get('/api/board').then(function (b) {
+      var m = {}; (b.lines || []).forEach(function (l) { m[l.id] = l.vol; });
+      D.rows.forEach(function (r) { r.vol = m[r.id] || 0; });
+      draw();
+      if (msg) PX.toast(msg);
+    });
+  });
+}
+
+function saveCost(id, val) {
+  var n = Math.round(Number(val));
+  if (!isFinite(n) || n < 0) { PX.toast('ทุนต้องเป็นตัวเลข', 'bad'); return; }
+  var r = D.rows.filter(function (x) { return x.id === id; })[0] || {};
+  if (n === r.cost) return;
+  PX.post('/api/costs', { items: [{ id: id, cost: n }] })
+    .then(function () { return reload('บันทึกทุน ' + PX.esc(r.name) + ' = <b>' + n + ' ฿</b>'); })
+    .catch(function (e) { PX.toast('บันทึกไม่สำเร็จ — ' + PX.esc(e.message), 'bad'); });
+}
+
+function saveVol(id, val) {
+  var n = Number(val);
+  if (!isFinite(n) || n < 0) { PX.toast('ปริมาณต้องเป็นตัวเลข', 'bad'); return; }
+  var r = D.rows.filter(function (x) { return x.id === id; })[0] || {};
+  if (n === r.vol) return;
+  PX.post('/api/products/' + id, { vol_week: n })
+    .then(function () { return reload('บันทึกปริมาณ ' + PX.esc(r.name) + ' = <b>' + n + ' กก./สัปดาห์</b>'); })
+    .catch(function (e) { PX.toast('บันทึกไม่สำเร็จ — ' + PX.esc(e.message), 'bad'); });
+}
+
+function saveMkt(id, cid, val) {
+  var n = val === '' ? 0 : Math.round(Number(val));
+  if (!isFinite(n) || n < 0) { PX.toast('ราคาต้องเป็นตัวเลข', 'bad'); return; }
+  var r = D.rows.filter(function (x) { return x.id === id; })[0] || {};
+  var m = (r.marks || []).filter(function (x) { return x.id === cid; })[0] || {};
+  if (n === (m.price || 0)) return;
+  PX.post('/api/competitor-prices', { items: [{ product_id: id, competitor_id: cid, price: n }] })
+    .then(function () {
+      return reload(n ? 'บันทึกราคา ' + PX.esc(m.label) + ' = <b>' + n + ' ฿</b> · ประทับวันที่วันนี้ให้แล้ว'
+                      : 'ลบราคา ' + PX.esc(m.label) + ' ออกแล้ว');
+    })
+    .catch(function (e) { PX.toast('บันทึกไม่สำเร็จ — ' + PX.esc(e.message), 'bad'); });
+}
+
+/* ── วางทุนจาก Excel ── */
+function pasteCost() {
+  PX.modal({
+    title: 'วางทุนจาก Excel',
+    sub: 'คัดลอกจากไฟล์โรงงานมาวางตรงนี้ · หนึ่งบรรทัดต่อหนึ่งรายการ ชื่อสินค้า [แท็บ/จุลภาค] ทุน',
+    fields: [{ k: 'txt', label: 'วางข้อมูลตรงนี้', type: 'area', rows: 9,
+      ph: 'มันแข็งหมู\t66\nสามชั้นแผ่น\t165\nสันคอหมู\t191' },
+      { k: 'src', label: 'มาจากไฟล์ไหน (ไม่บังคับ)', ph: 'เช่น ทุนโรงงาน 30-09.xlsx', hint: 'เก็บเป็นที่มาของทุนแต่ละตัว — ย้อนดูได้ว่าตัวเลขมาจากไฟล์ไหน' }],
+    okText: 'ตรวจก่อนบันทึก',
+    note: 'ระบบจะจับคู่ชื่อให้ก่อน แล้วให้ดูว่าตรงไหม ยังไม่บันทึกทันที',
+    onOk: function (v, close) {
+      var lines = (v.txt || '').split(/\r?\n/).map(function (x) { return x.trim(); })
+        .filter(Boolean);
+      if (!lines.length) { PX.toast('ยังไม่ได้วางอะไรมา', 'bad'); return false; }
+      var hit = [], miss = [];
+      lines.forEach(function (ln) {
+        var p = ln.split(/\t|,|\s{2,}/).map(function (x) { return x.trim(); }).filter(Boolean);
+        if (p.length < 2) { miss.push(ln); return; }
+        var cost = Number(p[p.length - 1].replace(/[^\d.-]/g, ''));
+        var name = p.slice(0, -1).join(' ');
+        if (!isFinite(cost) || cost <= 0) { miss.push(ln); return; }
+        var m = D.rows.filter(function (r) { return r.name === name; })[0]
+             || D.rows.filter(function (r) { return r.name.replace(/\s/g,'') === name.replace(/\s/g,''); })[0];
+        if (m) hit.push({ id: m.id, name: m.name, from: m.cost, cost: cost });
+        else miss.push(ln);
+      });
+      close();
+      confirmPaste(hit, miss, v.src ? 'Excel · ' + String(v.src).slice(0, 60) : 'วางจาก Excel');
+      return false;
+    }
+  });
+}
+
+function confirmPaste(hit, miss, src) {
+  var changed = hit.filter(function (x) { return x.cost !== x.from; });
+  PX.modal({
+    title: 'ตรวจก่อนบันทึก',
+    sub: 'จับคู่ได้ ' + hit.length + ' รายการ · เปลี่ยนจริง ' + changed.length +
+         (miss.length ? ' · จับคู่ไม่ได้ ' + miss.length : ''),
+    html: (miss.length
+      ? '<div class="warn2"><b>' + miss.length + ' บรรทัดจับคู่ชื่อไม่ได้</b> — จะข้ามไป<br>' +
+        miss.slice(0, 5).map(PX.esc).join('<br>') +
+        (miss.length > 5 ? '<br>…อีก ' + (miss.length - 5) + ' บรรทัด' : '') + '</div>'
+      : '') +
+      (changed.length
+        ? '<div class="pre">' + changed.slice(0, 40).map(function (x) {
+            var d = x.cost - x.from;
+            return PX.esc(x.name) + '   ' + x.from + ' → ' + x.cost +
+              '   ' + (d > 0 ? '▲ +' + d : d < 0 ? '▼ ' + d : '±0');
+          }).join('\n') + (changed.length > 40 ? '\n…อีก ' + (changed.length - 40) : '') + '</div>'
+        : '<p class="hint">ไม่มีรายการไหนเปลี่ยนค่า</p>'),
+    okText: changed.length ? 'บันทึก ' + changed.length + ' รายการ' : 'ปิด',
+    note: 'บันทึกแล้วราคาทุกหน้าจะคิดใหม่ทันที',
+    onOk: function () {
+      if (!changed.length) return;
+      return PX.post('/api/costs', { source: src || 'วางจาก Excel', items: changed.map(function (x) {
+        return { id: x.id, cost: x.cost }; }) })
+        .then(function () { return reload('บันทึกทุน <b>' + changed.length + '</b> รายการแล้ว'); });
+    }
+  });
+}
+
+/* ── ปรับทุนทุกตัวพร้อมกัน ── */
+function shiftAll() {
+  PX.modal({
+    title: '± ปรับทุนทุกตัว',
+    sub: 'บวก/ลบทุนของทุกรายการพร้อมกัน · ใส่ค่าติดลบเพื่อลด',
+    fields: [{ k: 'n', label: 'ปรับกี่บาทต่อกิโล', type: 'num', ph: 'เช่น 2 หรือ -3',
+      hint: 'มีผลกับรายการที่รู้ทุนแล้ว ' + D.rows.filter(function (r) { return Number(r.cost) > 0; }).length + ' รายการ · ตัวที่ยังไม่รู้ทุนไม่ถูกแตะ (ต้องกรอกทุนจริง)' }],
+    okText: 'ปรับทั้งกระดาน',
+    note: 'ใช้ตอนโรงงานขึ้นราคาทั้งแผง — ถ้าขยับเฉพาะบางตัวให้แก้ในตารางแทน',
+    onOk: function (v) {
+      var n = Number(v.n);
+      if (!isFinite(n) || n === 0) { PX.toast('ใส่ตัวเลขที่ไม่ใช่ศูนย์', 'bad'); return false; }
+      return PX.post('/api/costs', { shift: n })
+        .then(function (j) {
+          return reload('ปรับทุน <b>' + (n > 0 ? '+' : '') + n + ' ฿</b> แล้ว' + (j && j.shifted != null ? ' ' + j.shifted + ' รายการ' : '') +
+            (j && j.nocost ? ' · ข้าม ' + j.nocost + ' ตัวที่ยังไม่รู้ทุน — กรอกทุนจริงในตาราง' : ''));
+        });
+    }
+  });
+}
+
+/* ── เพิ่มสินค้าใหม่ ── */
+function addProduct() {
+  PX.modal({
+    title: '+ สินค้าใหม่',
+    sub: 'เพิ่มรายการเข้ากระดาน — ตั้งราคาให้อัตโนมัติจากทุน + ส่วนเผื่อ',
+    fields: [
+      { k: 'name', label: 'ชื่อสินค้า', ph: 'เช่น สันคอหมูสไลด์' },
+      { k: 'grp', label: 'หมวด', ph: D.grps[0] ? D.grps[0].grp : 'อื่นๆ',
+        hint: 'มีอยู่: ' + D.grps.slice(0, 6).map(function (g) { return g.grp; }).join(' · ') },
+      { k: 'cost', label: 'ทุน / กก.', type: 'num', ph: '0' },
+      { k: 'add_baht', label: 'ส่วนเผื่อ (฿/กก.)', type: 'num', ph: '15',
+        hint: 'ราคาส่ง 2kg = ทุน + ส่วนเผื่อ · ถ้าต่ำกว่าจุดคุ้ม ระบบจะดันขึ้นให้' }
+    ],
+    okText: 'เพิ่มสินค้า',
+    onOk: function (v) {
+      if (!v.name) { PX.toast('ต้องมีชื่อสินค้า', 'bad'); return false; }
+      return PX.post('/api/products', { name: v.name, grp: v.grp || 'อื่นๆ',
+        cost: Number(v.cost) || 0, add_baht: Number(v.add_baht) || 15 })
+        .then(function () { return reload('เพิ่ม <b>' + PX.esc(v.name) + '</b> แล้ว'); });
+    }
+  });
+}
+
+
+/* ── Data Source Hub v2 ───────────────────────────────────────────
+   โครง production ที่แนะนำ:
+   1) Factory cost: mailbox/API connector -> attachment parser -> staging -> SKU mapping -> reviewer approve
+   2) Market: official/authorized feed or permitted web collector -> normalized unit -> SKU mapping -> observed_at + source_url
+   3) Manual entry เป็น fallback เท่านั้น และทุก record ต้องมี source + timestamp เพื่อ audit ย้อนหลังได้ */
+/* ย่อที่มาของทุนให้อ่านง่ายในช่องเล็ก */
+function srcShort(t) { t = String(t || ''); return !t ? 'นำเข้าเดิม' : /^ไลน์/.test(t) ? 'ไลน์' : /Excel/i.test(t) ? t.replace(/^วางจาก /, '') : /แก้/.test(t) ? 'แก้มือ' : t; }
+function dmy(iso) { return iso ? String(iso).slice(8, 10) + '/' + String(iso).slice(5, 7) : ''; }
+function sourceHub() {
+  var total = D.rows.length || 1;
+  /* ทุนแต่ละตัวมาจากไหน — นับจากที่ระบบจำไว้จริง (Excel / ไลน์ / แก้ในหน้าเว็บ / นำเข้าเดิมก่อนระบบจำที่มา) */
+  var bySrc = {}; D.rows.forEach(function (r) { if (r.cost > 0) { var k = srcShort(r.costSrc).replace(/ · .*/, ''); bySrc[k] = (bySrc[k] || 0) + 1; } });
+  var lastCost = D.rows.reduce(function (a, r) { return r.costSrcAt && r.costSrcAt > a ? r.costSrcAt : a; }, '') || D.costUpdated || '';
+  var withCost = D.rows.filter(function (r) { return r.cost > 0; }).length;
+  var card = function (ic, name, sub, n, last, srcTxt, btn) {
+    var pct = Math.round(n / total * 100);
+    return '<div class="sourcecard"><div class="shd"><span class="sic">' + ic + '</span><div><div class="snm">' + esc(name) + '</div>' +
+      '<div class="ssub">' + sub + '</div></div><span class="sst' + (pct >= 95 ? ' ok' : pct > 0 ? ' warn' : '') + '">' + (pct >= 95 ? 'ครบ' : 'กรอกเอง') + '</span></div>' +
+      '<div class="smeta"><b>' + n + '/' + total + '</b> SKU มีข้อมูล (' + pct + '%)<br>อัปเดตล่าสุด <b>' + (last ? esc(dmy(last)) : '—') + '</b>' +
+      '<br><span style="color:var(--tx-3)">ที่มา: ' + srcTxt + '</span>' + (btn || '') + '</div></div>';
+  };
+  var cards = [card('🏭', 'ราคาทุนจากโรงงาน', 'ไฟล์ Excel จากโรงงาน / พิมพ์ในไลน์', withCost, lastCost,
+    Object.keys(bySrc).map(function (k) { return esc(k) + ' ' + bySrc[k]; }).join(' · ') || '—')].concat(
+    (D.comps || []).map(function (c, idx) {
+      var have = D.rows.filter(function (r) { var m = (r.marks || [])[idx]; return m && m.price > 0 && m.state === 'ok'; });
+      var last = have.reduce(function (a, r) { var m = r.marks[idx]; return m.seen && m.seen > a ? m.seen : a; }, '');
+      return card(c.tier === 'r' ? '🛒' : '🏬', c.label, c.tier === 'r' ? 'ราคาปลีก · ใช้เทียบเท่านั้น' : 'ราคาส่ง · ใช้ตั้งราคา', have.length, last,
+        c.source ? (/^https?:\/\//.test(c.source) ? '<a href="' + esc(c.source) + '" target="_blank" rel="noopener">' + esc(c.source.slice(0, 40)) + '</a>' : esc(c.source))
+                 : '<span style="color:var(--amber)">ยังไม่ระบุว่าดึงจากไหน — ขอข้อมูลจากเซลล์</span>',
+        '<br><button class="lnk3" onclick="editSource(' + jsq(c.id) + ')">แก้ที่มา →</button>');
+    }));
+  return '<div class="row"><div class="card"><h3>แหล่งข้อมูล<span class="sub">ทุนโรงงาน + ราคาตลาด 3 เจ้า</span></h3>' +
+    '<p class="hint">ยังไม่ได้ต่อดึงอัตโนมัติ — ตัวเลขทุกช่องมาจากคนกรอก (วาง Excel / พิมพ์ในไลน์ / แก้ในตาราง) และระบบจำที่มาไว้ทุกตัว</p>' +
+    '<div class="sourcegrid">' + cards.join('') + '</div>' +
+    '<div class="tools" style="margin-top:14px;margin-bottom:0"><button class="btn" onclick="syncSources()">ดูแผนการเชื่อมข้อมูลอัตโนมัติ</button>' +
+    '<span class="hint2">ตารางด้านล่าง = ช่องกรอกจริง บันทึกทันทีที่ออกจากช่อง</span></div></div></div>';
+}
+/* แก้ "ดึงราคาเจ้านี้มาจากไหน" — URL หรือคำอธิบาย (เช่น เซลล์ถ่ายรูปป้ายสาขาบางนา) */
+function editSource(id) {
+  var c = (D.comps || []).filter(function (x) { return x.id === id; })[0]; if (!c) return;
+  PX.modal({ title: 'ที่มาของราคา · ' + c.label, sub: 'ใส่ลิงก์หน้าเว็บ หรือบอกว่าได้ราคามาจากไหน — ทีมจะรู้ว่าต้องไปดูที่ไหนทุกสัปดาห์',
+    fields: [{ k: 'source', label: 'ดึงข้อมูลมาจาก', value: c.source || '', ph: 'เช่น https://www.makro.pro/... หรือ เซลล์ถ่ายป้ายราคาสาขาบางนา' }],
+    okText: 'บันทึกที่มา',
+    onOk: function (v) {
+      return PX.post('/api/config', { competitors: (D.comps || []).map(function (x) {
+        return { id: x.id, label: x.label, tier: x.tier, source: x.id === id ? v.source : (x.source || '') }; }) }, 'PUT')
+        .then(function () { return reload('บันทึกที่มาของ ' + esc(c.label) + ' แล้ว'); });
+    } });
+}
+function syncSources() {
+  PX.modal({ title:'Sync ข้อมูลต้นทุน & ตลาด',
+    sub:'Prototype แสดง flow ที่ระบบ production ควรทำ — ไม่ยิงเว็บภายนอกจาก browser โดยตรง',
+    html:'<div class="pre">1. Connector ดึงข้อมูลเข้า backend\n2. เก็บ raw payload + source URL / filename\n3. Normalize หน่วยเป็น บาท/กก.\n4. Match กับ Freshour SKU\n5. รายการ match ไม่มั่นใจเข้า Review Queue\n6. ผ่าน validation แล้วค่อยอัปเดต pricing engine</div>',
+    okText:'เข้าใจแล้ว', note:'สำคัญ: competitor connector ควรใช้ API/feed ที่ได้รับสิทธิ์ หรือ collector ที่สอดคล้องข้อกำหนดของแหล่งข้อมูล',
+    onOk:function(v,close){ close(); PX.toast('ยังไม่ได้ต่อแหล่งข้อมูลอัตโนมัติ — ตอนนี้กรอกทุนในหน้านี้ หรือพิมพ์ในไลน์ เช่น "ทุน สันคอหมู 165"'); }
+  });
+}
+function integrationMap() {
+  PX.modal({ title:'Backend contracts ที่ต้องมี', sub:'ทำให้ flow นี้เกิดขึ้นจริงโดยไม่ผูก logic ไว้หน้าเว็บ',
+    html:'<div class="pre">POST /api/imports/costs/email-webhook\nGET  /api/imports/:id/review\nPOST /api/imports/:id/approve\n\nPOST /api/market-sync/run\nGET  /api/market-observations?sku=...\nPOST /api/market-observations/manual\n\nMarket observation fields:\nsource_name, channel, source_url, observed_at, raw_price, unit, normalized_baht_per_kg, sku_id, confidence</div>',
+    okText:'ปิด', note:'หน้า Pricing อ่านเฉพาะ normalized records ที่ผ่าน validation แล้ว', onOk:function(v,close){close();}
+  });
+}
+
+/* ── ส่งออก CSV ของสิ่งที่เห็นอยู่ ── */
+function exportCsv(rows) {
+  var head = ['สินค้า', 'หมวด', 'ทุน/กก.', 'ขาย/สัปดาห์ (กก.)']
+    .concat(D.comps.map(function (c) { return c.label + ' (' + (c.tier === 'r' ? 'ปลีก' : 'ส่ง') + ')'; }))
+    .concat(D.comps.map(function (c) { return c.label + ' เห็นเมื่อ (วัน)'; }));
+  var body = rows.map(function (r) {
+    return [r.name, r.grp, r.cost || '', r.vol || 0]
+      .concat(r.marks.map(function (m) { return m.price || ''; }))
+      .concat(r.marks.map(function (m) { return m.price ? (m.age == null ? '' : m.age) : ''; }));
+  });
+  PX.csv('freshour-ทุนและตลาด-' + D.today + '.csv', [head].concat(body));
+  PX.toast('ดาวน์โหลด <b>' + rows.length + '</b> รายการแล้ว');
+}
+
+function draw() {
+  var rows = D.rows.filter(function (r) {
+    if (ONLY === 'nocost' && r.cost > 0) return false;
+    if (ONLY === 'nomkt' && r.marks.some(function (m) { return m.price > 0; })) return false;
+    if (ONLY === 'novol' && r.vol > 0) return false;
+    return (G === 'all' || r.grp === G) && (!Q || r.name.indexOf(Q) >= 0);
+  });
+  var pages = Math.max(1, Math.ceil(rows.length / PER));
+  if (PG >= pages) PG = 0;
+  var page = rows.slice(PG * PER, PG * PER + PER);
+
+  var noCost = D.rows.filter(function (r) { return !(r.cost > 0); }).length;
+  var noMkt = D.rows.filter(function (r) {
+    return !r.marks.some(function (m) { return m.price > 0 && m.state === 'ok'; }); }).length;
+
+  var h = PX.head('รับทุนประจำสัปดาห์ & ราคาตลาด',
+    'งานวันอังคาร — กรอกทุนจากโรงงาน และราคาที่ไปเห็นมาของเจ้าอื่น · ' +
+    'หน้านี้ไม่ออกราคา ราคาคิดจากเครื่องยนต์ตัวเดียว',
+    ['จุ๋ม', 'พี่จุ๋ม', 'ผู้ออกราคา']);
+
+  /* หน้านี้ใครรับผิดชอบ กรอกยังไง กรอกได้กี่ทาง — ต้องเขียนไว้บนหน้า
+     ไม่ใช่ความรู้ที่อยู่ในหัวคนเดียว คนใหม่เปิดมาต้องรู้ว่าต้องทำอะไร */
+  h += '<div class="own">' +
+    '<div class="oi"><em>ใครกรอก</em><b>พี่จุ๋ม</b>' +
+      '<span>ทุนมาจากโรงงานแม่พี่หมิงทางไลน์</span></div>' +
+    '<div class="oi"><em>เมื่อไร</em><b>ทุกวันอังคาร</b>' +
+      '<span>ก่อนออกราคาวันพุธ</span></div>' +
+    '<div class="oi"><em>ราคาตลาดใครหา</em><b>พี่จุ๋ม + ทีมขาย</b>' +
+      '<span>' + (D.comps || []).map(function (c) { return esc(c.label); }).join(' · ') + '</span></div>' +
+    '<div class="oi"><em>กรอกได้ 2 ทาง</em><b>หน้านี้ หรือ ไลน์</b>' +
+      '<span>พิมพ์ในไลน์ว่า <code>ทุน สันคอหมู 178</code> หรือ <code>ตลาด betagro สันคอหมู 191</code></span></div>' +
+    '</div>';
+
+  h += sourceHub();
+
+  /* สรุปความครบของข้อมูลนำเข้า */
+  h += '<div class="kpi">' +
+    '<div class="k lead"><div class="kt"><span class="ic">📦</span>' +
+      '<span class="pill">' + esc(D.asOf) + '</span></div>' +
+      '<div class="lb">รายการทั้งหมด</div><div class="v">' + D.rows.length + '</div>' +
+      '<div class="c">ทุนเข้าครบ ' + (D.rows.length - noCost) + ' รายการ</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">❓</span>' +
+      '<span class="pill ' + (noCost ? 'r' : 'g') + '">' +
+      (noCost ? 'ต้องกรอก' : 'ครบแล้ว') + '</span></div>' +
+      '<div class="lb">ยังไม่รู้ทุน</div>' +
+      '<div class="v" style="color:' + (noCost ? 'var(--red)' : 'var(--green)') + '">' +
+      noCost + '</div><div class="c">ตั้งราคาไม่ได้จนกว่าจะรู้ทุน</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">🏪</span>' +
+      '<span class="pill a">' + Math.round(noMkt / D.rows.length * 100) + '% ของกระดาน</span></div>' +
+      '<div class="lb"' + W('ยังไม่รู้ราคาตลาด',
+        'นับรายการที่ไม่มีราคาคู่แข่งที่เห็นมาไม่เกิน ' + D.ttlDays + ' วัน',
+        'ช่องราคาตลาดในตารางข้างล่าง',
+        'ตัวที่ไม่รู้ ระบบตั้งราคาจากทุน+ส่วนเผื่อล้วน ไม่มีใครยืนยันว่าสู้ตลาดได้') +
+      '>ยังไม่รู้ราคาตลาด</div>' +
+      '<div class="v" style="color:var(--amber)">' + noMkt + '</div>' +
+      '<div class="c">งานถัดไปคือเดินไปถามราคา</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">📅</span>' +
+      '<span class="pill">' + (D.dirty ? 'ยังไม่ประกาศ' : 'ประกาศแล้ว') + '</span></div>' +
+      '<div class="lb">ทุนอัปเดตล่าสุด</div>' +
+      '<div class="v" style="font-size:20px">' + esc(D.costUpdated ? dmy(D.costUpdated) + '/' + String(D.costUpdated).slice(0, 4) : '—') + '</div>' +
+      '<div class="c">ประกาศล่าสุด ' + esc(D.dispatched ? D.dispatched.label : 'ยังไม่เคย') + '</div></div>' +
+    '</div>';
+
+  /* เครื่องมือ */
+  h += '<div class="tools" style="margin-top:14px">' +
+    '<button class="btn pri" onclick="pasteCost()">📋 วางทุนจาก Excel</button>' +
+    '<button class="btn" onclick="shiftAll()">± ปรับทุนทุกตัว</button>' +
+    '<button class="btn" onclick="addProduct()">+ สินค้า</button>' +
+    '<button class="btn" id="csvBtn" title="ดาวน์โหลดตารางที่เห็นเป็น CSV"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>CSV</button>' +
+    '<input id="q" class="btn" style="min-width:230px;font-weight:400" ' +
+      'placeholder="ค้นหาสินค้า…" value="' + esc(Q) + '">' +
+    '<span class="sortg">' +
+    '<button class="tab' + (ONLY === '' ? ' on' : '') + '" data-o="">ทั้งหมด</button>' +
+    '<button class="tab' + (ONLY === 'nocost' ? ' on' : '') + '" data-o="nocost">ยังไม่รู้ทุน (' +
+      noCost + ')</button>' +
+    '<button class="tab' + (ONLY === 'nomkt' ? ' on' : '') + '" data-o="nomkt">ยังไม่รู้ตลาด (' +
+      noMkt + ')</button>' +
+    '<button class="tab' + (ONLY === 'novol' ? ' on' : '') + '" data-o="novol">ยังไม่รู้ปริมาณ (' +
+      D.rows.filter(function (r) { return !(r.vol > 0); }).length + ')</button>' +
+    '</span></div>';
+
+  h += '<div class="tools" style="margin-top:-4px">' +
+    '<button class="tab' + (G === 'all' ? ' on' : '') + '" data-g="all">ทุกหมวด</button>' +
+    D.grps.slice(0, 7).map(function (x) {
+      return '<button class="tab' + (G === x.grp ? ' on' : '') + '" data-g="' + esc(x.grp) + '">' +
+        esc(x.grp) + ' (' + x.n + ')</button>'; }).join('') + '</div>';
+
+  /* ตารางรับข้อมูล */
+  h += '<div class="tw2"><div class="sc"><table class="g" style="min-width:820px">' +
+    '<thead><tr>' +
+      '<th style="background:var(--card)"></th>' +
+      '<th colspan="2" style="text-align:center;color:var(--blue)">ต้นทาง</th>' +
+      '<th colspan="' + D.comps.length + '" style="text-align:center;color:var(--amber)">' +
+        'ราคาตลาด · ประทับวันที่ให้อัตโนมัติ</th>' +
+    '</tr><tr><th>สินค้า</th><th>ทุน / กก.</th><th>ขาย/สัปดาห์ (กก.)</th>' +
+      D.comps.map(function (c) {
+        return '<th>' + esc(c.label) + '<br><span style="font-weight:400;opacity:.7">' +
+          (c.tier === 'r' ? 'ปลีก' : 'ส่ง') + '</span></th>'; }).join('') +
+    '</tr></thead><tbody>' +
+    (page.length ? page.map(function (r) {
+      return '<tr><td><div style="font-weight:600"><a href="#" class="lnk2" onclick="PX.product(' + jsq(r.id) + ');return false">' + esc(r.name) + '</a></div>' +
+        '<div style="font-size:10.5px;color:var(--tx-3);font-weight:400">' + esc(r.grp) + '</div></td>' +
+        '<td><input class="cin" data-id="' + r.id + '" data-f="cost" value="' +
+          (r.cost || '') + '" placeholder="—" inputmode="numeric">' +
+          '<div style="font-size:9.5px;color:var(--tx-3)" title="' + esc(r.costSrc || 'นำเข้าก่อนระบบจำที่มา') + '">' +
+          (r.cost > 0 ? esc(srcShort(r.costSrc)) + (r.costSrcAt ? ' · ' + esc(dmy(r.costSrcAt)) : '') : 'ยังไม่รู้') + '</div></td>' +
+        '<td><input class="cin" data-id="' + r.id + '" data-f="vol_week" value="' +
+          (r.vol || '') + '" placeholder="0" inputmode="numeric"></td>' +
+        r.marks.map(function (m) {
+          return '<td><input class="cin mk2" data-id="' + r.id + '" data-c="' + m.id + '" value="' +
+            (m.price || '') + '" placeholder="–" inputmode="numeric">' +
+            '<div style="font-size:9.5px;color:' +
+              (m.state === 'expired' ? 'var(--red)' : 'var(--tx-3)') + '">' +
+            (m.price ? (m.age == null ? 'ไม่ระบุวัน' : m.age === 0 ? 'วันนี้' : m.age + ' วันก่อน')
+                     : 'ยังไม่รู้') + '</div></td>'; }).join('') +
+        '</tr>';
+    }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--tx-3)">ไม่มีรายการ</td></tr>') +
+    '</tbody></table></div>' +
+    '<div class="pgb">แสดง ' + (page.length ? PG * PER + 1 : 0) + '–' + (PG * PER + page.length) +
+      ' จาก ' + rows.length + ' รายการ<span class="sp2">' +
+      '<button ' + (PG === 0 ? 'disabled' : '') + ' data-p="' + (PG - 1) + '">ก่อนหน้า</button>' +
+      PX.pageNums(PG, pages).map(function (i) {
+        return i < 0 ? '<span style="padding:0 4px;color:var(--tx-3)">…</span>'
+                     : '<button class="' + (i === PG ? 'on' : '') + '" data-p="' + i + '">' + (i + 1) + '</button>';
+      }).join('') +
+      '<button ' + (PG >= pages - 1 ? 'disabled' : '') + ' data-p="' + (PG + 1) + '">ถัดไป</button>' +
+      '</span></div></div>';
+
+  h += '<p class="hint" style="margin-top:11px">กรอกทุนกับราคาตลาดให้ครบ แล้วไป' +
+    '<a href="/exec" style="color:var(--blue);font-weight:600"> หน้าผู้บริหาร</a>' +
+    ' เพื่อดูผลก่อนประกาศ · <b>ทุกช่องในตารางบันทึกจริงทันทีที่ออกจากช่อง</b></p>';
+
+  document.getElementById('main').innerHTML = h;
+  var fs = document.getElementById('floatSub');
+  if (fs) fs.textContent = noCost ? ('ยังไม่รู้ทุน ' + noCost + ' รายการ') : 'ทุนเข้าครบทุกรายการ';
+  var q = document.getElementById('q');
+  if (q) q.oninput = function () { Q = this.value.trim(); PG = 0; draw();
+    var e = document.getElementById('q'); e.focus();
+    e.setSelectionRange(e.value.length, e.value.length); };
+  document.querySelectorAll('[data-g]').forEach(function (b) {
+    b.onclick = function () { G = b.dataset.g; PG = 0; draw(); }; });
+  document.querySelectorAll('[data-o]').forEach(function (b) {
+    b.onclick = function () { ONLY = b.dataset.o; PG = 0; draw(); }; });
+  document.querySelectorAll('[data-p]').forEach(function (b) {
+    b.onclick = function () { PG = +b.dataset.p; draw(); }; });
+
+  /* ช่องกรอกบันทึกตอนออกจากช่อง หรือกด Enter — ไม่ต้องมีปุ่มบันทึก */
+  document.querySelectorAll('.cin').forEach(function (el) {
+    var go = function () {
+      var id = el.dataset.id;
+      if (el.dataset.c) saveMkt(id, el.dataset.c, el.value.trim());
+      else if (el.dataset.f === 'cost') saveCost(id, el.value.trim());
+      else saveVol(id, el.value.trim());
+    };
+    el.onchange = go;
+    el.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } };
+  });
+
+  var cb = document.getElementById('csvBtn');
+  if (cb) cb.onclick = function () { exportCsv(rows); };
+  PX.bindTips();
+}
+
+PX.get('/api/pricelist').then(function (j) {
+  D = j;
+  /* /api/pricelist ไม่ได้ส่งปริมาณมา — ขอจากกระดานอีกที เพื่อไม่ให้ช่องว่างเปล่า */
+  return PX.get('/api/board').then(function (b) {
+    var v = {}; (b.lines || []).forEach(function (l) { v[l.id] = l.vol; });
+    D.rows.forEach(function (r) { r.vol = v[r.id] || 0; });
+    draw();
+  });
+}).catch(PX.fail);
+
+</script>
+</body></html>

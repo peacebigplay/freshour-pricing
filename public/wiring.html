@@ -1,0 +1,188 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>การต่อ · หลังบ้านต่อหน้าบ้าน · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+</head><body>
+<script src="/peach.js"></script>
+<script>
+/* การต่อ — หลังบ้านต่อหน้าบ้านยังไง
+   หน้านี้ไม่ใช่รูปวาด มันยิงทุกเส้นที่อ่านอย่างเดียวจริงตอนเปิดหน้า แล้วบอกว่าต่อติดไหม
+   แผนผังที่วาดไว้เฉยๆ จะค่อยๆ โกหกเมื่อโค้ดเปลี่ยน อันนี้โกหกไม่ได้ */
+var esc = PX.esc, W = PX.why;
+/* ค่าที่ใส่ใน onclick ต้องเป็นสตริง JS ที่ปลอดภัยทั้งในฐานะ JS และ attribute — รหัส/กลุ่มสินค้ามาจากคนพิมพ์ได้ */
+function jsq(v) { return JSON.stringify(String(v == null ? '' : v)).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+var D = null, RES = {}, SEL = null;
+
+PX.shell('wire',
+  '<div class="float"><div class="ic">🔌</div><b>การต่อ</b>' +
+  '<span id="floatSub">กำลังยิงเส้น…</span>' +
+  '<button onclick="SEL=null;draw()">ล้างที่เลือก</button></div>');
+
+var KIND = { engine: 'เครื่องยนต์', brain: 'สมอง', guard: 'ยาม', io: 'ทางเข้าออก', door: 'ประตู' };
+
+/* ยิงเฉพาะเส้นที่อ่านอย่างเดียว — เส้นที่เขียนข้อมูลห้ามยิง มันจะไปแก้ของจริง */
+function probe() {
+  var list = D.endpoints.filter(function (e) { return e.probe && e.method === 'GET'; });
+  return Promise.all(list.map(function (e) {
+    var url = e.path.replace(/:\w+/g, '1');
+    var t0 = performance.now();
+    return fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.text().then(function (t) {
+        RES[e.path + ' ' + e.method] = { ok: r.ok, code: r.status,
+          ms: Math.round(performance.now() - t0), size: t.length };
+      }); })
+      .catch(function () {
+        RES[e.path + ' ' + e.method] = { ok: false, code: 0,
+          ms: Math.round(performance.now() - t0), size: 0 };
+      });
+  }));
+}
+
+/* กดการ์ดไหนก็ได้ → ไฮไลต์ทุกอย่างที่ต่อกับมัน หรี่ที่เหลือ */
+function relate() {
+  if (!SEL) return null;
+  var eps = [], mods = [], pgs = [];
+  if (SEL.t === 'mod') {
+    mods = [SEL.v];
+    D.endpoints.forEach(function (e) {
+      if ((e.from || []).indexOf(SEL.v) >= 0) eps.push(e.path + ' ' + e.method); });
+    D.pages.forEach(function (p) {
+      if ((p.uses || []).some(function (u) {
+        return eps.some(function (k) { return k.indexOf(u) === 0; }); })) pgs.push(p.path); });
+  } else if (SEL.t === 'ep') {
+    eps = [SEL.v];
+    var e = D.endpoints.filter(function (x) { return x.path + ' ' + x.method === SEL.v; })[0];
+    if (e) {
+      mods = (e.from || []).slice();
+      D.pages.forEach(function (p) {
+        if ((p.uses || []).indexOf(e.path) >= 0) pgs.push(p.path); });
+    }
+  } else {
+    pgs = [SEL.v];
+    var p = D.pages.filter(function (x) { return x.path === SEL.v; })[0];
+    if (p) D.endpoints.forEach(function (e) {
+      if ((p.uses || []).indexOf(e.path) >= 0) {
+        eps.push(e.path + ' ' + e.method); mods = mods.concat(e.from || []); } });
+  }
+  return { eps: eps, mods: mods, pgs: pgs };
+}
+function cls(kind, id, R) {
+  if (!R) return '';
+  var on = kind === 'mod' ? R.mods.indexOf(id) >= 0
+         : kind === 'ep' ? R.eps.indexOf(id) >= 0 : R.pgs.indexOf(id) >= 0;
+  return on ? ' on' : ' dim';
+}
+function pickCard(t, v) {
+  SEL = (SEL && SEL.t === t && SEL.v === v) ? null : { t: t, v: v };
+  draw();
+}
+
+function draw() {
+  var R = relate();
+  var probed = Object.keys(RES), ok = probed.filter(function (k) { return RES[k].ok; }).length;
+  var bytes = probed.reduce(function (a, k) { return a + RES[k].size; }, 0);
+  var ms = probed.length
+    ? Math.round(probed.reduce(function (a, k) { return a + RES[k].ms; }, 0) / probed.length) : 0;
+
+  var h = PX.head('หลังบ้านต่อหน้าบ้านยังไง',
+    'ของกระจายอยู่ ' + D.modules.length + ' ไฟล์หลังบ้าน + ' + D.pages.length +
+    ' หน้า + บอทไลน์ + cron 3 วัน — หน้านี้ยิงทุกเส้นจริงแล้วบอกว่าต่อติดไหม',
+    ['อิ๊บ', 'อิ๊บ', 'ผู้ดูแลระบบ']);
+
+  h += '<div class="kpi">' +
+    '<div class="k lead"><div class="kt"><span class="ic">🔌</span>' +
+      '<span class="pill ' + (probed.length && ok === probed.length ? 'g' : 'r') + '">' +
+      (probed.length && ok === probed.length ? 'ต่อติดทุกเส้น' : 'ยิงอยู่…') + '</span></div>' +
+      '<div class="lb">เส้นที่ยิงแล้วต่อติด</div>' +
+      '<div class="v">' + ok + '<small>/' + probed.length + '</small></div>' +
+      '<div class="c">ยิงเฉพาะเส้นที่อ่านอย่างเดียว</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">🔗</span>' +
+      '<span class="pill">ทั้งหมด</span></div>' +
+      '<div class="lb">จุดเชื่อม</div><div class="v">' + D.endpoints.length + '</div>' +
+      '<div class="c">ประตูเดียวคือ index.js</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">⚡</span>' +
+      '<span class="pill ' + (ms < 400 ? 'g' : 'a') + '">เฉลี่ย</span></div>' +
+      '<div class="lb">เวลาต่อเส้น</div><div class="v">' + ms + '<small>ms</small></div>' +
+      '<div class="c">วัดจริงตอนเปิดหน้านี้</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">📦</span>' +
+      '<span class="pill">รวม</span></div>' +
+      '<div class="lb">ข้อมูลที่ไหลกลับมา</div>' +
+      '<div class="v">' + Math.round(bytes / 1024) + '<small>KB</small></div>' +
+      '<div class="c">ก้อนใหญ่ = หน้าโหลดช้า</div></div>' +
+    '</div>';
+
+  h += '<p class="hint" style="margin-top:10px">ข้อมูลไหลจากซ้ายไปขวา · ' +
+    'กดการ์ดไหนก็ได้เพื่อดูว่ามันต่อกับอะไร กดซ้ำเพื่อยกเลิก</p>';
+
+  h += '<div class="rails">' +
+    /* ── หลังบ้าน ── */
+    '<div class="rail"><div class="rh"><b>หลังบ้าน</b>' +
+      '<span>' + D.modules.length + ' ไฟล์ · แต่ละไฟล์ทำเรื่องเดียว</span></div>' +
+    D.modules.map(function (m) {
+      return '<button class="wc' + cls('mod', m.id, R) + '" onclick="pickCard(\'mod\',' +
+        jsq(m.id) + ')">' +
+        '<div class="wt"><b>' + esc(m.name) + '</b>' +
+        '<span class="pill2 b">' + esc(KIND[m.kind] || m.kind) + '</span></div>' +
+        '<div class="wj">' + esc(m.job) + '</div>' +
+        '<ul class="wl">' + (m.does || []).map(function (d) {
+          return '<li>' + esc(d) + '</li>'; }).join('') + '</ul></button>';
+    }).join('') + '</div>' +
+
+    /* ── จุดเชื่อม ── */
+    '<div class="rail"><div class="rh"><b>จุดเชื่อม</b>' +
+      '<span>' + D.endpoints.length + ' เส้น</span></div>' +
+    ['GET', 'WRITE'].map(function (g) {
+      var list = D.endpoints.filter(function (e) {
+        return g === 'GET' ? e.method === 'GET' : e.method !== 'GET'; });
+      if (!list.length) return '';
+      return '<div class="gh">' + (g === 'GET' ? 'อ่านอย่างเดียว' : 'เขียน / เปลี่ยนข้อมูล') +
+        '<i>' + list.length + '</i>' +
+        '<em>' + (g === 'GET' ? 'ยิงตรวจได้ ไม่กระทบข้อมูล'
+                              : 'ไม่ยิงตรวจ เพราะจะไปแก้ของจริง') + '</em></div>' +
+        list.map(function (e) {
+          var k = e.path + ' ' + e.method, r = RES[k];
+          var badge = !e.probe || e.method !== 'GET'
+            ? '<span class="res wait">ไม่ยิง</span>'
+            : r ? '<span class="res ' + (r.ok ? 'good' : 'bad') + '">' + r.code +
+                  ' · ' + r.ms + 'ms</span>'
+                : '<span class="res wait">…</span>';
+          var lock = /เท่านั้น|ขึ้นไป|LINE/.test(e.who || '');
+          return '<button class="wc' + cls('ep', k, R) + '" onclick="pickCard(\'ep\',' +
+            jsq(k) + ')">' +
+            '<div class="wt"><b class="mono">' + esc(e.path) + '</b>' +
+            '<span class="meth ' + esc(e.method) + '">' + esc(e.method) + '</span>' + badge + '</div>' +
+            '<div class="wj">' + esc(e.gives || '') + '</div>' +
+            '<div class="ww">' + (lock ? '🔒 ' : '') + esc(e.who || '') + '</div></button>';
+        }).join('');
+    }).join('') + '</div>' +
+
+    /* ── หน้าบ้าน ── */
+    '<div class="rail"><div class="rh"><b>หน้าบ้าน</b>' +
+      '<span>' + D.pages.length + ' หน้า · ใช้เปลือกร่วม peach.js</span></div>' +
+    D.pages.map(function (p) {
+      return '<button class="wc' + cls('page', p.path, R) + '" onclick="pickCard(\'page\',' +
+        jsq(p.path) + ')">' +
+        '<div class="wt"><b class="mono">' + esc(p.path) + '</b>' +
+        '<span class="pill2 b">' + esc(p.name) + '</span></div>' +
+        '<div class="wj">' + esc(p.job) + '</div>' +
+        '<div class="ww">' + esc(p.who) + '</div>' +
+        (p.note ? '<div class="wn">' + esc(p.note) + '</div>' : '') + '</button>';
+    }).join('') + '</div>' +
+  '</div>';
+
+  document.getElementById('main').innerHTML = h;
+  var fs = document.getElementById('floatSub');
+  if (fs) fs.textContent = probed.length
+    ? (ok + '/' + probed.length + ' เส้นต่อติด') : 'กำลังยิง…';
+  PX.bindTips();
+}
+
+PX.get('/api/wiring').then(function (j) {
+  D = j; draw();
+  return probe().then(draw);
+}).catch(PX.fail);
+</script>
+</body></html>
