@@ -67,7 +67,9 @@
     }
 
     /* ════════ 1 · ทุนเข้า: อ่านไฟล์ AL + ด่านตรวจตัวเลขแปลก ════════ */
-    function norm(s) { return String(s || '').toLowerCase().replace(/\(.*?\)/g, ' ').replace(/[%\-_/.,()]/g, ' ').replace(/\s+/g, ' ').replace(/หมู/g, '').trim(); }
+    function norm(s) { return String(s || '').toLowerCase().replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '').replace(/\(.*?\)/g, ' ').replace(/[%\-_/.,()*]/g, ' ').replace(/\s+/g, ' ').replace(/หม/g, '').trim(); }
+    /* ชื่อจากไฟล์ → ชื่อสินค้า: ตัดเลขลำดับหน้า · "กก.ละ" · **NEW** · เลขราคาที่ติดท้าย · ช่องว่างหน้าจุด */
+    function cleanName(raw) { return String(raw || '').replace(/^\s*\d{1,3}[.)]?\s+/, '').replace(/กก\.?\s*ละ/g, '').replace(/\*\*\s*new\s*\*\*/gi, '').replace(/(?:\s+-?\d+(?:[.,]\d+)?){2,}\s*$/, '').replace(/\s+([.,%)])/g, '$1').replace(/\(\s+/g, '(').replace(/\s+/g, ' ').trim(); }
     function tokens(s) { return norm(s).split(' ').filter(Boolean); }
     /* จับคู่ชื่อจากไฟล์กับ SKU: ตรงเป๊ะ → ตรงหลังล้างชื่อ → คำซ้อนกันมากสุด (ต้อง ≥ 60%) */
     function bigrams(s) { var t = norm(s).replace(/\s+/g, ''), out = {}; for (var i = 0; i < t.length - 1; i++) out[t.slice(i, i + 2)] = (out[t.slice(i, i + 2)] || 0) + 1; return out; }
@@ -92,6 +94,9 @@
     function matchProduct0(rows, nm, grpHint) {
       var exact = rows.filter(function (r) { return r.name === nm; }); if (exact.length === 1) return { p: exact[0], how: 'exact', score: 1 };
       var n1 = norm(nm), eq = rows.filter(function (r) { return norm(r.name) === n1; }); if (eq.length === 1) return { p: eq[0], how: 'normalized', score: 0.95 };
+      /* ชื่อในไฟล์ = ชื่อสินค้า + สเปคต่อท้าย (เช่น "สามชั้นหมูหั่นเส้น หนา 1.5") → เอาชื่อที่ยาวสุดที่เป็นคำขึ้นต้น ถ้ามีตัวเดียว */
+      var pre = rows.filter(function (r) { var rn = norm(r.name); return rn.length >= 6 && n1.indexOf(rn) === 0 && n1.length - rn.length <= 14; }).sort(function (a, b) { return norm(b.name).length - norm(a.name).length; });
+      if (pre.length && (pre.length === 1 || norm(pre[0].name).length > norm(pre[1].name).length)) return { p: pre[0], how: 'prefix', score: 0.92 };
       var tk = tokens(nm); if (!tk.length) return null;
       var scored = rankProducts(nm, grpHint); if (false) rows.map(function (r) {
         var rt = tokens(r.name), hit = tk.filter(function (t) { return rt.some(function (x) { return x === t || (t.length > 2 && (x.indexOf(t) >= 0 || t.indexOf(x) >= 0)); }); }).length;
@@ -130,7 +135,8 @@
     function costChecks(p, cost) {
       var out = [], jp = CFG.jump_pct_cost || 30, jb = CFG.jump_baht_cost || 40;
       if (!(cost > 0)) { out.push({ code: 'missing', severity: 'critical', text: 'ทุนเป็น 0 หรือว่าง' }); return out; }
-      if (cost <= MIN_REASONABLE) out.push({ code: 'tiny', severity: 'critical', text: 'ทุน ' + cost + ' ฿/กก. ≤ ' + MIN_REASONABLE + ' ฿ ต่ำกว่าที่สมเหตุผล — ลืมหน่วย/ทศนิยม?' });
+      /* ทุน ≤10 ฿ ผิดปกติก็ต่อเมื่อของเดิมไม่ได้ถูกขนาดนั้น (กระดูกข้อขา/เลือด ทุน 3–6 ฿ เป็นปกติของมัน) */
+      if (cost <= MIN_REASONABLE && !(p.cost > 0 && p.cost <= MIN_REASONABLE * 2)) out.push({ code: 'tiny', severity: 'critical', text: 'ทุน ' + cost + ' ฿/กก. ≤ ' + MIN_REASONABLE + ' ฿ ต่ำกว่าที่สมเหตุผล — ลืมหน่วย/ทศนิยม?' });
       if (p.cost > 0) {
         var d = cost - p.cost, pct = Math.round(d / p.cost * 1000) / 10;
         if (Math.abs(pct) >= 50) out.push({ code: 'jump', severity: 'critical', text: 'Critical Anomaly: ' + p.cost + ' → ' + cost + ' (' + (pct > 0 ? '+' : '') + pct + '%) ผิดจาก historical pattern อย่างมีนัยสำคัญ' });
@@ -138,8 +144,9 @@
       }
       if (p.w2 > 0 && cost >= p.w2) out.push({ code: 'above-price', severity: 'critical', text: 'ทุนสูงกว่า/เท่ากับราคาขายปัจจุบัน ' + p.w2 + ' ฿ — ขายแล้วขาดทุนทันที' });
       var h = histRange(p); if (h && (cost < h.lo * 0.8 || cost > h.hi * 1.25) && !out.some(function (c) { return c.code === 'jump'; })) out.push({ code: 'history', severity: 'warn', text: 'นอกช่วงประวัติทุน ' + h.lo + '–' + h.hi + ' ฿ (' + h.n + ' ครั้งล่าสุด)' });
-      var med = groupMedianCost(p.grp);
-      if (med && cost > MIN_REASONABLE) { if (cost < med * 0.4) out.push({ code: 'group-low', severity: 'warn', text: 'ต่ำกว่าครึ่งของทุนกลางกลุ่ม ' + p.grp + ' (' + med + ' ฿)' }); else if (cost > med * 2.5) out.push({ code: 'group-high', severity: 'warn', text: 'สูงกว่าทุนกลางกลุ่ม ' + p.grp + ' (' + med + ' ฿) เกิน 2.5 เท่า' }); }
+      /* เทียบกลุ่ม: เตือนเฉพาะเมื่อทุนใหม่ "หลุด" ออกจากช่วงกลุ่มทั้งที่ทุนเดิมอยู่ในช่วง (ของที่ถูก/แพงกว่ากลุ่มมาตลอด ไม่ใช่ความผิดปกติ) */
+      var med = groupMedianCost(p.grp), inBand = function (c) { return c >= med * 0.4 && c <= med * 2.5; };
+      if (med && cost > MIN_REASONABLE && (!(p.cost > 0) || inBand(p.cost))) { if (cost < med * 0.4) out.push({ code: 'group-low', severity: 'warn', text: 'ต่ำกว่าครึ่งของทุนกลางกลุ่ม ' + p.grp + ' (' + med + ' ฿)' }); else if (cost > med * 2.5) out.push({ code: 'group-high', severity: 'warn', text: 'สูงกว่าทุนกลางกลุ่ม ' + p.grp + ' (' + med + ' ฿) เกิน 2.5 เท่า' }); }
       return out;
     }
     function batchId() { var td = today(), tag = td.slice(8, 10) + td.slice(5, 7) + td.slice(2, 4), n = (D.cost_batches || []).filter(function (b) { return b.id.indexOf('COST-' + tag) === 0; }).length + 1; return 'COST-' + tag + '-' + (n < 10 ? '0' : '') + n; }
@@ -152,16 +159,23 @@
       var seen = {}, out = [], problems = [], review = [], auto = [], unchanged = [], byKind = {};
       var push = function (item, kind, severity, reasons) { item.kind = kind; item.kindText = KIND_TEXT[kind]; item.severity = severity; item.reasons = reasons; item.status = 'review'; byKind[kind] = (byKind[kind] || 0) + 1; review.push(item); out.push(item); };
       rows.forEach(function (r, i) {
-        var name = String(r.product || r.name || '').trim(), u = normUnit(r.unit || body.unit), raw = String(r.cost == null ? '' : r.cost).replace(/[,฿\s]/g, '');
+        var rawName = String(r.product || r.name || '').trim(), name = cleanName(rawName), u = normUnit(r.unit || body.unit), raw = String(r.cost == null ? '' : r.cost).replace(/[,฿\s]/g, '');
+        var idxNo = r.idx != null && r.idx !== '' && isFinite(Number(r.idx)) ? Number(r.idx) : null;
+        if (!idxNo && /^\d{1,3}[.)]?\s+[ก-๙A-Za-z]/.test(rawName)) idxNo = Number(rawName.match(/^\d{1,3}/)[0]);
+        if (rawName && !/[ก-๙A-Za-z]{2,}/.test(name)) return problems.push({ row: i + 1, name: rawName, reason: 'ไม่ใช่แถวสินค้า (ไม่มีชื่อ)' });   /* หัวตาราง/บรรทัดรวม/ตัวเลขล้วน */
+        if (rawName && /^(รายการ|ลำดับ|ราคาขาย|ราคามีผล|column|total|รวม)/i.test(name)) return problems.push({ row: i + 1, name: rawName, reason: 'หัวตาราง' });
         var cost = num(raw); if (cost != null) cost = Math.round(cost * u.factor * 100) / 100;
-        var item = { row: i + 1, raw: name, cost: cost, cost_raw: raw, unit: u.unit, unit_note: u.note || '', effective_date: effective, source: source };
-        /* STEP 03 จับคู่ SKU: product_id ตรง → alias ที่คนเคยจับ → ตรงชื่อ/ล้างชื่อ → คล้าย ≥0.9 = Matched · 0.6–0.9 = Possible · ต่ำกว่า = Unmatched */
+        var item = { row: i + 1, raw: name, raw_file: rawName, idx: idxNo, cost: cost, cost_raw: raw, unit: u.unit, unit_note: u.note || '', effective_date: effective, source: source };
+        /* STEP 03 จับคู่ SKU: product_id ตรง → เลขลำดับในใบ AL (pdf_idx) + ชื่อคล้าย → alias ที่คนเคยจับ → ตรงชื่อ/ล้างชื่อ → คล้าย ≥0.9 = Matched · 0.6–0.9 = Possible · ต่ำกว่า = Unmatched */
         var m = null;
         if (r.product_id) { var pp = product(r.product_id); if (pp) m = { p: pp, how: 'id', score: 1 }; }
+        if (!m && idxNo != null) { var pi = D.pricelist.rows.filter(function (x) { return x.pdf_idx === idxNo; })[0];
+          if (pi) { var sim = name ? Math.max(dice(name, pi.name), norm(name) === norm(pi.name) ? 1 : 0) : 1; if (sim >= 0.45) m = { p: pi, how: 'idx', score: Math.round(Math.max(sim, 0.9) * 100) / 100 }; else item.idxCandidate = { id: pi.id, name: pi.name, grp: pi.grp, score: Math.round(sim * 100) / 100, cost: pi.cost }; } }
         if (!m && name) { var al = D.sku_aliases[norm(name)]; if (al) { var ap = product(al); if (ap) m = { p: ap, how: 'alias', score: 1 }; } }
         if (!m && name) m = matchProduct(name, r.grp);
         if (!name && !r.product_id) return problems.push({ row: i + 1, reason: 'ไม่มีชื่อสินค้า' });
-        if (!m) { item.candidates = candidatesFor(name, r.grp); var top = item.candidates[0];
+        if (!m) { item.candidates = candidatesFor(name, r.grp); if (item.idxCandidate && !item.candidates.some(function (c) { return c.id === item.idxCandidate.id; })) item.candidates.unshift(item.idxCandidate); var top = item.candidates[0];
+          if (item.idxCandidate) return push(item, 'possible', 'warn', ['ลำดับ ' + idxNo + ' ในใบ = "' + item.idxCandidate.name + '" แต่ชื่อในไฟล์ "' + name + '" ไม่เหมือน (คล้าย ' + Math.round(item.idxCandidate.score * 100) + '%) — ใบราคาเปลี่ยนลำดับ/เปลี่ยนชื่อ? ให้คนเลือก']);
           if (top && top.score >= 0.6) return push(item, 'possible', 'warn', ['ชื่อในไฟล์ "' + name + '" ใกล้เคียงหลายตัว (' + item.candidates.map(function (c) { return c.name + ' ' + Math.round(c.score * 100) + '%'; }).join(' · ') + ') — กำกวม ระบบไม่เดา ให้คนเลือก แล้วจะจำไว้']);
           return push(item, 'unmatched', 'critical', ['ไม่พบสินค้านี้ใน Product Master — เลือก SKU ที่ใช่ (ระบบจะจำชื่อนี้ไว้) หรือเพิ่มสินค้าใหม่']); }
         item.product_id = m.p.id; item.name = m.p.name; item.grp = m.p.grp; item.how = m.how; item.score = m.score; item.prev = m.p.cost; item.changed = cost != null && cost !== m.p.cost;
@@ -170,7 +184,7 @@
         seen[m.p.id] = i + 1;
         if (!u.valid) return push(item, 'unit', 'critical', ['หน่วย "' + (r.unit || body.unit) + '" แปลงเป็นบาท/กก. ไม่ได้ — ยืนยันหน่วยก่อน']);
         if (!(cost > 0)) return push(item, 'missing', 'critical', ['ทุนว่าง/เป็น 0 — ' + (raw ? 'อ่านค่า "' + raw + '" ไม่ได้' : 'ไม่มีตัวเลข')]);
-        var checks = costChecks(m.p, cost); item.checks = checks;
+        var checks = item.changed ? costChecks(m.p, cost) : []; item.checks = checks;   /* ทุนเท่าเดิม = ไม่มีอะไรใหม่ให้ตรวจ */
         if (checks.length) return push(item, 'anomaly', checks.some(function (c) { return c.severity === 'critical'; }) ? 'critical' : 'warn', checks.map(function (c) { return c.text; }));
         item.status = item.changed ? 'auto' : 'unchanged'; out.push(item); (item.changed ? auto : unchanged).push(item);
       });
@@ -184,7 +198,7 @@
         review.forEach(function (x) { D.cost_flags.unshift({ id: nextId('cf'), at: stamp(), batch_id: bid, import_id: bid, kind: x.kind, kindText: x.kindText, severity: x.severity, product_id: x.product_id || null, name: x.name || x.raw, raw: x.raw, grp: x.grp || null, prev: x.prev == null ? null : x.prev, cost: x.cost, unit: x.unit, candidates: x.candidates || null, reasons: x.reasons, checks: x.checks || [], status: 'pending', row: x.row, source: source }); });
         X.afterCosts();
         var batch = { id: bid, at: stamp(), by: role, source: source, channel: channel, file: body.file || '', effective_date: effective, rows: rows.length, auto: applied, unchanged: unchanged.length, review: review.length, byKind: byKind, problems: problems.length, status: review.length ? 'review' : 'done', matched: out.length,
-          exact: out.filter(function (x) { return x.how && x.how !== 'fuzzy'; }).length, fuzzy: out.filter(function (x) { return x.how === 'fuzzy'; }).length, unmatched: byKind.unmatched || 0, applied: applied, flagged: review.length };
+          exact: out.filter(function (x) { return x.how && x.how !== 'fuzzy'; }).length, byIdx: out.filter(function (x) { return x.how === 'idx'; }).length, fuzzy: out.filter(function (x) { return x.how === 'fuzzy'; }).length, unmatched: byKind.unmatched || 0, applied: applied, flagged: review.length };
         D.cost_batches.unshift(batch); D.cost_imports.unshift(batch); res.batch = batch; res.batch_id = bid; res.import_id = bid; res.applied = applied;
         jobDone('cost-import', bid + ' · Auto Pass ' + applied + ' · Review ' + review.length + ' · ไม่เปลี่ยน ' + unchanged.length);
         if (review.length) alert(review.some(function (x) { return x.severity === 'critical'; }) ? 'bad' : 'warn', 'Batch ' + bid + ' มี ' + review.length + ' รายการรอคนตรวจ', Object.keys(byKind).map(function (k) { return KIND_TEXT[k] + ' ' + byKind[k]; }).join(' · '), 'cost-import');

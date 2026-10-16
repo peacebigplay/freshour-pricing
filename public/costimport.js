@@ -5,7 +5,7 @@
    ตัวที่ติดด่าน (ทุน ≤10 · กระโดด ≥30% · สูงกว่าราคาขาย · ต่ำกว่าครึ่งของหมวด) จะไม่ถูกใช้ จนกว่าพี่จุ๋มกดยืนยันทีละตัว
    ══════════════════════════════════════════════════════════════════ */
 window.CostImport = (function () {
-  var esc = PX.esc, TBL = null, REP = null;
+  var esc = PX.esc, TBL = null, REP = null, GMAP = { unit: -1, retail: -1 };
   function parseCSV(text) {
     var rows = [], row = [], f = '', q = false, i, c; text = text.replace(/^﻿/, '');
     for (i = 0; i < text.length; i++) { c = text[i];
@@ -15,28 +15,23 @@ window.CostImport = (function () {
     if (f !== '' || row.length) { row.push(f); rows.push(row); }
     return rows.filter(function (r) { return r.some(function (x) { return String(x).trim() !== ''; }); });
   }
+  function loadScript(urls) { return new Promise(function (ok, no) { var i = 0; (function next() { if (i >= urls.length) return no(new Error('โหลดไม่ได้')); var sc = document.createElement('script'); sc.src = urls[i++]; sc.onload = function () { ok(sc.src); }; sc.onerror = next; document.head.appendChild(sc); })(); }); }
   function loadXLSX() {
     if (window.XLSX) return Promise.resolve(window.XLSX);
-    return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = function () { ok(window.XLSX); }; s.onerror = function () { no(new Error('โหลดตัวอ่าน Excel ไม่ได้ — บันทึกไฟล์เป็น CSV แล้วลองใหม่')); }; document.head.appendChild(s); });
+    return loadScript(['/vendor/xlsx.full.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js']).then(function () { return window.XLSX; }, function () { throw new Error('โหลดตัวอ่าน Excel ไม่ได้ — บันทึกไฟล์เป็น CSV แล้วลองใหม่'); });
   }
-  /* PDF จากโรงงาน: อ่านข้อความทุกหน้า จัดกลุ่มเป็นบรรทัดตามแนวตั้ง → บรรทัดที่ลงท้ายด้วยตัวเลข = [ชื่อ, ทุน] */
+  /* PDF ใบราคาขาย+ทุน (AL): อ่านข้อความทุกหน้าพร้อมตำแหน่ง x/y → จัดบรรทัดตาม y → แบ่งคอลัมน์ตามตำแหน่งหัวตาราง
+     (ลำดับ · รายการสินค้า · สเปค · ปริมาณ · หน่วย · ทุนรอบก่อน · ทุนรอบนี้ · +/- · ปลีก · ส่ง 2kg · 5kg · 10kg)
+     ถ้าไม่เจอหัวตาราง ใช้ตำแหน่งมาตรฐานของใบ AL · ส่วน "แช่แข็ง" ด้านท้าย ลำดับ 1-3 → 901-903 · บรรทัดที่ไม่มีลำดับ = ไม่ใช่สินค้า */
   function loadPDF() {
     if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
-    return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'; s.onload = function () { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; ok(window.pdfjsLib); }; s.onerror = function () { no(new Error('โหลดตัวอ่าน PDF ไม่ได้ (ต้องต่อเน็ต) — ส่งเป็น Excel/CSV แทนได้')); }; document.head.appendChild(s); });
+    return loadScript(['/vendor/pdf.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js']).then(function (src) { window.pdfjsLib.GlobalWorkerOptions.workerSrc = src.indexOf('/vendor/') >= 0 ? '/vendor/pdf.worker.min.js' : 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; return window.pdfjsLib; }, function () { throw new Error('โหลดตัวอ่าน PDF ไม่ได้ — ใช้ Excel/CSV แทน'); });
   }
   function pdfRows(pdf) {
     var pages = []; for (var i = 1; i <= pdf.numPages; i++) pages.push(pdf.getPage(i).then(function (pg) { return pg.getTextContent(); }));
     return Promise.all(pages).then(function (tcs) {
-      var out = [['สินค้า', 'ทุน']];
-      tcs.forEach(function (tc) {
-        var lines = {}; tc.items.forEach(function (it) { if (!it.str.trim()) return; var y = Math.round(it.transform[5] / 3) * 3; (lines[y] = lines[y] || []).push({ x: it.transform[4], s: it.str }); });
-        Object.keys(lines).map(Number).sort(function (a, b) { return b - a; }).forEach(function (y) {
-          var txt = lines[y].sort(function (a, b) { return a.x - b.x; }).map(function (t) { return t.s; }).join(' ').replace(/\s+/g, ' ').trim();
-          var m = txt.match(/^(.*?[ก-๙A-Za-z].*?)\s+(\d{1,4}(?:[.,]\d{1,2})?)(?:\s*(?:บาท|฿|\/กก\.?|บ\.))?\s*$/) || txt.match(/^(.*?[ก-๙A-Za-z].*?)\s+(\d{1,4}(?:[.,]\d{1,2})?)\s+\d/);
-          if (m && !/รวม|total|หน้า|page|วันที่|เลขที่/i.test(m[1])) out.push([m[1].replace(/^\d+[.)]\s*/, '').trim(), m[2].replace(',', '.')]);
-        });
-      });
-      if (out.length < 2) throw new Error('ไม่เจอบรรทัด "ชื่อสินค้า ตัวเลข" ใน PDF — ถ้าเป็น PDF สแกน ให้ถ่ายรูป/พิมพ์แทน');
+      var out = window.ALParse.parse(tcs.map(function (tc) { return { items: tc.items.map(function (it) { return { x: it.transform[4], y: it.transform[5], w: it.width || 0, s: it.str }; }) }; }));
+      if (!out || out.length < 2) throw new Error('ไม่เจอแถวสินค้า (ลำดับ · ชื่อ · ทุน) ใน PDF — ถ้าเป็น PDF สแกน ให้ถ่ายรูป/พิมพ์แทน');
       return out;
     });
   }
@@ -45,15 +40,25 @@ window.CostImport = (function () {
     if (/\.(xlsx|xls)$/i.test(file.name)) return loadXLSX().then(function (X) { return file.arrayBuffer().then(function (b) { var wb = X.read(b, { type: 'array' }), ws = wb.Sheets[wb.SheetNames[0]]; return X.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' }); }); });
     return file.text().then(parseCSV);
   }
-  /* เดาคอลัมน์: ชื่อสินค้า = คอลัมน์ที่เป็นข้อความไทยมากสุด · ทุน = คอลัมน์ตัวเลขที่หัวมีคำว่า ทุน/ราคา/cost */
+  /* เดาคอลัมน์: ลำดับ / ชื่อสินค้า / ทุนรอบนี้ (คอลัมน์วันที่ขวาสุด หรือหัวที่มีคำว่า ทุน) / หน่วย / ปลีก · ใช้ได้ทั้ง PDF ที่แยกคอลัมน์แล้ว · Excel ใบ AL · CSV ทั่วไป */
   function guess(tbl) {
-    var head = tbl[0].map(function (h) { return String(h).toLowerCase(); }), body = tbl.slice(1, 30), n = tbl[0].length, name = -1, cost = -1;
-    head.forEach(function (h, i) { if (name < 0 && /สินค้า|รายการ|ชื่อ|product|item|sku/.test(h)) name = i; if (cost < 0 && /ทุน|cost|ราคา|price|บาท/.test(h)) cost = i; });
-    if (name < 0) { var best = -1, bs = 0; for (var i = 0; i < n; i++) { var s = body.filter(function (r) { return /[ก-๙]/.test(String(r[i] || '')); }).length; if (s > bs) { bs = s; best = i; } } name = best; }
-    if (cost < 0) { for (var j = 0; j < n; j++) { if (j === name) continue; var num = body.filter(function (r) { return r[j] !== '' && isFinite(Number(String(r[j]).replace(/,/g, ''))); }).length; if (num > body.length * 0.6) { cost = j; break; } } }
-    return { name: name, cost: cost, hasHeader: name >= 0 && !/[0-9]/.test(String(tbl[0][cost] || '')) && !/[ก-๙]{3,}/.test(String(tbl[0][cost] || '')) ? true : !isFinite(Number(String(tbl[0][cost] || '').replace(/,/g, ''))) };
+    var head = tbl[0].map(function (h) { return String(h).replace(/\s+/g, ' ').trim().toLowerCase(); }), body = tbl.slice(1, 40), n = tbl[0].length, map = { idx: -1, name: -1, cost: -1, unit: -1, retail: -1 };
+    head.forEach(function (h, i) { if (map.idx < 0 && /ลำดับ|^ลา\s*ดับ|^no\.?$|^#$/.test(h)) map.idx = i; if (map.name < 0 && /รายการ|สินค้า|ชื่อ|product|item|sku/.test(h)) map.name = i; if (map.unit < 0 && /หน่วย|unit/.test(h)) map.unit = i; if (map.retail < 0 && /ปลีก|retail/.test(h)) map.retail = i; });
+    var dates = []; head.forEach(function (h, i) { if (/\d{1,2}-\d{1,2}\/\d{1,2}\/\d{2,4}/.test(h) || /^ทุน$|ทุนรอบนี้|ทุนใหม่|cost/.test(h)) dates.push(i); });
+    if (dates.length) map.cost = dates[dates.length - 1];
+    if (map.cost < 0) head.forEach(function (h, i) { if (map.cost < 0 && /ทุน|ราคา|price|บาท/.test(h)) map.cost = i; });
+    if (map.name < 0) { var best = -1, bs = 0; for (var i = 0; i < n; i++) { var sc = body.filter(function (r) { return /[ก-๙]/.test(String(r[i] || '')); }).length; if (sc > bs) { bs = sc; best = i; } } map.name = best; }
+    if (map.cost < 0) { for (var jx = 0; jx < n; jx++) { if (jx === map.name || jx === map.idx) continue; var num = body.filter(function (r) { return r[jx] !== '' && isFinite(Number(String(r[jx]).replace(/,/g, ''))); }).length; if (num > body.length * 0.6) { map.cost = jx; break; } } }
+    if (map.idx < 0) { var c0 = body.filter(function (r) { return /^\d{1,3}$/.test(String(r[0] || '').trim()); }).length; if (c0 > body.length * 0.7 && map.name !== 0 && map.cost !== 0) map.idx = 0; }
+    map.hasHeader = tbl.meta ? true : (map.name >= 0 && !/[0-9]/.test(String(tbl[0][map.cost] || '')) && !/[ก-๙]{3,}/.test(String(tbl[0][map.cost] || '')) ? true : !isFinite(Number(String(tbl[0][map.cost] || '').replace(/,/g, ''))));
+    return map;
   }
-  function rowsFrom(map, hasHeader) { return (hasHeader ? TBL.slice(1) : TBL).map(function (r) { return { product: String(r[map.name] || '').trim(), cost: String(r[map.cost] || '').trim() }; }).filter(function (r) { return r.product; }); }
+  function rowsFrom(map, hasHeader) {
+    return (hasHeader ? TBL.slice(1) : TBL).map(function (r) { var o = { product: String(r[map.name] || '').trim(), cost: String(r[map.cost] || '').trim() };
+      if (map.idx >= 0) { var ix = String(r[map.idx] || '').trim(); o.idx = /^\d{1,3}$/.test(ix) ? Number(ix) : null; }
+      if (map.unit >= 0) o.unit = String(r[map.unit] || '').trim(); if (map.retail >= 0) o.retail = String(r[map.retail] || '').trim(); return o; })
+      .filter(function (r) { return r.product && /[ก-๙A-Za-z]/.test(r.product) && (map.idx < 0 || r.idx != null); });
+  }
   function open() {
     TBL = null; REP = null;
     var m = PX.modal({ title: 'นำเข้าไฟล์ทุน AL', sub: 'ไฟล์จากโรงงานที่พี่หมิงส่งมา (PDF / Excel / CSV) · ระบบจับคู่ชื่อกับสินค้าในระบบเอง และกันตัวเลขแปลกไว้ให้ตรวจก่อนใช้',
@@ -62,12 +67,12 @@ window.CostImport = (function () {
       okText: 'ตรวจไฟล์', note: 'ตรวจก่อน ยังไม่เขียนอะไรจนกว่าจะกด "บันทึก"',
       onOk: function (v, close) {
         if (!TBL) { PX.toast('เลือกไฟล์ก่อน', 'bad'); return false; }
-        var map = { name: +m.el.querySelector('[data-ci="name"]').value, cost: +m.el.querySelector('[data-ci="cost"]').value }, hh = m.el.querySelector('#ciHead').checked;
+        var map = { name: +m.el.querySelector('[data-ci="name"]').value, cost: +m.el.querySelector('[data-ci="cost"]').value, idx: m.el.querySelector('[data-ci="idx"]') ? +m.el.querySelector('[data-ci="idx"]').value : -1, unit: GMAP.unit, retail: GMAP.retail }, hh = m.el.querySelector('#ciHead').checked;
         if (!(map.name >= 0) || !(map.cost >= 0) || map.name === map.cost) { PX.toast('เลือกคอลัมน์ชื่อสินค้าและทุนให้ต่างกัน', 'bad'); return false; }
         var rows = rowsFrom(map, hh), okBtn = m.el.querySelector('.mdl-o'), rep = m.el.querySelector('#ciRep'), src = (m.el.querySelector('#ciSrc') || {}).value || 'ไฟล์ทุน AL';
         var commit = REP && okBtn.dataset.mode === 'commit';
         okBtn.disabled = true; okBtn.textContent = commit ? 'กำลังบันทึก…' : 'กำลังตรวจ…';
-        PX.post('/api/import/costs', { rows: rows, commit: commit, source: src, channel: /\.pdf$/i.test((m.el.querySelector('#ciFile').files[0] || {}).name || '') ? 'pdf' : 'upload', file: (m.el.querySelector('#ciFile').files[0] || {}).name || '' }).then(function (r) {
+        PX.post('/api/import/costs', { rows: rows, commit: commit, source: src, effective_date: (m.el.querySelector('#ciEff') || {}).value || undefined, channel: /\.pdf$/i.test((m.el.querySelector('#ciFile').files[0] || {}).name || '') ? 'pdf' : 'upload', file: (m.el.querySelector('#ciFile').files[0] || {}).name || '' }).then(function (r) {
           okBtn.disabled = false; REP = r;
           if (commit) { close(); PX.toast('Batch ' + esc(r.batch_id || '') + ' · Auto Pass <b>' + r.applied + '</b> รายการ' + (r.flagged ? ' · Review Queue <b>' + r.flagged + '</b>' : '') + (r.problemCount ? ' · จับคู่ไม่ได้ ' + r.problemCount : '')); if (typeof reload === 'function') reload(); if (window.CostImport.onDone) window.CostImport.onDone(); return; }
           rep.innerHTML = report(r);
@@ -81,9 +86,12 @@ window.CostImport = (function () {
       var f = this.files[0]; if (!f) return;
       readTable(f).then(function (t) {
         if (!t.length) throw new Error('ไฟล์ว่าง');
-        TBL = t; var g = guess(t), n = t[0].length, opt = function (sel) { var o = ''; for (var i = 0; i < n; i++) o += '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>คอลัมน์ ' + (i + 1) + ': ' + esc(String(t[0][i] || '').slice(0, 24)) + '</option>'; return o; };
-        m.el.querySelector('#ciMap').innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label class="fld"><span>ชื่อสินค้า</span><select data-ci="name" style="font-family:var(--ff);padding:8px;border:1px solid var(--line);border-radius:10px">' + opt(g.name) + '</select></label>' +
-          '<label class="fld"><span>ทุน (บาท/กก.)</span><select data-ci="cost" style="font-family:var(--ff);padding:8px;border:1px solid var(--line);border-radius:10px">' + opt(g.cost) + '</select></label></div>' +
+        TBL = t; var g = guess(t); GMAP = g; var n = t[0].length, opt = function (sel, none) { var o = none ? '<option value="-1"' + (sel < 0 ? ' selected' : '') + '>— ไม่มี —</option>' : ''; for (var i = 0; i < n; i++) o += '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>คอลัมน์ ' + (i + 1) + ': ' + esc(String(t[0][i] || '').slice(0, 24)) + '</option>'; return o; };
+        var eff = (t.meta && t.meta.effective_date) || (function () { var mm = f.name.match(/(\d{1,2})-\d{1,2}\.(\d{1,2})\.(\d{2,4})/); if (!mm) return ''; var y = Number(mm[3]); if (y < 100) y += 2500; if (y > 2400) y -= 543; return y + '-' + ('0' + mm[2]).slice(-2) + '-' + ('0' + mm[1]).slice(-2); })();
+        m.el.querySelector('#ciMap').innerHTML = (t.meta && t.meta.layout === 'AL' ? '<div class="pre" style="background:var(--green-l);border-color:var(--green-b,#BBF7D0);margin:0 0 8px">อ่านเป็นใบราคาขาย+ทุน AL ได้ <b>' + t.meta.rows + '</b> รายการ (ลำดับ · ชื่อ · สเปค · หน่วย · ทุนรอบก่อน/รอบนี้ · ปลีก · ส่ง 2/5/10kg)' + (eff ? ' · ราคามีผล <b>' + esc(eff) + '</b>' : '') + ' — จับคู่ SKU ด้วยเลขลำดับ + ชื่อ</div>' : '') +
+          '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><label class="fld"><span>ลำดับ (ถ้ามี)</span><select data-ci="idx" style="font-family:var(--ff);padding:8px;border:1px solid var(--line);border-radius:10px">' + opt(g.idx, true) + '</select></label><label class="fld"><span>ชื่อสินค้า</span><select data-ci="name" style="font-family:var(--ff);padding:8px;border:1px solid var(--line);border-radius:10px">' + opt(g.name) + '</select></label>' +
+          '<label class="fld"><span>ทุนรอบนี้ (บาท/กก.)</span><select data-ci="cost" style="font-family:var(--ff);padding:8px;border:1px solid var(--line);border-radius:10px">' + opt(g.cost) + '</select></label></div>' +
+          '<label class="fld"><span>วันที่ราคามีผล</span><input id="ciEff" type="date" value="' + esc(eff) + '"></label>' +
           '<label class="fld" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="ciHead" ' + (g.hasHeader ? 'checked' : '') + '><span>แถวแรกเป็นหัวตาราง</span></label>' +
           '<label class="fld"><span>ที่มา (จะติดไปกับทุกรายการ)</span><input id="ciSrc" value="' + esc('ไฟล์ทุน AL ' + f.name.replace(/\.[^.]+$/, '')) + '"></label>' +
           '<p class="hint">อ่านได้ ' + (t.length - (g.hasHeader ? 1 : 0)) + ' แถว · กด "ตรวจไฟล์" เพื่อให้ระบบจับคู่และตรวจตัวเลข</p>';
@@ -149,5 +157,5 @@ window.CostImport = (function () {
   }
   function decide(id, approve) { return act(id, approve ? 'confirm' : 'skip'); }   /* ปุ่มเดิมในหน้าแรกยังใช้ได้ */
   function mountFlags() { return PX.get('/api/cost-flags').then(function (j) { LAST = j; var old = document.getElementById('flags'); var html = flagsCard(j); if (old) old.outerHTML = html; else document.getElementById('main').insertAdjacentHTML('beforeend', html); if (location.hash === '#flags') { var el = document.getElementById('flags'); if (el) el.scrollIntoView(); } }); }
-  return { open: open, decide: decide, act: act, pick: pick, mountFlags: mountFlags };
+  return { open: open, decide: decide, act: act, pick: pick, mountFlags: mountFlags, last: function () { return REP; }, table: function () { return TBL; } };
 })();

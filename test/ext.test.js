@@ -13,23 +13,24 @@ const okj = (r, m) => { assert.equal(r.status, 200, (m || '') + ' → ' + JSON.s
 const FEED = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'market-feed-sample.json'), 'utf8')).rows;
 
 test('1 ทุนเข้า: อ่านไฟล์ AL จับคู่ชื่อ + ด่านตัวเลขแปลก', () => {
-  const rows = [{ product: 'มันแข็งหมู', cost: '66' }, { product: 'กระดูกข้อขา', cost: '3' }, { product: 'หมูบด มัน 20%', cost: '95' }, { product: 'สามชั้นหมูหั่นเส้น หนา 1.5', cost: '260' }, { product: 'ไก่สดทั้งตัว', cost: '90' }, { product: 'มันแข็งหมู', cost: '66' }];
+  const rows = [{ product: 'มันแข็งหมู', cost: '66' }, { product: 'สะโพกหมู', cost: '3' }, { product: 'หมูบด มัน 20%', cost: '95' }, { product: 'สามชั้นหมูหั่นเส้น หนา 1.5', cost: '260' }, { product: 'ไก่สดทั้งตัว', cost: '90' }, { product: 'มันแข็งหมู', cost: '66' }];
+  const HIP = PID('สะโพกหมู');   /* ทุน 102 → ไฟล์ว่า 3 = Critical Anomaly (ของที่ถูกอยู่แล้วอย่างกระดูกข้อขา ทุน 3 เป็นปกติ ไม่ติด) */
   const chk = okj(call('ops', 'POST', '/api/import/costs', { rows, commit: false }));
   assert.equal(chk.problemCount, 0); assert.equal(chk.byKind.unmatched, 1, 'หมูยอ ไม่มีในระบบ → Unmatched เข้าคิว ห้ามสร้างทุนเอง'); assert.equal(chk.byKind.duplicate, 1, 'แถวซ้ำ → Review');
-  const tiny = chk.flags.find(f => f.name === 'กระดูกข้อขา'); assert.ok(tiny && tiny.kind === 'anomaly' && tiny.severity === 'critical' && tiny.checks.some(c => c.code === 'tiny'), 'ทุน 3 บาทต้องติดด่าน critical');
+  const tiny = chk.flags.find(f => f.name === 'สะโพกหมู'); assert.ok(tiny && tiny.kind === 'anomaly' && tiny.severity === 'critical' && tiny.checks.some(c => c.code === 'tiny'), 'ทุน 3 บาทต้องติดด่าน critical');
   const jump = chk.flags.find(f => /สามชั้นหมูหั่นเส้น/.test(f.name)); assert.ok(jump && jump.checks.some(c => c.code === 'jump' || c.code === 'above-price'), 'กระโดด/สูงกว่าราคาขายต้องติดด่าน');
   assert.ok(chk.rows.find(r => r.raw === 'หมูบด มัน 20%').how, 'จับคู่ชื่อได้'); assert.equal(chk.auto, 2, 'Auto Pass = มันแข็ง + หมูบด (SKU ตรง + เลขปกติ)');
   assert.equal(chk.rows[0].unit, 'THB/KG', 'normalize หน่วยเป็นบาท/กก.');
-  const before = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === BONE).cost;
+  const before = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === HIP).cost;
   const c = okj(call('ops', 'POST', '/api/import/costs', { rows, commit: true, source: 'AL 15/10', file: 'AL-2026-10-15.xlsx' }));
   assert.equal(c.applied, 2, 'ใช้เฉพาะตัวที่ผ่านด่านและเปลี่ยนจริง'); assert.match(c.batch_id, /^COST-\d{6}-01$/, 'ทุกการนำเข้าเป็น Cost Import Batch'); assert.equal(c.batch.effective_date, '2026-10-15', 'วันมีผลอ่านจากชื่อไฟล์');
   assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === MAN).cost, 66);
-  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === BONE).cost, before, 'ตัวที่ติดด่านยังไม่เข้า Cost Master');
+  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === HIP).cost, before, 'ตัวที่ติดด่านยังไม่เข้า Cost Master');
   const cm = okj(call('ops', 'GET', '/api/cost-master')).rows.find(r => r.product_id === MAN); assert.equal(cm.current_cost, 66); assert.equal(cm.previous_cost, 65); assert.equal(cm.batch_id, c.batch_id); assert.equal(cm.approved_by, 'ops'); assert.equal(cm.effective_date, '2026-10-15');
   const fl = okj(call('ops', 'GET', '/api/cost-flags')); assert.equal(fl.pending, 4, 'ทุนแปลก 2 + ไม่พบ SKU 1 + ซ้ำ 1');
   /* Review: correct · hold → Waiting for Cost · confirm · match (จำชื่อ) · skip */
-  okj(call('ops', 'POST', '/api/cost-flags/decide', { id: fl.rows.find(f => f.name === 'กระดูกข้อขา').id, action: 'correct', cost: 30, note: 'ไฟล์พิมพ์ตกเลข' }));
-  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === BONE).cost, 30);
+  okj(call('ops', 'POST', '/api/cost-flags/decide', { id: fl.rows.find(f => f.name === 'สะโพกหมู').id, action: 'correct', cost: 100, note: 'ไฟล์พิมพ์ตกเลข' }));
+  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === HIP).cost, 100);
   const jid = fl.rows.find(f => /สามชั้นหมูหั่นเส้น/.test(f.name)).id, JP = PID('สามชั้นหมูหั่นเส้น');
   okj(call('ops', 'POST', '/api/cost-flags/decide', { id: jid, action: 'hold', note: 'รอเฮียหมิงยืนยัน' }));
   assert.equal(okj(call('ops', 'GET', '/api/cost-master')).rows.find(r => r.product_id === JP).state, 'waiting');
@@ -182,4 +183,24 @@ test('รอบ 3 · แหล่งข้อมูล: สำรวจหน้
   assert.equal(call('sale', 'GET', '/api/intake-perf').status, 403);
   const inbox = okj(call('ops', 'POST', '/api/import/costs', { rows: [{ product: 'มันแข็งหมู', cost: '69' }], commit: true, source: 'inbox: AL.csv', channel: 'inbox' })); assert.equal(inbox.applied, 1);
   assert.equal(okj(call('ops', 'GET', '/api/cost-flags')).imports[0].channel, 'inbox');
+});
+
+test('ใบราคาขาย+ทุน AL ของจริง (PDF 01-07/10/69): อ่านครบ 195 แถว · จับคู่ด้วยเลขลำดับ+ชื่อ 100% · ทุนเท่าเดิม = ไม่มีอะไรให้คนตรวจ', () => {
+  const AL = require('../public/alparse.js');
+  const pages = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'al-01-07-10-69-items.json'), 'utf8'));
+  const t = AL.parse(pages); const rows = t.slice(1);
+  assert.equal(rows.length, 195, '192 รายการ + แช่แข็ง 3'); assert.equal(t.meta.effective_date, '2026-10-01'); assert.equal(t.meta.period, '01-07/10/69');
+  const r1 = rows.find(r => r[0] === 1); assert.equal(r1[6], '100'); assert.equal(r1[8], '160'); assert.equal(r1[9], '115'); assert.equal(r1[11], '111'); assert.equal(r1[4], 'กก.');
+  const r5 = rows.find(r => r[0] === 5); assert.match(r5[1], /^หมูบด มัน 20% แช่แข/); assert.equal(r5[4], 'กล่อง'); assert.ok(/นาราไทย/.test(r5[2]), 'สเปคแยกจากชื่อ');
+  assert.equal(rows.find(r => r[0] === 196)[6], '49'); assert.equal(rows.find(r => r[0] === 903)[6], '160', 'ส่วนแช่แข็ง ลำดับ 3 → 903');
+  assert.ok(rows.every(r => r[6] !== ''), 'ทุกแถวมีทุนรอบนี้');
+  const payload = rows.map(r => ({ idx: r[0], product: r[1], cost: r[6], unit: r[4], retail: r[8] }));
+  const chk = okj(call('ops', 'POST', '/api/import/costs', { rows: payload, commit: false, source: 'ใบราคา AL', effective_date: t.meta.effective_date }));
+  assert.equal(chk.rows.filter(x => x.how === 'idx').length, 195, 'จับคู่ด้วยลำดับ+ชื่อได้ทุกแถว แม้ชื่อใน PDF สะกด/เว้นวรรคต่าง');
+  assert.equal(chk.problemCount, 0); assert.ok(chk.review <= 3, 'ใบเดิมซ้ำ → แทบไม่มีอะไรให้ตรวจ (ได้ ' + chk.review + ')');
+  /* สัปดาห์ถัดไป: ทุนขยับเล็กน้อยทั้งใบ → Auto Pass เกือบหมด · มีตัวเดียวพิมพ์ผิด (ทุน 3 → 300) ต้องติด */
+  const next = payload.map(r => Object.assign({}, r, { cost: String(Math.round(Number(r.cost) * 1.03)) })); next.find(r => r.idx === 112).cost = '300';
+  const c2 = okj(call('ops', 'POST', '/api/import/costs', { rows: next, commit: false, source: 'ใบราคา AL 08-14/10' }));
+  assert.ok(c2.auto >= 185, 'Auto Pass ≥ 95% (ได้ ' + c2.auto + ')'); assert.ok(c2.review <= 8, 'คนตรวจ ≤ 4% (ได้ ' + c2.review + ')');
+  assert.ok(c2.flags.some(f => f.idx === 112 && f.severity === 'critical'), 'กระดูกข้อขา 3 → 300 ต้องติด critical');
 });
