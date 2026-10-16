@@ -40,12 +40,36 @@ window.PX = (function () {
     { id: 'log', href: '/log', ic: '🧾', t: 'บันทึกเหตุการณ์', s: 'คน + ระบบ · ล้มแล้วรู้' }
   ];
 
+  /* ไอคอนเมนูแบบ flat (เส้น 1.8 · สี currentColor) แทนอีโมจิ — โมเดิร์น อ่านง่าย · ไอคอนสีขาวบนแผ่นน้ำเงิน */
+  var SVG = function (d) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>'; };
+  var ICON = {
+    exec: SVG('<path d="M3 11l9-8 9 8v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/>'),
+    pricing: SVG('<rect x="4" y="2" width="16" height="20" rx="2.5"/><path d="M8 6.5h8M8 11h2.2M12 11h2.2M16 11h.01M8 15h2.2M12 15h2.2M16 15v3.5M8 18.5h2.2M12 18.5h2.2"/>'),
+    cust: SVG('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>'),
+    sale: SVG('<path d="M22 7l-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>'),
+    cost: SVG('<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7l8.7 5 8.7-5M12 22V12"/>'),
+    docs: SVG('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>'),
+    brain: SVG('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z"/>'),
+    flow: SVG('<circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M12 19h4.5a3.5 3.5 0 0 0 0-7h-9a3.5 3.5 0 0 1 0-7H12"/>'),
+    memory: SVG('<rect x="2" y="3" width="20" height="5" rx="1.5"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/>'),
+    logic: SVG('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>'),
+    guard: SVG('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>'),
+    wire: SVG('<path d="M12 22v-5M9 8V2M15 8V2M18 8v5a6 6 0 0 1-12 0V8z"/>'),
+    trend: SVG('<path d="M3 3v18h18"/><path d="M7 15l4-4 4 3 5-6"/>'),
+    log: SVG('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>'),
+    box: SVG('<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v9"/>'),
+    calc: SVG('<rect x="4" y="2" width="16" height="20" rx="2.5"/><path d="M8 6.5h8M8 11h2.2M12 11h2.2M16 11h.01M8 15h2.2M12 15h2.2M16 15v3.5M8 18.5h2.2M12 18.5h2.2"/>'),
+    megaphone: SVG('<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15 9a3 3 0 0 1 0 6M18 6a7 7 0 0 1 0 12"/>'),
+    tie: SVG('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
+    chart: SVG('<path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/>'),
+    wrench: SVG('<path d="M14.7 6.3a4 4 0 0 0 5 5L22 9l-3-3-2.3 2.3a4 4 0 0 0-2-2zM14.7 6.3L4 17a2 2 0 1 0 3 3l10.7-10.7"/>')
+  };
   function item(n, cur) {
     var on = n.id === cur;
     return '<a class="' + (on ? 'on' : '') + '" data-id="' + n.id + '" href="' + n.href + '">' +
-      '<i>' + n.ic + '</i><span class="txt">' + esc(n.t) +
+      '<i class="nic">' + (ICON[n.id] || n.ic) + '</i><span class="txt">' + esc(n.t) +
       (n.s ? '<em>' + esc(n.s) + '</em>' : '') + '</span>' +
-      (n.badge ? '<span class="bdg" data-bdg="' + n.badge + '">—</span>' : '') + '</a>';
+      (n.badge ? '<span class="bdg" data-bdg="' + n.badge + '"></span>' : '') + '</a>';
   }
 
   /* วาดเปลือก แล้วคืน element ของเนื้อหาให้หน้าไปเติมเอง */
@@ -578,7 +602,7 @@ window.PX = (function () {
     if (d < 86400 * 7) return Math.floor(d / 86400) + ' วันก่อน';
     return String(iso).slice(0, 10).split('-').reverse().join('/');
   }
-  return { logo: function () { return LOGO; }, me: function () { return ME; }, esc: esc, money: money, shell: shell, ago: ago, badge: badge, why: why, pageNums: pageNums,
+  return { logo: function () { return LOGO; }, icon: function (n) { return ICON[n] || ''; }, me: function () { return ME; }, esc: esc, money: money, shell: shell, ago: ago, badge: badge, why: why, pageNums: pageNums,
            ISSUE_TYPES: ISSUE_TYPES, issueNeedsCarrier: issueNeedsCarrier,
            bindTips: bindTips, get: get, fail: fail, head: head, back: back, COL: COL,
            deliveryForm: deliveryForm, deliveryFinish: deliveryFinish, prospectForm: prospectForm,

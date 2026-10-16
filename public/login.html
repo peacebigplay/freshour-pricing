@@ -13,10 +13,10 @@
    เคยพลาด: ย้ายดีไซน์แล้วลืมหน้านี้ไว้กับของเก่า ทุกคนเลยเจอ 401 แล้วเข้าไม่ได้เลย */
 var esc = PX.esc;
 var R = [
-  { k: 'boss',  ic: '👔', t: 'Executive · พี่หมิง', s: 'ประกาศราคา · ตัดสินใจ', go: '/exec' },
-  { k: 'ops',   ic: '🧮', t: 'พี่จุ๋ม',              s: 'ออกราคา · พุธ',         go: '/pricing' },
-  { k: 'sale',  ic: '📊', t: 'ทีมขาย',              s: 'ดูราคาที่ประกาศ · เปิดใบราคา', go: '/sales' },
-  { k: 'admin', ic: '🔧', t: 'อิ๊บ',                s: 'ผู้ดูแลระบบ',            go: '/exec' }
+  { k: 'boss',  ic: 'tie', t: 'Executive · พี่หมิง', s: 'ประกาศราคา · ตัดสินใจ', go: '/exec' },
+  { k: 'ops',   ic: 'calc', t: 'พี่จุ๋ม',              s: 'ออกราคา · พุธ',         go: '/pricing' },
+  { k: 'sale',  ic: 'chart', t: 'ทีมขาย',              s: 'ดูราคาที่ประกาศ · เปิดใบราคา', go: '/sales' },
+  { k: 'admin', ic: 'wrench', t: 'อิ๊บ',                s: 'ผู้ดูแลระบบ',            go: '/exec' }
 ];
 var NEED = true, PICK = null, BUSY = false, REPS = [], REP = '';   /* ทีมขายมีหลายคน — เลือกชื่อก่อน จะได้เห็นเฉพาะลูกค้าของตัวเอง */
 
@@ -36,9 +36,9 @@ function draw() {
         '<p>ทุน ราคาตลาด สัญญาลูกค้า และกำไรที่เหลือจริง — ' +
           'อยู่ในกระดานเดียวกัน ทุกตัวเลขบอกได้ว่ามาจากไหน</p>' +
         '<ul class="lgf">' +
-          '<li><i>📦</i><span><b>อังคาร</b> โรงงานส่งทุน</span></li>' +
-          '<li><i>🧮</i><span><b>พุธ</b> จบราคาทีละเจ้า</span></li>' +
-          '<li><i>📢</i><span><b>พฤหัส</b> ประกาศ + ออกใบราคา</span></li>' +
+          '<li><i>' + PX.icon('box') + '</i><span><b>อังคาร</b> โรงงานส่งทุน</span></li>' +
+          '<li><i>' + PX.icon('calc') + '</i><span><b>พุธ</b> จบราคาทีละเจ้า</span></li>' +
+          '<li><i>' + PX.icon('megaphone') + '</i><span><b>พฤหัส</b> ประกาศ + ออกใบราคา</span></li>' +
         '</ul>' +
       '</div>' +
       '<div class="lgr">' +
@@ -47,7 +47,7 @@ function draw() {
                                        : 'เครื่องนี้ไม่ต้องใส่รหัส — เลือกแล้วเข้าได้เลย') + '</span></div>' +
         '<div class="lgs">' + R.map(function (r) {
           return '<button class="lgb' + (PICK === r.k ? ' on' : '') + '" data-r="' + r.k + '">' +
-            '<i>' + r.ic + '</i><span><b>' + esc(r.t) + '</b><em>' + esc(r.s) + '</em></span>' +
+            '<i>' + PX.icon(r.ic) + '</i><span><b>' + esc(r.t) + '</b><em>' + esc(r.s) + '</em></span>' +
             '<u>' + (PICK === r.k ? '✓' : '›') + '</u></button>';
         }).join('') + '</div>' +
         (PICK === 'sale' && REPS.length

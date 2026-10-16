@@ -1311,123 +1311,188 @@ body.publicquote{background:#F5F7FB;padding:0}.publicquote .app{display:block;ma
 @media (max-width:860px){.px-greet .g-todo{margin-left:0}}
 
 /* ══════════════════════════════════════════════════════════════════
-   FRESHOUR · BENTO V2 SKIN (reskin ชั้นบนสุด — เปลี่ยนภาษาภาพอย่างเดียว ไม่แตะโครง/ข้อมูล/ปุ่ม)
-   ที่มา: Freshour_DesignSystem_Bento_V2.html · โทเคนจากสเปก: Primary #0462E0 · Dark #034FB8 · Light #EAF2FF · Navy #071D3A
+   FRESHOUR · BENTO V2 SKIN (v2) — ชั้นบนสุด เปลี่ยนภาษาภาพอย่างเดียว ไม่แตะโครง/ข้อมูล/ปุ่ม
+   เรฟ: Freshour_DesignSystem_Bento_V2.html · โทเคน: Primary #0462E0 · Dark #034FB8 · Light #EAF2FF · Navy #071D3A (ใช้เป็นสีตัวอักษร ไม่ใช่พื้นเมนู)
+   กติกา: แคนวาสสว่าง · เมนูซ้ายสีเดียวกับพื้น · การ์ดขาวมุม 20 · เลข KPI ใหญ่สีตามความหมายบนพื้น pastel · ไม่มีตัวหนังสือเข้มบนพื้นเข้ม · Prompt ทุกตัวอักษร
    ══════════════════════════════════════════════════════════════════ */
 :root{
-  --blue:#0462E0; --blue-d:#034FB8; --blue-l:#EAF2FF; --blue-b:#CFE0FF; --blue-m:#DCEBFF;
-  --navy:#071D3A; --navy-2:#032D5D;
-  --red:#E43B4E;  --red-l:#FFE0E3;  --red-b:#FFC9CF;   --red-t:#BE263A;
-  --green:#0B9F61;--green-l:#D8F8E4;--green-b:#BDEFD1; --green-t:#087341;
-  --amber:#EB8C12;--amber-l:#FFEFD0;--amber-b:#FFE0A8; --amber-t:#9C5800;
-  --purple:#6742D5;--purple-l:#EADDFF;--purple-b:#D9C6FF;--purple-t:#5B3DB5;
-  --ink:#101A32; --tx:#182438; --tx-2:#5F7087; --tx-3:#8490A1;
-  --line:#E4EAF2; --line-2:#F1F4F8;
-  --bg:#EEEFF2; --app:#EEEFF2; --card:#FFFFFF;
+  --blue:#0462E0; --blue-d:#034FB8; --blue-l:#EAF2FF; --blue-b:#CFE0FF; --blue-m:#DCEBFF; --blue-t:#034FC5;
+  --navy:#071D3A;
+  --red:#E43B4E;  --red-l:#FFE4E6;  --red-b:#FFD2D7;   --red-t:#BE263A;
+  --green:#0B9F61;--green-l:#D9F6E6;--green-b:#BFEBD2; --green-t:#087E52;
+  --amber:#EB8C12;--amber-l:#FFF0D0;--amber-b:#FFE1A6; --amber-t:#AE6907;
+  --purple:#6742D5;--purple-l:#EBE1FF;--purple-b:#D9C8FF;--purple-t:#5B3DB5;
+  --ink:#101A32; --tx:#182438; --tx-2:#52637A; --tx-3:#66758B;
+  --line:#E8EDF3; --line-2:#F1F4F8;
+  --bg:#F4F6F9; --app:#F4F6F9; --card:#FFFFFF;
   --r:14px; --r2:20px; --r3:24px;
-  --sh:0 6px 22px rgba(22,47,74,.06);
-  --sh-c:0 6px 22px rgba(22,47,74,.045);
+  --sh:0 5px 20px rgba(27,51,79,.04);
+  --sh-c:0 5px 20px rgba(27,51,79,.035);
   --band-1:#E43B4E; --band-2:#EB8C12; --band-3:#7BB13A; --band-4:#0B9F61; --band-5:#0462E0;
   --violet:#6742D5; --plum:#6742D5;
 }
-/* ── ขั้นแรก: ตัดข้อความที่ไม่จำเป็น — ทุกหน้าเริ่มที่ greeting ไม่ต้องบอกว่าหน้านี้ทำอะไร ── */
-.top h1,.top>div>p{display:none}
-.top{margin-bottom:8px;align-items:center}
-.top>div:first-child{display:none}
-.px-greet{margin:0 0 18px;align-items:center}
-.px-greet .g-hi{font-size:24px;font-weight:700;color:var(--ink);letter-spacing:-.6px;line-height:1.3}
-.px-greet .g-hi span{font-size:13px;color:var(--tx-2);font-weight:500}
-.px-greet .g-when{font-size:13px}
-.ex-hierarchy b{display:none}
-.ex-hierarchy span{font-size:12px;letter-spacing:1.4px;color:#506685;font-weight:600;text-transform:uppercase}
-.card h3 .sub,.k .lb .sub{display:none}
-.card>h3+p.hint,.card>h3+.hint,.ap .aph span,.nah .sub{display:none}
-.ex-perf .hint:first-of-type{display:none}
+/* Prompt ทุกตัวอักษร — รวม control ที่เบราว์เซอร์ไม่สืบทอดฟอนต์ และตัวหนังสือใน SVG */
+html,body,button,input,select,textarea,optgroup,option,svg text,.n,[class*="n "]{font-family:'Prompt',system-ui,-apple-system,'Segoe UI',sans-serif}
+*{font-family:inherit}
+body{background:var(--bg);padding:0;font-size:14px;color:var(--tx)}
 
-/* ── แคนวาส: เต็มจอแบบเรฟ ไม่มีกรอบลอย ── */
-body{background:var(--bg);padding:0;font-size:14px}
+/* ── ขั้นแรก: ตัดข้อความส่วนเกิน — เริ่มที่ greeting ── */
+.top{margin:0 0 -48px;justify-content:flex-end;position:relative;z-index:2}
+.top>div:first-child,.top h1,.top>div>p{display:none}
+.px-greet{margin:0 0 20px;padding-right:240px;min-height:48px;align-items:center}
+.px-greet .g-hi{font-size:28px;font-weight:700;color:var(--ink);letter-spacing:-.9px;line-height:1.25}
+.px-greet .g-hi span{font-size:13px;color:var(--tx-2);font-weight:500;letter-spacing:0}
+.px-greet .g-when{font-size:13px;color:var(--tx-2)}
+.ex-hierarchy b,.card h3 .sub,.k .lb .sub,.card>h3+p.hint,.card>h3+.hint,.ap .aph span,.nah+.rnote,.perf-hd span,
+h2+p.sub,h3+p.sub,div.sub[style*="margin:0 0 8px"],.ex-perf .hint:first-of-type{display:none}
+.ex-hierarchy span,.ex-section-title,.side .lb{font-size:11px;letter-spacing:1.5px;color:#7A8AA3;font-weight:600;text-transform:uppercase}
+
+/* ── โครงหน้า ── */
 .app{max-width:none;margin:0;background:transparent;border-radius:0;box-shadow:none;padding:0;gap:0;
-  grid-template-columns:244px minmax(0,1fr);min-height:100vh}
-.main{padding:22px 30px 48px;max-width:1900px}
+  grid-template-columns:248px minmax(0,1fr);min-height:100vh}
+.main{padding:26px 30px 48px;max-width:1900px}
 
-/* ── Sidebar: navy gradient · active = blue gradient ── */
-.side{background:linear-gradient(160deg,#061B3E,#032D5D 75%,#052651);border:0;border-radius:0;
-  padding:28px 15px 22px;top:0;min-height:100vh;max-height:100vh;box-shadow:9px 0 30px rgba(8,41,84,.08)}
-.brand b{color:#fff;font-size:20px;letter-spacing:-.6px}
-.brand span{color:#A8BFDF}
-.brand .mk{background:#fff;border-radius:12px;padding:3px;width:41px;height:41px}
-.brand .mk svg{width:34px;height:34px}
-.side .lb{color:#7897C1;font-size:11px;letter-spacing:1.35px;padding:0 15px;margin:14px 0 8px;text-transform:uppercase}
-.nav a{color:#D3E0F6;font-size:13px;padding:12px 15px;border-radius:12px;min-height:46px}
-.nav a i{opacity:1;font-size:17px}
-.nav a em{color:#A8BFDF}
-.nav a:hover{background:rgba(255,255,255,.09);color:#fff}
-.nav a.on{color:#fff;background:linear-gradient(100deg,#0561DC,#0878F5);box-shadow:0 8px 24px rgba(0,22,54,.33)}
+/* ── Sidebar: สีเดียวกับพื้น · ไอคอน flat ขาวบนแผ่นน้ำเงิน · active = น้ำเงินทึบ ── */
+.side{background:transparent;border:0;border-right:1px solid #E6EBF2;border-radius:0;padding:26px 16px 22px;top:0;min-height:100vh;max-height:100vh;box-shadow:none}
+.brand{padding:2px 6px 26px}
+.brand b{color:var(--ink);font-size:21px;letter-spacing:-.7px}
+.brand span{color:var(--tx-3)}
+.brand .mk{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#0469EF,#0350BE);padding:4px;box-shadow:0 6px 14px rgba(4,98,224,.25)}
+.brand .mk svg{width:32px;height:32px}
+.side .lb{padding:0 14px;margin:14px 0 8px}
+.nav a{color:#3B4B63;font-size:13.5px;font-weight:500;padding:9px 12px;border-radius:14px;gap:12px;min-height:50px;align-items:center}
+.nav a em{color:var(--tx-3);font-size:11px}
+.nav a:hover{background:#fff;color:var(--ink);box-shadow:var(--sh-c)}
+.nav a.on{color:#fff;background:linear-gradient(100deg,#0561DC,#0878F5);font-weight:600;box-shadow:0 10px 24px rgba(4,98,224,.28)}
 .nav a.on em{color:#D6E6FF}
-.nav a .bdg{background:#FCE6DA;color:#B83E17}
-.nav a.on .bdg{background:rgba(255,255,255,.22);color:#fff}
-.navs::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18)}
-.float{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:16px}
-.float span{color:#A8BFDF}
-.float .ic{background:rgba(255,255,255,.14)}
-.float button{background:linear-gradient(100deg,#0561DC,#0878F5)}
-.side .out,.side a.logout,.side .logout{color:#A8BFDF}
-.who{border-color:transparent;box-shadow:var(--sh-c)}
+.nav a .nic{width:34px;height:34px;flex:0 0 34px;border-radius:11px;display:grid;place-items:center;
+  background:linear-gradient(135deg,#0469EF,#2E86F7);color:#fff;box-shadow:0 5px 12px rgba(4,98,224,.22);font-style:normal;font-size:14px}
+.nav a .nic svg{width:18px;height:18px;display:block}
+.nav a.on .nic{background:#fff;color:var(--blue);box-shadow:none}
+.nav a .txt{flex:1 1 auto;min-width:0}
+.nav a .bdg{background:#FFE4E6;color:#BE263A;font-size:10px;padding:2px 7px;max-width:96px;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto}
+.nav a.on .bdg{background:#fff;color:var(--blue-d)}
+.nav a .bdg:empty{display:none}
+.nav a.on em{color:#E3EEFF}
+.navs::-webkit-scrollbar-thumb{background:#D7DEE8}
+.float{background:#fff;border:1px solid var(--line);border-radius:18px;color:var(--ink);box-shadow:var(--sh-c);padding:16px}
+.float .ic{display:none}
+.float b{color:var(--ink);font-size:14px}
+.float span{color:var(--tx-2)}
+.float button{background:linear-gradient(100deg,#0561DC,#0878F5);border-radius:11px;box-shadow:0 7px 16px rgba(7,92,229,.2)}
+.side .out,.side a.logout,.side .logout{color:var(--tx-3)}
+.who{border-color:transparent;box-shadow:var(--sh-c);background:#fff}
 .who .av{background:linear-gradient(135deg,#0469EF,#003FAE)}
 
-/* ── การ์ด Bento ── */
-.card{border-radius:20px;padding:22px 23px;border:1px solid rgba(255,255,255,.78);box-shadow:var(--sh)}
-.card h3{font-size:16px;font-weight:600;letter-spacing:-.25px}
-.k{border-radius:20px;padding:22px 23px;border:1px solid rgba(255,255,255,.78);box-shadow:var(--sh)}
-.k .lb{font-size:12px;color:var(--tx-2);font-weight:500}
-.k .v{font-size:clamp(34px,3vw,46px);font-weight:700;letter-spacing:-1.6px;line-height:1.15;margin-top:4px}
-.k .v small{font-size:15px;font-weight:500;opacity:.75}
-.k .c{font-size:12px;color:var(--tx-2);margin-top:8px}
-.k .ic{width:40px;height:40px;border-radius:12px;font-size:19px}
-.k.lead{background:linear-gradient(135deg,#0469EF,#003FAE);border-color:transparent;box-shadow:0 12px 30px rgba(4,98,224,.28)}
-.k.lead .lb,.k.lead .c{color:#D0E1FF}
-.k .pill{font-size:11px;padding:5px 10px;border-radius:999px}
-.k .pill.g{background:var(--green-l);color:var(--green-t)}
-.k .pill.r{background:var(--red-l);color:var(--red-t)}
-.k .pill.a{background:var(--amber-l);color:var(--amber-t)}
-/* โทนสีการ์ดตามความหมาย (คลาสเดิมของหน้า) */
-.ex-sum-card,.ex-kpi,.ex-ktile,.xc-strip .q{border-radius:20px}
-.ex-sum-card{padding:22px 23px;border:1px solid rgba(255,255,255,.8);box-shadow:var(--sh)}
-.ex-sum-card span{font-size:12px;color:var(--tx-2)}
-.ex-sum-card b{font-size:clamp(30px,2.6vw,42px);font-weight:700;letter-spacing:-1.4px;line-height:1.15}
-.ex-sum-card em{font-size:12px;color:var(--tx-2)}
-.ex-sum-card.lead{background:linear-gradient(135deg,#0469EF,#003FAE)!important;color:#fff;border-color:transparent;box-shadow:0 12px 30px rgba(4,98,224,.28)}
-.ex-sum-card.lead span,.ex-sum-card.lead em,.ex-sum-card.lead b{color:#fff}
-.ex-sum-card.lead span{color:#D0E1FF}.ex-sum-card.lead em{color:#D0E1FF}
-.ex-sum-card.good{background:linear-gradient(140deg,#D9F6E6,#F0FBF5)!important;border-color:#DDF2E5}.ex-sum-card.good b{color:#087E52}
-.ex-sum-card.warn{background:linear-gradient(140deg,#FFF0D0,#FFF9E9)!important;border-color:#FFF0D3}.ex-sum-card.warn b{color:#AE6907}
-.ex-sum-card.bad{background:linear-gradient(150deg,#FFE4E6,#FFF4F5)!important;border-color:#FFD9DD}.ex-sum-card.bad b{color:#BE263A}
-.ex-kpi.tone-green{background:linear-gradient(140deg,#D9F6E6,#F0FBF5)}
-.ex-kpi.tone-amber{background:linear-gradient(140deg,#FFF0D0,#FFF9E9)}
-.ex-kpi.tone-red{background:linear-gradient(150deg,#FFE4E6,#FFF4F5)}
+/* ── การ์ด Bento: ขาว มุม 20 ขอบจาง เงาอ่อน ระยะในการ์ด 22 ── */
+.card{border-radius:20px;padding:22px;border:1px solid #EBEFF3;box-shadow:var(--sh)}
+.card h3{font-size:16px;font-weight:600;letter-spacing:-.25px;color:var(--ink);margin-bottom:12px}
+.kpi,.ex-summary-grid,.ex-kpis,.ex-business-grid,.ex-business-grid2,.xc-2,.dgrid{gap:16px}
+.ex-section{margin-top:24px}
+.k{position:relative;border-radius:20px;padding:22px;border:1px solid #EBEFF3;box-shadow:var(--sh);background:#fff;min-height:168px}
+.k .kt{position:absolute;top:18px;right:18px;margin:0;gap:0}
+.k .ic{display:none}
+.k .pill{margin:0;font-size:11px;font-weight:600;padding:5px 10px;border-radius:999px;background:#F1F4F8;color:#485875}
+.k .lb{font-size:15px;font-weight:600;color:var(--ink);padding-right:118px;line-height:1.35;min-height:22px}
+.k .v{font-size:clamp(34px,2.8vw,44px);font-weight:700;letter-spacing:-1.2px;line-height:1.12;margin-top:10px;color:var(--ink)}
+.k .v small{font-size:15px;font-weight:500;color:var(--tx-2);opacity:1;letter-spacing:0;margin-left:4px}
+.k .c{font-size:12.5px;color:var(--tx-2);margin-top:8px;line-height:1.5}
+.k .pill.g{background:var(--green-l);color:var(--green-t)}.k .pill.r{background:var(--red-l);color:var(--red-t)}.k .pill.a{background:var(--amber-l);color:var(--amber-t)}
+/* การ์ดนำ = pastel น้ำเงิน เลขน้ำเงิน (ตามเรฟ) — ไม่ใช่น้ำเงินทึบ */
+.k.lead{background:linear-gradient(140deg,#D8EAFF,#EDF6FF);border-color:#DBEAFF;color:var(--ink);box-shadow:var(--sh)}
+.k.lead .lb{color:var(--ink)}.k.lead .v{color:var(--blue-t)}.k.lead .c{color:#53657C}.k.lead .v small{color:#53657C}
+.k.lead .pill{background:#DCECFF;color:#0358D2}
+.k.lead .bar{background:rgba(3,79,197,.12)!important}.k.lead .bar i{background:var(--blue)!important}
+.k.lead a{color:var(--blue)!important}
+.k.lead .pill.g{background:var(--green-l);color:var(--green-t)}
+.k.good{background:linear-gradient(140deg,#D9F6E6,#F0FBF5);border-color:#DDF2E5}.k.good .v{color:var(--green-t)}
+.k.warn{background:linear-gradient(140deg,#FFF0D0,#FFF9E9);border-color:#FFF0D3}.k.warn .v{color:var(--amber-t)}
+.k.bad{background:linear-gradient(150deg,#FFE4E6,#FFF4F5);border-color:#FFD9DD}.k.bad .v{color:var(--red-t)}
+/* การ์ดสรุปหน้าผู้บริหาร */
+.ex-sum-card{padding:22px;border-radius:20px;border:1px solid #EBEFF3;box-shadow:var(--sh);background:#fff}
+.ex-sum-card span{font-size:15px;font-weight:600;color:var(--ink)}
+.ex-sum-card b{font-size:clamp(30px,2.5vw,40px);font-weight:700;letter-spacing:-1.5px;line-height:1.15;color:var(--ink);margin:10px 0 6px}
+.ex-sum-card em{font-size:12.5px;color:var(--tx-2);line-height:1.5}
+.ex-sum-card.lead{background:linear-gradient(140deg,#D8EAFF,#EDF6FF)!important;border-color:#DBEAFF}.ex-sum-card.lead b{color:var(--blue-t)}
+.exec-v8 .ex-sum-card.lead span,.exec-v8.exec-v13 .ex-sum-card.lead span{color:var(--ink)!important}.exec-v8 .ex-sum-card.lead em,.exec-v8.exec-v13 .ex-sum-card.lead em{color:#53657C!important}
+.exec-v8.exec-v13 .ex-period .ex-stale{color:var(--red-t)}
+.ex-sum-card.good{background:linear-gradient(140deg,#D9F6E6,#F0FBF5)!important;border-color:#DDF2E5}.ex-sum-card.good b{color:var(--green-t)}
+.ex-sum-card.warn{background:linear-gradient(140deg,#FFF0D0,#FFF9E9)!important;border-color:#FFF0D3}.ex-sum-card.warn b{color:var(--amber-t)}
+.ex-sum-card.bad{background:linear-gradient(150deg,#FFE4E6,#FFF4F5)!important;border-color:#FFD9DD}.ex-sum-card.bad b{color:var(--red-t)}
+.ex-kpi{border-radius:20px;padding:22px;border:1px solid #EBEFF3;box-shadow:var(--sh)}
+.ex-kpi.tone-green{background:linear-gradient(140deg,#D9F6E6,#F0FBF5)}.ex-kpi.tone-green b{color:var(--green-t)}
+.ex-kpi.tone-amber{background:linear-gradient(140deg,#FFF0D0,#FFF9E9)}.ex-kpi.tone-amber b{color:var(--amber-t)}
+.ex-kpi.tone-red{background:linear-gradient(150deg,#FFE4E6,#FFF4F5)}.ex-kpi.tone-red b{color:var(--red-t)}
 .ex-kpi.tone-none{background:#fff}
-.ex-kpi b{font-size:clamp(30px,2.6vw,40px);font-weight:700;letter-spacing:-1.4px}
-/* AI = ม่วง (insight / แนะนำ / ทำนาย) — บล็อก AI Pricing performance บนหน้าตั้งราคา */
-.ap{background:linear-gradient(130deg,#EBE1FF,#F6EEFF 85%);border:1px solid #E5D7FF;border-radius:20px}
+.ex-kpi b{font-size:clamp(30px,2.5vw,40px);font-weight:700;letter-spacing:-1.5px}
+.ex-kpi-label{font-size:15px;font-weight:600;color:var(--ink)}
+.ex-ktile{border-radius:20px}
+/* AI = ม่วง (insight/แนะนำ/ทำนาย) — ตัวเลขม่วงเข้มบนพื้น pastel (ไม่มีเข้มบนเข้ม) */
+.ap{background:linear-gradient(130deg,#EBE1FF,#F6EEFF 85%);border:1px solid #E5D7FF;border-radius:20px;padding:18px}
 .ap .aph b{color:#5131B4;font-size:16px}
-.ap .k.lead{background:linear-gradient(135deg,#6B3FE0,#4B2BB3);box-shadow:0 12px 30px rgba(103,66,213,.28)}
-.ap .k .v{color:#3E2A8A}
-.aip{color:#5B3DB5}
+.ap .k{background:#fff}
+.ap .k.lead{background:linear-gradient(140deg,#E6DBFF,#F3ECFF);border-color:#E2D4FF}
+.ap .k.lead .v,.ap .k.lead .lb{color:#4A2FAE}.ap .k.lead .c,.ap .k.lead .v small{color:#5F4D8F}
+.ap .k.lead .pill{background:#E4D7FF;color:#5B3DB5}
+.ap .k.lead .bar{background:rgba(74,47,174,.12)!important}.ap .k.lead .bar i{background:#6742D5!important}
+.ap .k.lead a{color:#5B3DB5!important}
+.ap .ac{border-radius:20px!important;padding:20px 22px 18px!important;border-color:#EBEFF3!important;box-shadow:var(--sh)!important}
+.ap .ac .ah{font-size:14px!important;font-weight:600!important;color:var(--ink)!important}
+.ap .ac .av b{font-size:clamp(32px,2.6vw,42px)!important;letter-spacing:-1.6px!important;color:var(--ink)}
+.ap .ac .av small,.ap .ac .as,.ap .ac .ad.fl{color:var(--tx-2)!important}
+.ap .ac .ad.up{color:var(--green-t)!important}.ap .ac .ad.dn{color:var(--red-t)!important}
+.ap .ac.lead{background:linear-gradient(140deg,#E6DBFF,#F3ECFF)!important;border-color:#E2D4FF!important;color:var(--ink)!important}
+.ap .ac.lead .ah,.ap .ac.lead .ah .why{color:#3F2A8F!important}.ap .ac.lead .ah em{color:#5B3DB5!important}
+.ap .ac.lead .av b{color:#4A2FAE!important}.ap .ac.lead .av small,.ap .ac.lead .as,.ap .ac.lead .ad.fl{color:#5F4D8F!important}
+.ap .ac.lead .ad.up{color:var(--green-t)!important}
+.ap .ac .tb em,.ap .ac .tb small{color:var(--tx-2)!important}.ap .ac .tb i{background:#EEF1F6!important}.ap .ac .tb i b{background:var(--blue)!important}
+.ap .ac.lead .tb em,.ap .ac.lead .tb small{color:#3F2A8F!important}.ap .ac.lead .tb i{background:rgba(74,47,174,.14)!important}.ap .ac.lead .tb i b{background:#6742D5!important}
+.ap .ch span.g{color:var(--green-t)!important}.ap .ch span.a{color:var(--amber-t)!important}.ap .ch span.r{color:var(--red-t)!important}
+.ap .aph .apl{background:#fff!important;border-color:#E2D4FF!important;color:#4A3C7A!important}.ap .aph .apl b{color:#5B3DB5!important}
+/* สีตัวอักษรเตือนที่เขียน inline — ใช้เฉดเข้มขึ้นให้อ่านออกบนพื้นขาว/pastel */
+[style*="color:var(--amber)"]{color:var(--amber-t)!important}[style*="color:var(--red)"]{color:var(--red-t)!important}
+.st,.pill.a,.pill2.a{color:var(--amber-t)}
+.ac.on .st{color:var(--green-t)}.ac.off .st{color:var(--amber-t)}
+.k .pill.g,.pill2.g,.sqtop .state.g,.response-summary .rs.g{color:var(--green-t)}.sqtop .state.a,.response-summary .rs.a{color:var(--amber-t)}.sqtop .state.r{color:var(--red-t)}
+table.g .neg{color:var(--red-t)}table.g .low{color:var(--amber-t)}
+.side .lb,.ex-hierarchy span,.ex-section-title{color:#66758B}
+/* แผ่นเวลาในหน้าผู้บริหาร: pastel + ตัวเลขสีเข้ม (แทนน้ำเงิน/ม่วงทึบ) */
+.exec-v8 .ex-ktile{border-radius:20px;padding:18px 20px;border:1px solid #EBEFF3;box-shadow:var(--sh)}
+.exec-v8 .ex-ktile.c1{background:linear-gradient(140deg,#D8EAFF,#EDF6FF);color:var(--blue-t)}
+.exec-v8 .ex-ktile.c2{background:linear-gradient(140deg,#E6DBFF,#F3ECFF);color:#4A2FAE}
+.exec-v8 .ex-ktile.c3{background:linear-gradient(140deg,#EBE1FF,#F7F1FF);color:#5B3DB5}
+.exec-v8 .ex-ktile span,.exec-v8 .ex-ktile em{color:#3B4B63;opacity:1}
+.exec-v8 .ex-ktile span{font-size:13px;font-weight:600;color:var(--ink)}
+.exec-v8 .ex-ktile b{font-size:34px;letter-spacing:-1.4px}.exec-v8 .ex-ktile b small{color:#3B4B63;opacity:1}
+.exec-v8 .ex-ktile em i{background:#fff;color:inherit}
+.exec-v8 .ex-ktile svg *{stroke:currentColor}.exec-v8 .ex-ktile svg [fill]:not([fill="none"]){fill:currentColor}
+.exec-v8 .ex-ktile+.ex-ktile{margin-top:16px}
+.exec-v8 .ex-ktile svg line{stroke:currentColor!important;opacity:.45}
+/* การ์ด KPI หน้าทุน/ตลาด (.kc) — ขาวมุม 20 · การ์ดนำ pastel น้ำเงิน เลขน้ำเงิน */
+.kc{border-radius:20px!important;padding:20px 22px 18px!important;border-color:#EBEFF3!important;box-shadow:var(--sh)!important}
+.kc .kh{font-size:14px!important;font-weight:600!important;color:var(--ink)!important}
+.kc .kv b{font-size:clamp(32px,2.6vw,42px)!important;letter-spacing:-1.6px!important}
+.kc .kv small,.kc .ks,.kc .kd.fl,.kc .why{color:var(--tx-2)!important}
+.kc .kd.up{color:var(--green-t)!important}.kc .kd.dn{color:var(--red-t)!important}
+.kc.lead{background:linear-gradient(140deg,#D8EAFF,#EDF6FF)!important;border-color:#DBEAFF!important;color:var(--ink)!important}
+.kc.lead .kh,.kc.lead .kh span{color:var(--ink)!important}.kc.lead .kv b{color:var(--blue-t)}
+.kc.lead .ks,.kc.lead .kv small,.kc.lead .why,.kc.lead .kd.fl,.kc.lead .mb em,.kc.lead .leg{color:#3B4B63!important}
+.kc.lead .kx{color:var(--blue)!important}
+.kc.lead svg text{fill:var(--ink)!important}.kc.lead svg circle{stroke:rgba(3,79,197,.14)!important}
+.kc.lead .mbs{background:rgba(3,79,197,.14)!important}.kc.lead .mbs i,.kc.lead .mbs b{background:var(--blue)!important}
+.kc.lead .leg i{opacity:1}
 
-/* ── ปุ่ม · ป้าย · อินพุต ── */
+/* ── ปุ่ม · ป้าย · อินพุต · โมดัล ── */
 .btn{font-size:12.5px;font-weight:600;padding:11px 16px;border-radius:11px;border:1px solid var(--line);background:#fff;color:#40516A}
 .btn.pri{background:#0866ED;border-color:#0866ED;color:#fff;box-shadow:0 7px 16px rgba(7,92,229,.18)}
 .btn.pri:hover{background:#004FCA;border-color:#004FCA}
 .pill2{font-size:11px;font-weight:600;padding:5px 11px;border-radius:999px}
-.pill2.g{background:var(--green-l);color:var(--green-t)}
-.pill2.r{background:var(--red-l);color:var(--red-t)}
-.pill2.a{background:var(--amber-l);color:var(--amber-t)}
-.pill2.b{background:#DCECFF;color:#0358D2}
-.pill2.n{background:#E8EDF4;color:#485875}
+.pill2.g{background:var(--green-l);color:var(--green-t)}.pill2.r{background:var(--red-l);color:var(--red-t)}.pill2.a{background:var(--amber-l);color:var(--amber-t)}.pill2.b{background:#DCECFF;color:#0358D2}.pill2.n{background:#E8EDF4;color:#485875}
 .pill.g{background:var(--green-l);color:var(--green-t)}.pill.r{background:var(--red-l);color:var(--red-t)}.pill.a{background:var(--amber-l);color:var(--amber-t)}.pill.n{background:#E8EDF4;color:#485875}
 input[type=text],input[type=number],input[type=date],input:not([type]),select,textarea{border-radius:10px}
 .mdl-bd{border-radius:20px;box-shadow:0 22px 70px rgba(0,0,0,.14)}
 .mdl-hd b{font-size:20px}
+.px-back{border-radius:999px;background:#fff;border:1px solid var(--line)}
 
 /* ── ตาราง ── */
 table.g th{font-size:11px;color:#526581;background:#F3F6FB;font-weight:600;padding:13px 12px;letter-spacing:.02em}
@@ -1437,20 +1502,18 @@ table.g tr:hover td{background:#EFF6FF}
 .ex-fin-table th{font-size:11px;color:#526581;background:#F3F6FB;font-weight:600;padding:12px}
 .ex-fin-table td{padding:13px 12px;font-size:13px}
 
-/* ── Login ── */
-.lgb{border-radius:14px}
-.lgb.on{box-shadow:0 8px 20px rgba(4,98,224,.12)}
-
-/* ── แท็บ (หน้าผู้บริหาร) ── */
+/* ── แท็บ / login ── */
+.ex-tabs{border-radius:16px}
 .ex-tabs button.on b{color:var(--blue)}
-.ex-section-title{color:#506685;font-size:12px;letter-spacing:1.4px}
+.lgb{border-radius:14px;padding:12px 14px}
+.lgb.on{box-shadow:0 8px 20px rgba(4,98,224,.12)}
+.lgb i{background:linear-gradient(135deg,#0469EF,#2E86F7);color:#fff;border-radius:11px;box-shadow:0 5px 12px rgba(4,98,224,.2)}
+.lgb i svg,.lgf i svg{width:18px;height:18px;display:block}
+.lgb.on i{background:var(--blue-d)}
+.lgb em,.lgh span,.lgn{color:var(--tx-2)}.lgb u{color:var(--tx-2)}
+.lgl{background:linear-gradient(160deg,#0462E0,#034FB8)}
+.lgl>p,.lgf li{color:#EAF2FF}.lgl .brand span span{color:#EAF2FF}
+.lgf i{background:rgba(255,255,255,.16);color:#fff;border-radius:10px}
 
-@media(max-width:1250px){.app{grid-template-columns:210px minmax(0,1fr)}.main{padding:18px 20px 40px}.card,.k{padding:19px}.k .v{font-size:38px}}
-@media(max-width:860px){.app{grid-template-columns:1fr}.side{position:relative;min-height:0;max-height:none;height:auto;border-radius:0 0 20px 20px}.main{padding:14px 14px 30px}}
-/* ── skin fixes รอบ 2: ป้ายผู้ใช้อยู่แถวเดียวกับ greeting · ตัดคำอธิบายใต้หัวข้อ · ป้ายเมนูยาวไม่ทับชื่อ ── */
-.top{margin:0 0 -46px;justify-content:flex-end;position:relative;z-index:2}
-.px-greet{padding-right:230px;min-height:46px}
-@media(max-width:860px){.top{margin:0 0 6px;justify-content:flex-start}.px-greet{padding-right:0}}
-h2+p.sub,h3+p.sub,.perf-hd span,.nah+.rnote,div.sub[style*="margin:0 0 8px"]{display:none}
-.nav a .txt{flex:1 1 auto;min-width:0}
-.nav a .bdg{font-size:10px;padding:1px 6px;max-width:96px;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto}
+@media(max-width:1250px){.app{grid-template-columns:212px minmax(0,1fr)}.main{padding:18px 20px 40px}.card,.k{padding:19px}.k .v{font-size:36px}}
+@media(max-width:860px){.app{grid-template-columns:1fr}.side{position:relative;min-height:0;max-height:none;height:auto;border-right:0;border-bottom:1px solid var(--line)}.main{padding:14px 14px 30px}.top{margin:0 0 6px;justify-content:flex-start}.px-greet{padding-right:0}}

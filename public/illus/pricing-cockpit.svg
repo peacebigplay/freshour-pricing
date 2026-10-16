@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" fill="none" aria-label="แผงควบคุมราคา">
+  <rect x="40" y="26" width="320" height="208" rx="28" fill="#EAF2FF"/>
+  <rect x="68" y="50" width="264" height="160" rx="18" fill="#fff"/>
+  <rect x="86" y="68" width="92" height="14" rx="7" fill="#CFE0FF"/>
+  <rect x="86" y="92" width="56" height="10" rx="5" fill="#E3ECFA"/>
+  <g>
+    <rect x="86" y="150" width="26" height="42" rx="8" fill="#CFE0FF"/>
+    <rect x="120" y="134" width="26" height="58" rx="8" fill="#0462E0"/>
+    <rect x="154" y="160" width="26" height="32" rx="8" fill="#CFE0FF"/>
+    <rect x="188" y="118" width="26" height="74" rx="8" fill="#0462E0"/>
+  </g>
+  <path d="M236 170c18-10 26-30 42-40s30 2 44-26" stroke="#0B9F61" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="322" cy="104" r="8" fill="#0B9F61"/><circle cx="322" cy="104" r="3.5" fill="#fff"/>
+  <g transform="translate(246 60)">
+    <rect x="0" y="0" width="84" height="34" rx="17" fill="#D9F6E6"/>
+    <text x="42" y="23" font-family="Prompt, sans-serif" font-size="15" font-weight="700" fill="#087E52" text-anchor="middle">+18.4%</text>
+  </g>
+  <g fill="#6742D5">
+    <path d="M44 212l6 14 14 6-14 6-6 14-6-14-14-6 14-6z"/>
+    <path d="M352 22l4 9 9 4-9 4-4 9-4-9-9-4 9-4z"/>
+  </g>
+  <g transform="translate(300 176) rotate(14)">
+    <path d="M12 0h56a9 9 0 0 1 9 9v34a9 9 0 0 1-9 9H12L0 26z" fill="#034FB8"/>
+    <circle cx="17" cy="26" r="5" fill="#EAF2FF"/>
+    <text x="46" y="34" font-family="Prompt, sans-serif" font-size="20" font-weight="700" fill="#fff" text-anchor="middle">฿</text>
+  </g>
+</svg>
