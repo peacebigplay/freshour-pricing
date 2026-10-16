@@ -690,6 +690,47 @@
           sources: sourceStatus(), survey: { week: plan.week, stores: plan.stores.map(function (s) { return { label: s.label, mode: s.mode, done: s.done, total: s.total, due: s.due }; }), rows: survRows, unmatched: survUnm, matchPct: survRows + survUnm ? Math.round(survRows / (survRows + survUnm) * 100) : null },
           score: tr.score, warnings: tr.warnings.length, alerts30: alerts30, job: D.jobs['market-sync'] } };
     }
+    /* ════════ AI Pricing Performance — ตัวเลขบนสุดของหน้าตั้งราคา: ระบบทำแทนคนไปเท่าไร · คนต้องตัดสินเองกี่รายการ · เวลาที่ประหยัด
+       ทุกค่านับจากข้อมูลจริงในระบบ (cost_batches · cost_master · central_prices · market_obs · ops-perf) · "เวลาที่ประหยัด" มี 2 แบบ:
+       measured = นาทีที่จับได้จริง (ops-perf ก่อน/หลังมีระบบ) · estimate = ประมาณจากจำนวนงานที่ระบบทำแทน × นาทีต่อชิ้น (สมมติฐานประกาศไว้ แก้ได้ที่ EST_MIN) ════════ */
+    var EST_MIN = { costRow: 0.5, priceSku: 1.5, marketSku: 2 };
+    function aiPerf() {
+      var ip = intakePerf(), td = ip.today, rows = D.desk.rows, CM = S.cost_master || {}, CP = S.central_prices || {};
+      /* ── ราคา: AI เตรียมให้กี่ SKU · คนยืนยันตามที่เสนอ/แก้เอง · ต้องตัดสินเอง (ต่ำกว่า Floor · ทุนกระโดด >15% · นโยบายเปลี่ยน) · ไม่มีตลาด = หมายเหตุ · รอทุน ── */
+      var ready = 0, waiting = 0, approved = 0, accepted = 0, edited = 0, decide = 0, belowFloor = 0, noMarket = 0, costJump = 0, policyChanged = 0;
+      rows.forEach(function (r) {
+        var v = r.v21 || {};
+        if (v.ready !== 'ok' || !v.rec) { waiting++; return; }
+        ready++;
+        var c = v.central || {};
+        if (c.state === 'approved') { approved++; if (c.recommended != null && Math.round(c.price) === Math.round(c.recommended)) accepted++; else edited++; }
+        if (c.state === 'policy_changed') policyChanged++;
+        var bf = v.rec.state === 'below_min', nm = !!(v.goals && v.goals.competitive && v.goals.competitive.disabled), cj = r.costPrev > 0 && Math.abs(r.costJump || 0) / r.costPrev > 0.15;
+        if (bf) belowFloor++; if (nm) noMarket++; if (cj) costJump++;
+        if (bf || cj || c.state === 'policy_changed') decide++;   /* ไม่มีตลาด = หมายเหตุ ไม่ใช่งานที่คนต้องตัดสิน (ระบบยังแนะนำจากทุน+นโยบายได้) */
+      });
+      /* ── ทุน: มาจากไฟล์/ระบบ กี่ SKU · batch จริงที่ผ่านเอง vs ส่งคนตรวจ ── */
+      var fromFile = 0, manual = 0; Object.keys(CM).forEach(function (k) { var src = String(CM[k].source || ''); if (/พิมพ์|มือ|manual/i.test(src)) manual++; else fromFile++; });
+      var B = D.cost_batches || [], bRows = 0, bAuto = 0, bReview = 0, bUnch = 0; B.forEach(function (b) { bRows += b.rows || 0; bAuto += b.auto || 0; bReview += b.review || 0; bUnch += b.unchanged || 0; });
+      var fl = ip.cost.flags || {}, last = B[0] || null;
+      /* ── ตลาด: ดึงเอง vs คนสำรวจ · SKU ที่ยังต้องไปดูเอง ── */
+      var m = ip.market, fr = (ip.series || {}).freshness || {}, total = rows.length;
+      var onlineSku = {}, surveySku = {}; (D.market_obs || []).forEach(function (o) { if (ageDays(o.observed_at) <= 30) (o.via === 'survey' ? surveySku : onlineSku)[o.product_id] = 1; });
+      /* ── เวลา: วัดจริง (ops-perf) + ประมาณการจากงานที่ระบบทำแทน ── */
+      var op = D['ops-perf'] || {}, sm = op.summary || {}, steps = (sm.steps || []).map(function (s) { return { key: s.key, label: s.label, now: s.now, before: s.before }; });
+      var units = { cost: bAuto + bUnch, price: ready, market: Object.keys(onlineSku).length };
+      var est = { cost: Math.round(units.cost * EST_MIN.costRow), price: Math.round(units.price * EST_MIN.priceSku), market: Math.round(units.market * EST_MIN.marketSku) };
+      est.total = est.cost + est.price + est.market;
+      var humanRows = bReview + decide + edited, machineRows = bAuto + bUnch + (ready - decide) + Object.keys(onlineSku).length;
+      return { today: td, round: D.sends.label || null,
+        pricing: { total: total, ready: ready, waiting: waiting, approved: approved, accepted: accepted, edited: edited, decide: decide, belowFloor: belowFloor, noMarket: noMarket, costJump: costJump, policyChanged: policyChanged, pct: total ? Math.round(ready / total * 100) : null },
+        cost: { total: Object.keys(CM).length, fromFile: fromFile, manual: manual, batches: B.length, rows: bRows, auto: bAuto, review: bReview, unchanged: bUnch, autoPct: bRows ? Math.round((bAuto + bUnch) / bRows * 100) : null, pending: fl.pending || 0, decided: fl.decided || 0, aliases: fl.aliases || 0, entries30: ip.cost.entries30, manual30: (ip.cost.byChannel || {}).manual || 0, oldCost: ip.cost.oldCost, noCost: ip.cost.noCost,
+          last: last ? { id: last.id, at: String(last.at || '').slice(0, 10), rows: last.rows || 0, auto: last.auto || 0, review: last.review || 0, unchanged: last.unchanged || 0, source: last.source || '' } : null,
+          series: (ip.series || {}).batches || [] },
+        market: { total: total, known: (m.coverage || {}).known || 0, fresh: fr.fresh || 0, usable: fr.usable || 0, stale: fr.stale || 0, blind: fr.blind != null ? fr.blind : total, online7: m.online7, survey7: m.survey7, obs30: m.obs30, onlineSku: Object.keys(onlineSku).length, surveySku: Object.keys(surveySku).length, sources: (m.sources || []).length, job: m.job || null },
+        time: { week: sm.week || null, steps: steps, now: sm.totalNow == null ? null : sm.totalNow, before: sm.totalBefore == null ? null : sm.totalBefore, savedMin: sm.totalBefore != null && sm.totalNow != null ? Math.round(sm.totalBefore - sm.totalNow) : null, units: units, est: est, assumptions: EST_MIN },
+        load: { human: humanRows, machine: machineRows, humanPct: humanRows + machineRows ? Math.round(humanRows / (humanRows + machineRows) * 100) : null } };
+    }
     /* ── เส้นทางของส่วนขยาย — คืน undefined ถ้าไม่ใช่ของตัวเอง ── */
     function route(method, path, q, body, role, need, req) {
       var cm = path.match(/^\/api\/customers\/([^/]+)$/);
@@ -714,6 +755,7 @@
         case '/api/market-observations': need(2); return marketObservations(q);
         case '/api/market-sync/status': need(2); return ok(D.jobs['market-sync']);
         case '/api/intake-perf': need(2); return ok(intakePerf());
+        case '/api/ai-perf': need(2); return ok(aiPerf());
         case '/api/sources': need(1); return ok({ sources: sourceStatus(), inbox: D.inbox.slice(0, 30), imports: D.cost_imports.slice(0, 10) });
         case '/api/survey': need(1); return ok(surveyPlan());
       }

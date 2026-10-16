@@ -9,7 +9,7 @@
 <script src="/peach.js"></script>
 <script src="/charts.js"></script>
 <script src="/dash.js"></script>
-<script src="/catmargin.js"></script>
+<script src="/aiperf.js"></script>
 <script>
 /* โต๊ะตั้งราคา — งานวันพุธของพี่จุ๋ม
    ของจริง 78% ของสินค้าขายให้เจ้าเดียว งานจึงเป็น "ใบละเจ้า 43 ใบ" ไม่ใช่กระดานเดียว 363 แถว
@@ -17,7 +17,7 @@
 var esc = PX.esc, money = PX.money, W = PX.why;
 /* ค่าที่ใส่ใน onclick ต้องเป็นสตริง JS ที่ปลอดภัยทั้งในฐานะ JS และ attribute — รหัส/กลุ่มสินค้ามาจากคนพิมพ์ได้ */
 function jsq(v) { return JSON.stringify(String(v == null ? '' : v)).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-var GD = null, EXC = {}, SAVING = false, SEL = {}, CATG = null;   /* EXC = เหตุผลข้อยกเว้นของแถวที่ยืนยันต่ำกว่าขั้นต่ำ */
+var GD = null, EXC = {}, SAVING = false, SEL = {};   /* EXC = เหตุผลข้อยกเว้นของแถวที่ยืนยันต่ำกว่าขั้นต่ำ */
 var D = null, CUST = '', CQ = '', Q = '', EDIT = {}, ALL = false, VIEW = 'home', G = 'ทั้งหมด', REQ = null, NEGO = null, EDITR = {}, EDIT5 = {}, EDIT10 = {}, UNPRICED = 'SUGGEST', STRATEGY = 'rec', SORT = 'crisis', CSORT = 'orders', CONF = {}, LASTSAVE = '', PAGE = 0, PER = 20, CUSTOMER_CACHE = {}, HANDED = {};
 var PREV_PERIOD = '03–09/09', CUR_PERIOD = '10–16/09';
 
@@ -72,7 +72,7 @@ function load(msg) {
         PX.get('/api/guard').then(function (g) { GD = g; }, function () { GD = null; }),
         PX.get('/api/price-requests').then(function (r) { REQ = r; }, function () { REQ = null; }),
         PX.get('/api/negotiations').then(function (r) { NEGO = r; }, function () { NEGO = null; }),
-        (!CUST ? PX.get('/api/policy').then(function (c) { CATG = c; }, function () { CATG = null; }) : null)
+        (!CUST ? AIPerf.load(true).then(null, function () {}) : null)
       ]);
     }, function (e) {
       if (want !== CUST) return 'skip';
@@ -381,6 +381,8 @@ function stack() {
   var h = PX.head('Pricing Home · รอบ ' + CUR_PERIOD,
     'Dashboard การออกราคา · เทียบข้อมูล' + (D.prevRound ? 'รอบก่อน ' + PREV_PERIOD : 'รอบก่อน') + ' กับรอบปัจจุบัน ' + CUR_PERIOD,
     ['จุ๋ม', 'พี่จุ๋ม', 'ผู้ออกราคา']);
+  /* บนสุดของหน้า: AI Pricing ช่วยได้แค่ไหน (ประหยัดเวลา · ทุนเข้าเอง · ราคาที่ AI เตรียม · ตลาดที่ดึงเอง) — ส่วน Margin Guard/นโยบายรายกลุ่มย้ายไปอยู่หน้า /guard ที่เดียว */
+  h += AIPerf.html();
   /* แจ้งเตือนด่วนแบบ V21: รายการที่ต้องตรวจก่อนออกราคา — กดแล้วเปิดตารางเรียงวิกฤตก่อน */
   var crit = (D.rows || []).filter(needsWork);
   if (crit.length) {
@@ -421,8 +423,6 @@ function stack() {
     '</div>';
 
   h += homeDashboard(D.rows);
-  /* เป้า margin รายหมวด (พีช/พี่หมิง) — ชุดเดียวกับหน้า Margin Guard · แก้แล้วโหลดหน้าใหม่ให้ราคาแนะนำคิดใหม่ */
-  h += CatMargin.html(CATG, function () { load(); });
   h += pricingInsights(D.rows);
   return h;
 }
@@ -676,7 +676,7 @@ function sheetKPI(all, rows) {
       '<div class="lb">กำไรขั้นต้น / สัปดาห์</div>' +
       '<div class="v">' + (knownVol.length ? money(gp) : '—') + '<small>฿</small></div>' +
       '<div class="c">Σ (ราคาที่ตั้ง − ทุน) × ยอดขายรอบก่อน · เปลี่ยนทันทีเมื่อแก้ราคา</div></div>' +
-    '<div class="k"><div class="kt"><span class="ic">⚠️</span><span class="pill ' + (risk.length ? 'r' : 'g') + '">Margin Guard</span></div>' +
+    '<div class="k"><div class="kt"><span class="ic">⚠️</span><span class="pill ' + (risk.length ? 'r' : 'g') + '">ต่ำกว่า Floor</span></div>' +
       '<div class="lb">รายการเสี่ยง</div>' +
       '<div class="v" style="color:' + (risk.length ? 'var(--red)' : 'var(--green)') + '">' + risk.length + '</div>' +
       '<div class="c">ราคาที่ตั้ง &lt; Floor ของกลุ่ม หรือ &lt; ทุน · ขาดทุนตรงๆ ' + loss + ' รายการ</div></div>' +
@@ -705,7 +705,7 @@ function pricingInsights(all) {
           '<span class="pn">' + esc(x.r.name) + '</span><span class="pv">+' + money(x.gp) + ' ฿</span>' +
           '<span class="pm">' + x.m.toFixed(1) + '%</span></div>'; }).join('') + '</div>'
         : '<p class="hint">ยังไม่มี volume พอคำนวณ contribution</p>') + '</div>' +
-    '<div class="card"><h3>รายการที่ต้องตัดสินใจ<span class="sub">รอบ ' + CUR_PERIOD + ' · Margin Guard = Minimum margin ของกลุ่ม</span></h3>' +
+    '<div class="card"><h3>รายการที่ต้องตัดสินใจ<span class="sub">รอบ ' + CUR_PERIOD + ' · Floor = Minimum margin ของกลุ่ม (ตั้งค่าที่หน้า Margin Guard)</span></h3>' +
       '<p class="hint">ทุนขึ้นแรง / Margin ต่ำ / แพงกว่าตลาด จะถูกดันขึ้นมาก่อน</p>' +
       (risk.length ? '<div class="risklist">' + risk.map(function (r) {
         return '<div class="riskitem"><span class="rn">' + esc(r.name) + '</span>' +

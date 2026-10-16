@@ -184,7 +184,7 @@ window.Dash = (function () {
   var PAGE = null, obs = null;
   function anchor() {
     if (PAGE === 'exec') { var pane = document.querySelector('[data-exec-pane="overview"]'); return pane && !pane.hidden ? { el: pane, where: 'afterbegin' } : null; }
-    if (PAGE === 'pricing') { if (window.VIEW !== 'home') return null; var g = document.querySelector('#pxGreet'); return g ? { el: g, where: 'afterend' } : null; }
+    if (PAGE === 'pricing') { if (window.VIEW !== 'home') return null; var g = document.querySelector('#aiPerf') || document.querySelector('#pxGreet'); return g ? { el: g, where: 'afterend' } : null; }
     if (PAGE === 'sales') { if (window.SHEETID) return null; var g2 = document.querySelector('#pxGreet'); return g2 ? { el: g2, where: 'afterend' } : null; }
     return null;
   }

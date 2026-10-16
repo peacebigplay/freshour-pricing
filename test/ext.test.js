@@ -181,6 +181,13 @@ test('รอบ 3 · แหล่งข้อมูล: สำรวจหน้
   assert.ok(pf.cost.entries30 > 0 && pf.cost.autoPct != null); assert.ok(pf.cost.match.pct != null); assert.ok(pf.cost.flags.total >= 2);
   assert.ok(pf.market.survey7 >= 4 && pf.market.online7 > 0); assert.equal(pf.market.sources.length, 3); assert.ok(pf.market.score.pct != null);
   assert.equal(call('sale', 'GET', '/api/intake-perf').status, 403);
+  /* AI Pricing Performance (บนสุดหน้าตั้งราคา): นับจากของจริง · ไม่มีทุน/margin ใน payload · เซลล์ห้ามเห็น */
+  const ap = okj(call('ops', 'GET', '/api/ai-perf'));
+  assert.equal(ap.pricing.total, ap.pricing.ready + ap.pricing.waiting); assert.ok(ap.pricing.ready > 0 && ap.pricing.decide <= ap.pricing.ready);
+  assert.ok(ap.cost.batches >= 1 && ap.cost.rows === ap.cost.auto + ap.cost.review + ap.cost.unchanged, 'batch รวมครบ'); assert.ok(ap.cost.autoPct != null);
+  assert.ok(ap.market.onlineSku > 0 && ap.market.online7 === pf.market.online7); assert.equal(ap.time.est.total, ap.time.est.cost + ap.time.est.price + ap.time.est.market);
+  assert.ok(ap.load.humanPct != null && ap.load.humanPct <= 100); assert.ok(!/"(current_cost|approved_cost|approved_price|recommended_price|margin|w2|product_id)":/.test(JSON.stringify(ap)), 'สรุปเป็นตัวนับเท่านั้น — ไม่มีทุน/ราคา/margin รายตัว');
+  assert.equal(call('sale', 'GET', '/api/ai-perf').status, 403);
   const inbox = okj(call('ops', 'POST', '/api/import/costs', { rows: [{ product: 'มันแข็งหมู', cost: '69' }], commit: true, source: 'inbox: AL.csv', channel: 'inbox' })); assert.equal(inbox.applied, 1);
   assert.equal(okj(call('ops', 'GET', '/api/cost-flags')).imports[0].channel, 'inbox');
 });

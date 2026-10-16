@@ -13,7 +13,7 @@ const PAGES = JSON.parse(rd('data/pages.json'));
 const idx = JSON.parse(rd('data/fixtures/index.json'));
 const DOCS = {}; for (const k of Object.keys(idx)) DOCS[k] = fs.readFileSync(path.join(ROOT, 'data/fixtures', idx[k])).toString('base64');
 const PAGE_SRC = {}; for (const p of PAGES) PAGE_SRC[p.id] = gz(rd('public/' + p.id + '.html'));
-const ASSETS = {}; ['peach.css', 'peach.js', 'catmargin.js', 'charts.js', 'dash.js', 'alparse.js', 'costimport.js', 'trend.js', 'intake.js'].forEach(f => { ASSETS['/' + f] = gz(rd('public/' + f)); });
+const ASSETS = {}; ['peach.css', 'peach.js', 'catmargin.js', 'charts.js', 'dash.js', 'aiperf.js', 'alparse.js', 'costimport.js', 'trend.js', 'intake.js'].forEach(f => { ASSETS['/' + f] = gz(rd('public/' + f)); });
 const FEED = fs.readFileSync(path.join(ROOT, 'data/market-feed-sample.json'), 'utf8');
 const stamp = new Date(Date.now() + 7 * 3600e3);
 const TH = `${stamp.getUTCDate()} ${['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'][stamp.getUTCMonth()]} ${stamp.getUTCFullYear() + 543}`;
