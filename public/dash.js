@@ -99,7 +99,9 @@ window.Dash = (function () {
         Charts.donut({ items: marketItems, size: 96, center: { big: String(st.marketFresh), small: 'จาก ' + st.total } }) +
         '<div class="c" style="margin-top:6px">' + (d.trendWarnings && d.trendWarnings[0] ? esc(d.trendWarnings[0].text.slice(0, 70)) + '… ' : '') + '<a href="/costs?tab=trend" style="color:var(--blue)">แนวโน้ม →</a></div></div>' +
       '</div>' +
-      /* แถว 2: งานที่ติด + ทุนแปลก + ระบบ */
+      '<div style="margin-top:10px">' + sysRow(d.health) + alerts(d.alerts) + '</div></section>' +
+      /* ส่วนล่างของหน้า (V32: ย้ายงานที่ติด + Cost Review Queue ลงล่างสุด) */
+      '<section class="fhd" id="fhDashBottom"><h3 style="margin:0 0 8px;font-size:13px">งานที่ติดอยู่ · Cost Review Queue <span class="sub" style="font-weight:400;color:var(--tx-3)">รายละเอียดท้ายหน้า — ข้างบนคือภาพรวมและสิ่งที่ต้องตัดสินใจ</span></h3>' +
       '<div class="grid c3" style="margin-top:10px;grid-template-columns:1fr 1.4fr">' +
       '<div class="k"><div class="kt"><span class="ic">🚧</span>' + pill(blocks.length ? 'r' : 'g', blocks.length ? 'ติด ' + blocks.length + ' จุด' : 'ไม่ติดอะไร') + '</div><div class="lb">งานที่ติดอยู่ · กดไปทำ</div>' +
         (blocks.length ? '<ul class="blk" style="margin-top:6px">' + blocks.map(function (b) { return '<li><b style="color:var(--' + (b[3] === 'r' ? 'red' : 'amber') + ')">' + b[0] + '</b>' + esc(b[1]) + '<a href="' + b[2] + '">ไปทำ →</a></li>'; }).join('') + '</ul>' : '<div class="v">✓</div><div class="c">ราคากลางครบ ใบรายเจ้าจบ ไม่มีคำขอค้าง</div>') + '</div>' +
@@ -107,7 +109,7 @@ window.Dash = (function () {
         (d.flags && d.flags.length ? '<div class="list" style="margin-top:6px">' + d.flags.slice(0, 4).map(function (f) { return '<div class="row"><div><b>' + esc(f.name) + '</b><small>' + esc(f.raw !== f.name ? 'ในไฟล์: ' + f.raw : '') + '</small></div><div>' + (f.prev || '—') + ' → <b style="color:var(--red)">' + f.cost + ' ฿</b></div><div style="font-size:11px;color:var(--tx-2)">' + esc(f.reasons.join(' · ')) + '</div><div class="act"><button class="pri" onclick="Dash.flag(' + f.id + ',true)">ใช้ค่านี้</button><button onclick="Dash.flag(' + f.id + ',false)">ไม่ใช้</button></div></div>'; }).join('') + (d.flags.length > 4 ? '<a href="/costs#flags" style="font-size:12px;color:var(--blue)">ดูทั้งหมด ' + d.flagsPending + ' →</a>' : '') + '</div>' : '<div class="c" style="margin-top:6px">ด่านตรวจ: ทุน ≤10 · กระโดด ≥30% · สูงกว่าราคาขาย · ต่ำกว่าครึ่งหมวด — ไฟล์รอบล่าสุดไม่มีตัวแปลก</div>') + '</div>' +
       '</div>' +
       (d.trendWarnings && d.trendWarnings.length > 1 ? '<ul class="blk" style="margin-top:10px">' + d.trendWarnings.slice(1, 4).map(function (w) { return '<li>' + pill(w.level === 'bad' ? 'r' : w.level === 'good' ? 'g' : 'a', w.grp || 'ระบบ') + '<span>' + esc(w.text) + '</span></li>'; }).join('') + '</ul>' : '') +
-      '<div style="margin-top:10px">' + sysRow(d.health) + alerts(d.alerts) + '</div></section>';
+      '</section>';
   }
 
   /* ── เซลล์: กระดานใบราคา ── */
@@ -188,11 +190,14 @@ window.Dash = (function () {
   }
   function paint() {
     if (!DATA) return;
-    var old = document.getElementById('fhDash'); if (old) old.remove();
+    var old = document.getElementById('fhDash'); if (old) old.remove(); var oldB = document.getElementById('fhDashBottom'); if (oldB) oldB.remove();
     var a = anchor(); if (!a) return;
     var html = DATA.role === 'boss' ? bossHtml(DATA) : DATA.role === 'ops' ? opsHtml(DATA) : saleHtml(DATA);
     a.el.insertAdjacentHTML(a.where, html);
     if (!document.getElementById('fhDashCss')) document.head.insertAdjacentHTML('beforeend', CSS);
+    var bt = document.getElementById('fhDashBottom'), mainEl = document.getElementById('main'); if (bt && mainEl) mainEl.appendChild(bt);   /* ล่างสุดของหน้า */
+    /* แบนเนอร์ต่อรองราคา (V32 §7) ต้องอยู่บนสุดใต้คำทักทาย ทั้งหน้าเซลและหน้าตั้งราคา */
+    var nb = document.getElementById('negoBanner') || document.getElementById('negoBannerS'), fd = document.getElementById('fhDash'); if (nb && fd && fd.parentElement) fd.parentElement.insertBefore(nb, fd);
     if (window.Charts) Charts.bind(document.getElementById('fhDash'));
   }
   function mount(page) {

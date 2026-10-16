@@ -161,7 +161,7 @@ test('ทุน/ตลาด/นโยบาย: แก้แล้วทุก�
   assert.equal(okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID0).v21.goals.competitive.disabled, true);
   okj(call('ops', 'POST', '/api/competitor-prices', { items: [{ product_id: PID0, competitor_id: 'c', price: 99 }] }));
   const m = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === PID0).marks.find(x => x.id === 'c'); assert.equal(m.price, 99); assert.equal(m.state, 'fresh');
-  const gc = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID0).v21; assert.equal(gc.goals.competitive.price, 98); assert.equal(gc.market.freshness, 'fresh');
+  const gc = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID0).v21; assert.equal(gc.goals.competitive.price, 99, 'แข่งขันได้ = ราคาตลาดตรงๆ ไม่บวกไม่ลบ'); assert.equal(gc.market.freshness, 'fresh');
   assert.equal(call('ops', 'PUT', '/api/config', { floor_pct: 10 }).status, 400);
   okj(call('ops', 'PUT', '/api/config', { floor_pct: 13, haggle_baht: 3 }));
   assert.equal(okj(call('ops', 'GET', '/api/guard')).floorPct, 13); assert.equal(okj(call('ops', 'GET', '/api/pricelist')).haggle, 3);
@@ -272,4 +272,51 @@ test('Pricing: Approved Central Price มี version · Cost Change Impact → P
   const sv = okj(call('ops', 'POST', '/api/save-price-sheet', { customer_id: CID, rows: [{ product_id: P, price: rec2.price - 2 }] }));
   const saved = okj(call('ops', 'GET', '/api/desk?customer=' + CID)).rows.find(r => r.id === P).v21.saved; assert.equal(saved.delta, -2); assert.ok(saved.state && saved.margin != null);
   assert.ok(okj(call('ops', 'GET', '/api/price-versions?customer=' + CID)).rows.some(x => x.kind === 'customer' && x.product_id === P));
+});
+
+test('V32 สูตร 4 Goal (ฟังก์ชันเดียวใน backend) — ตัวอย่าง A/B จากสเปกต้องตรงเป๊ะ · ไม่มี Goal ไหนตกไปใช้ค่าอื่นเงียบๆ', () => {
+  const g = store.goalsFor;
+  /* A: ขาหมูเยอรมัน ทุน 92 ราคาเดิม 108 Floor 15 Target 20 ไม่มีตลาด */
+  const A = g({ cost: 92, prev: 108, floor: 15, target: 20, market: [] });
+  assert.equal(A.hold.price, 108); assert.equal(A.hold.margin, 14.8); assert.equal(A.hold.flag, 'below_floor', 'ยืนราคาเดิมแค่ติดธง ไม่ปรับเอง');
+  assert.equal(A.protect.price, 109); assert.equal(A.protect.margin, 15.6);
+  assert.equal(A.target.price, 115); assert.equal(A.target.margin, 20);
+  assert.equal(A.competitive.disabled, true); assert.equal(A.competitive.reason, 'ไม่มีข้อมูลตลาด');
+  /* B: ทุน 117 ราคาเดิม 121 Floor 12 Target 15 */
+  const B = g({ cost: 117, prev: 121, floor: 12, target: 15, market: [] });
+  assert.deepEqual([B.hold.price, B.hold.margin, B.hold.flag], [121, 3.3, 'below_floor'], 'ห้ามปรับ 121 เป็น 133 เอง');
+  assert.deepEqual([B.protect.price, B.protect.margin], [133, 12]); assert.deepEqual([B.target.price, B.target.margin], [138, 15.2]);
+  /* แข่งขันได้ = ราคาตลาดตรงๆ · ต่ำกว่า Floor = ธงแดง ไม่ใช้ Floor แทน · เก่าเกิน 7 วัน = ปิดปุ่มบอกเหตุผล */
+  const C = g({ cost: 150, prev: 178, floor: 12, target: 15, market: [{ label: 'Betagro', price: 165, age: 2 }, { label: 'B2B', price: 182, age: 20 }] });
+  assert.equal(C.competitive.price, 165); assert.equal(C.competitive.flag, 'below_floor'); assert.equal(C.protect.price, 171);
+  const D = g({ cost: 150, prev: 0, floor: 12, target: 15, market: [{ label: 'B2B', price: 182, age: 20 }] });
+  assert.equal(D.competitive.disabled, true); assert.match(D.competitive.reason, /เก่า 20 วัน/); assert.equal(D.hold.disabled, true);
+  /* Target = Floor → กำไรตามเป้า = ป้องกันกำไร (sameAs) · ทุกค่าเท่ากัน → หน้าเว็บโชว์ปุ่มเดียว */
+  const E = g({ cost: 150, prev: 171, floor: 12, target: 12, market: [{ label: 'B2B', price: 171, age: 1 }] });
+  assert.deepEqual(E.same[171].sort(), ['competitive', 'hold', 'protect', 'target']); assert.ok(E.target.equalProtect);
+  /* ราคาปลีก Makro (tier r) ไม่ใช้เทียบราคาส่ง */
+  const F = g({ cost: 150, prev: 0, floor: 12, target: 15, market: [{ label: 'Makro', price: 250, age: 1, tier: 'r' }] });
+  assert.equal(F.competitive.disabled, true);
+});
+
+test('V32 แจ้งเตือนต่อรอง: trigger ลูกค้าต่อรอง → แบนเนอร์ทั้งเซลและตั้งราคา → ตัดสิน → ส่งใบแก้ไข = ปิดเรื่อง · ค้าง 7 วันเตือนซ้ำ', () => {
+  const before = okj(call('sale', 'GET', '/api/negotiations'));
+  assert.ok(before.items.every(i => !('cost' in i)), 'เซลล์ไม่เห็นทุน');
+  const CID = okj(call('ops', 'GET', '/api/customers')).customers.find(c => c.n > 0).id;
+  const dkc = okj(call('ops', 'GET', '/api/desk?customer=' + CID)).rows.find(r => r.cust && r.cust.source === 'สัญญา' && r.cust.price > r.cost + 20);
+  const sh = okj(call('sale', 'GET', '/api/sheet?customer=' + CID)); const row = sh.rows.find(r => r.pid === dkc.id);
+  const rq = okj(call('sale', 'POST', '/api/price-request', { customer_id: CID, product_id: row.pid, want: row.board - 5, reason: 'เจ้าอื่นถูกกว่า' }));
+  let n = okj(call('ops', 'GET', '/api/negotiations')); const it = n.items.find(i => i.id === rq.id);
+  assert.equal(it.stage, 'new'); assert.equal(it.offered, row.board); assert.equal(it.want, row.board - 5);
+  assert.ok(okj(call('ops', 'GET', '/api/health')).alerts.some(a => /ลูกค้าต่อรองกลับ/.test(a.title)), 'คนตั้งราคาได้ alert');
+  okj(call('ops', 'POST', '/api/price-requests/status', { id: rq.id, status: 'supplier' }));
+  assert.equal(okj(call('ops', 'GET', '/api/negotiations')).items.find(i => i.id === rq.id).stage, 'supplier');
+  okj(call('ops', 'POST', '/api/price-decide', { id: rq.id, approve: true, final_price: row.board - 3, seen_rev: 1 }));
+  n = okj(call('sale', 'GET', '/api/negotiations')); assert.equal(n.items.find(i => i.id === rq.id).stage, 'decided', 'ตัดสินแล้วแต่ยังไม่ส่งใบ = ยังค้าง');
+  okj(call('sale', 'POST', '/api/quote-sent', { customer_id: CID }));
+  n = okj(call('sale', 'GET', '/api/negotiations')); assert.ok(!n.items.find(i => i.id === rq.id), 'ส่งใบราคาแก้ไขแล้ว → เรื่องปิด แบนเนอร์หาย');
+  assert.equal(before.staleDays, 7); assert.ok(okj(call('ops', 'GET', '/api/negotiations')).items.every(i => i.stale === (i.age >= 7)), 'ค้างเกิน 7 วันไม่มีความเคลื่อนไหว → ติดธงเตือนซ้ำ');
+  const rq2 = okj(call('sale', 'POST', '/api/price-request', { customer_id: CID, product_id: row.pid, want: row.board - 6, reason: 'ขออีก' }));
+  okj(call('ops', 'POST', '/api/price-requests/status', { id: rq2.id, status: 'cancelled', note: 'ลูกค้ายกเลิก' }));
+  assert.ok(!okj(call('ops', 'GET', '/api/negotiations')).items.find(i => i.id === rq2.id), 'ลูกค้ายกเลิก = ปิดเรื่องด้วยเหตุผล');
 });

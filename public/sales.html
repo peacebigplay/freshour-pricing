@@ -347,7 +347,7 @@ function markSent(id, undo) {
   PX.post('/api/quote-sent', { customer_id: id, undo: !!undo })
     .then(function () { return PX.get('/api/sends'); })
     .then(function (j) {
-      SEND = j; draw();
+      SEND = j; NEGO = null; draw();
       PX.toast(undo ? 'ยกเลิกแล้ว — กลับไปอยู่กองค้างส่ง'
                     : 'บันทึกแล้ว — เหลือค้างส่ง <b>' + j.pending + '</b> เจ้า');
     })
@@ -471,21 +471,21 @@ function customerCard(c){
 }
 /* ── แจ้งเตือนต่อรองแบบ V21 (พีช 30 ก.ย.) ── ค้างที่ Pricing = รอ · Pricing อนุมัติแล้วแต่ลูกค้ายังไม่ยืนยัน = ต้องแจ้งลูกค้า
    ไม่มีทุน/ขั้นต่ำ/เป้า ในก้อนนี้ (เซลล์ไม่เห็นทุน h01) */
+var NEGO = null, NEGO_L = false;
 function negoAlert(){
-  var n = (SEND && SEND.negotiations) || []; if (!n.length) return '';
-  var open = n.filter(function (x) { return x.status === 'open'; }).length;
-  return '<div class="todoalert"><div class="nah"><span style="font-size:18px">💬</span><b>ลูกค้าต่อรองกลับ · ' +
-    (open ? 'รอ Pricing ตัดสิน ' + open + ' เรื่อง' : '') + (n.length - open ? (open ? ' · ' : '') + 'Pricing อนุมัติแล้ว รอแจ้งลูกค้า ' + (n.length - open) + ' เรื่อง' : '') +
-    '</b><span class="ncount">' + n.length + ' เรื่อง</span></div><div class="reqs">' +
-    n.slice(0, 5).map(function (x) {
-      return '<div class="rq"><div class="rqb"><b>' + esc(x.customer) + '</b><span>' + esc(x.product) + '</span>' +
-        '<em>ลูกค้าขอ <b>' + Math.round(x.want) + ' ฿</b>' + (x.original_price ? ' · ราคาเดิม ' + Math.round(x.original_price) + ' ฿' : '') +
-        ' · ' + (x.source === 'customer' ? 'ลูกค้ากดในลิงก์' : 'เซลล์ส่งไป') + '</em>' +
+  if (!NEGO) { if (!NEGO_L) { NEGO_L = true; PX.get('/api/negotiations').then(function (j) { NEGO = j; NEGO_L = false; draw(); }).catch(function () { NEGO_L = false; }); } return ''; }
+  var N = NEGO; if (!N.total) return '';
+  return '<div class="todoalert' + (N.total > 1 ? ' stack' : '') + '" id="negoBannerS"><div class="nah"><span style="font-size:18px">💬</span><b>ลูกค้าต่อรองกลับ · ' +
+    (N.open ? 'รอ Pricing ตัดสิน ' + N.open + ' เรื่อง' : '') + (N.decided ? (N.open ? ' · ' : '') + 'Pricing ตัดสินแล้ว ต้องส่งใบราคาแก้ไขให้ลูกค้า ' + N.decided + ' เรื่อง' : '') +
+    '</b><span class="ncount">' + N.total + ' เรื่อง</span></div><div class="reqs">' +
+    N.items.slice(0, 5).map(function (x) {
+      var c = x.stage === 'new' ? 'r' : x.stage === 'supplier' ? 'a' : x.stage === 'decided' ? 'g' : 'n';
+      return '<div class="rq"><div class="rqb"><b>' + esc(x.cust) + '</b><span>' + esc(x.product) + '</span>' +
+        '<em>เสนอไป <b>' + (x.offered ? Math.round(x.offered) + ' ฿' : '—') + '</b> · ลูกค้าขอ <b>' + Math.round(x.want) + ' ฿</b>' + (x.final_price ? ' · Pricing อนุมัติ <b>' + Math.round(x.final_price) + ' ฿</b>' : '') + ' · ' + esc(String(x.at).slice(0, 16).replace('T', ' ')) + '</em>' +
         (x.reason ? '<i>“' + esc(x.reason) + '”</i>' : '') +
-        '<div class="rnote">' + (x.status === 'open' ? 'รอ Pricing Manager อนุมัติราคาใหม่'
-          : '<b style="color:var(--green)">Pricing อนุมัติ ' + Math.round(x.final_price || x.want) + ' ฿</b> · ลิงก์ลูกค้าอัปเดตแล้ว รอลูกค้ายืนยัน') + '</div></div>' +
-        '<div class="rqa"><button class="btn pri" onclick="openSheet(' + jsq(x.customer_id) + ')">เปิดใบลูกค้า →</button></div></div>';
-    }).join('') + '</div>' + (n.length > 5 ? '<div class="more">+ อีก ' + (n.length - 5) + ' เรื่อง</div>' : '') + '</div>';
+        '<div class="rnote"><span class="pill2 ' + c + '">' + esc(x.stageText) + '</span>' + (x.stale ? ' <span class="pill2 r">ค้าง ' + x.age + ' วัน</span>' : '') + (x.stage === 'decided' ? ' · ส่งใบราคาแก้ไขให้ลูกค้าแล้วเรื่องจะปิดเอง' : '') + '</div></div>' +
+        '<div class="rqa"><button class="btn pri" onclick="openSheet(' + jsq(x.customer_id) + ')">' + (x.stage === 'decided' ? 'เปิดใบ → ส่งใบแก้ไข' : 'เปิดใบลูกค้า →') + '</button></div></div>';
+    }).join('') + '</div>' + (N.total > 5 ? '<div class="more">+ อีก ' + (N.total - 5) + ' เรื่อง</div>' : '') + '</div>';
 }
 /* ── Log ปัญหาจากลูกค้า (พีช 30 ก.ย.) ── เซลล์ได้ยินก่อน จึงบันทึกได้ทันที: ลูกค้าไหน · เรื่องอะไร · วันไหน · ขนส่งเจ้าไหน
    ops ปิดเรื่องพร้อมสาเหตุ/วิธีแก้ที่หน้าผู้บริหาร — เรื่องเดิมซ้ำจะนับให้เห็น */

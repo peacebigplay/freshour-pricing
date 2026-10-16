@@ -423,7 +423,7 @@
       if (kind === 'nudge' && !text) text = nudgeText(sh);
       if (!lineIdOf(cid)) return err(400, 'ยังไม่ได้ผูก LINE ของ ' + sh.customer.name + ' — ใส่ LINE user id ที่กระดานส่งใบราคาก่อน', { needLine: true });
       var o = enqueue(role, cid, kind, text, { label: sh.label });
-      if (kind === 'quote') { var c = sendRow(cid); if (c) { if (!c.sentAt) { c.sentAt = stamp(); c.sentBy = role; } c.channel = 'line'; } sh.sent = true; sh.sentAt = sh.sentAt || stamp(); sh.sentChannel = 'line'; rebuildSheet(sh); }
+      if (kind === 'quote') { var c = sendRow(cid); if (c) { if (!c.sentAt) { c.sentAt = stamp(); c.sentBy = role; } c.channel = 'line'; } sh.sent = true; sh.sentAt = sh.sentAt || stamp(); sh.sentChannel = 'line'; rebuildSheet(sh); X.closeNegotiations(cid, role, 'line'); }
       return ok({ ok: true, id: o.id, status: o.status, queued: D.outbox.filter(function (x) { return x.status === 'queued'; }).length });
     }
     function lineSendAll(role, body) {

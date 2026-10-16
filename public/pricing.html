@@ -18,7 +18,7 @@ var esc = PX.esc, money = PX.money, W = PX.why;
 /* ค่าที่ใส่ใน onclick ต้องเป็นสตริง JS ที่ปลอดภัยทั้งในฐานะ JS และ attribute — รหัส/กลุ่มสินค้ามาจากคนพิมพ์ได้ */
 function jsq(v) { return JSON.stringify(String(v == null ? '' : v)).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 var GD = null, EXC = {}, SAVING = false, SEL = {}, CATG = null;   /* EXC = เหตุผลข้อยกเว้นของแถวที่ยืนยันต่ำกว่าขั้นต่ำ */
-var D = null, CUST = '', CQ = '', Q = '', EDIT = {}, ALL = false, VIEW = 'home', G = 'ทั้งหมด', REQ = null, STRATEGY = 'rec', SORT = 'crisis', CSORT = 'orders', CONF = {}, LASTSAVE = '', PAGE = 0, PER = 20, CUSTOMER_CACHE = {}, HANDED = {};
+var D = null, CUST = '', CQ = '', Q = '', EDIT = {}, ALL = false, VIEW = 'home', G = 'ทั้งหมด', REQ = null, NEGO = null, EDITR = {}, EDIT5 = {}, EDIT10 = {}, UNPRICED = 'SUGGEST', STRATEGY = 'rec', SORT = 'crisis', CSORT = 'orders', CONF = {}, LASTSAVE = '', PAGE = 0, PER = 20, CUSTOMER_CACHE = {}, HANDED = {};
 var PREV_PERIOD = '03–09/09', CUR_PERIOD = '10–16/09';
 
 (function () {
@@ -71,6 +71,7 @@ function load(msg) {
       return Promise.all([
         PX.get('/api/guard').then(function (g) { GD = g; }, function () { GD = null; }),
         PX.get('/api/price-requests').then(function (r) { REQ = r; }, function () { REQ = null; }),
+        PX.get('/api/negotiations').then(function (r) { NEGO = r; }, function () { NEGO = null; }),
         (!CUST ? PX.get('/api/policy').then(function (c) { CATG = c; }, function () { CATG = null; }) : null)
       ]);
     }, function (e) {
@@ -101,6 +102,10 @@ function basePrice(r) {
   return (CUST && r.cust) ? r.cust.price : r.w2;
 }
 function priceOf(r) { return EDIT[r.id] != null ? EDIT[r.id] : basePrice(r); }
+/* ราคาปลีก / ส่ง 5kg / 10kg ตามใบราคา AL: ปลีก = ⌈ทุน×markup⌉ · 5kg = 2kg−3 · 10kg = 2kg−4 · ตัวที่ใบตั้งเอง (override) คงค่าไว้ · แก้บนจอได้ */
+function tierOverride(r, k) { var t = V(r).tiers; if (!t) return false; if (k === 'retail') return r.cost > 0 && t.retail !== Math.ceil(r.cost * (D.markup || 1.6) - 1e-9); if (k === 's5') return t.s5 !== t.w2 + (D.k5 == null ? -3 : D.k5); return t.s10 !== t.w2 + (D.k10 == null ? -4 : D.k10); }
+function retailOf(r) { if (EDITR[r.id] != null) return EDITR[r.id]; var t = V(r).tiers; if (t && tierOverride(r, 'retail')) return t.retail; return r.cost > 0 ? Math.ceil(r.cost * (D.markup || 1.6) - 1e-9) : (r.retail || 0); }
+function tierOf(r, k, p) { var m = k === 's5' ? EDIT5 : EDIT10; if (m[r.id] != null) return m[r.id]; var t = V(r).tiers; if (t && tierOverride(r, k)) return t[k]; return p + (k === 's5' ? (D.k5 == null ? -3 : D.k5) : (D.k10 == null ? -4 : D.k10)); }
 function mgOf(r, px) { return px > 0 ? Math.round((px - r.cost) / px * 1000) / 10 : 0; }
 function prevOf(r) { return CUST ? (V(r).prevCustomer || 0) : (r.prev || 0); }
 
@@ -230,7 +235,7 @@ function saveSheet(){
   /* Goal ที่บันทึก = Goal ที่แถวนั้นเลือกจริง (rowGoal) — รีวิว Codex 30 ก.ย.: เดิมกดปุ่ม "ยืนราคาเดิม" แล้วบันทึก
      ได้ 'manual' เพราะนับทุกราคาที่แก้บนจอเป็นพิมพ์เอง → เหตุผลของราคาหาย และโหลดใหม่ไม่ไฮไลต์ Goal ที่เลือก */
   var payload = rows.map(function (r) {
-    return { product_id: r.id, price: priceOf(r), goal: (function (g) { return g === 'rec' ? ((V(r).rec || {}).strategy || 'target') : g; })(rowGoal(r) || STRATEGY), exception: EXC[r.id] || (CUST ? (V(r).saved||{}).exception : (V(r).central||{}).exception) || '' };
+    return { product_id: r.id, price: priceOf(r), retail: CUST ? undefined : retailOf(r), s5: CUST ? undefined : tierOf(r, 's5', priceOf(r)), s10: CUST ? undefined : tierOf(r, 's10', priceOf(r)), goal: (function (g) { return g === 'rec' ? ((V(r).rec || {}).strategy || 'target') : g; })(rowGoal(r) || STRATEGY), exception: EXC[r.id] || (CUST ? (V(r).saved||{}).exception : (V(r).central||{}).exception) || '' };
   });
   var loadedCust = D && D.customer ? D.customer.id : '';
   if ((CUST || '') !== (loadedCust || '')) { PX.toast('ข้อมูลบนจอยังไม่ใช่ของเจ้านี้ — รอโหลดให้เสร็จแล้วบันทึกใหม่', 'bad'); return; }
@@ -239,7 +244,7 @@ function saveSheet(){
   PX.post('/api/save-price-sheet', { customer_id: loadedCust || null, goal: STRATEGY, rows: payload })
     .then(function (res) {
       SAVING = false;
-      LASTSAVE = formatStamp(); EDIT = {}; SEL = {}; EXC = {};
+      LASTSAVE = formatStamp(); EDIT = {}; EDITR = {}; EDIT5 = {}; EDIT10 = {}; SEL = {}; EXC = {};
       return load((CUST ? 'บันทึกใบราคา' : 'บันทึกราคากลาง') + 'แล้ว ' + res.saved + ' รายการ' +
         (res.exceptions ? ' · ข้อยกเว้น ' + res.exceptions : '') + (res.handoffReset ? ' · ราคาเปลี่ยนหลังส่งต่อ → กดส่งต่อ Sales ใหม่' : '') + (CUST ? ' · ส่ง Sales ได้แล้ว' : ' · เป็นฐานของราคารายเจ้าแล้ว'));
     })
@@ -279,15 +284,16 @@ function exportCentralPDF() {
   var now = new Date();
   var stamp = now.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', year: 'numeric' }) +
     ' · ' + now.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false });
-  var h = '<h1>' + esc('ราคากลาง Freshour · รอบ ' + CUR_PERIOD) + '</h1><p>' + esc('พิมพ์เมื่อ ' + stamp) + '</p>' +
+  var h = '<h1>' + esc('ใบราคาขาย+ทุน หมูอนามัย · ราคากลาง Freshour · รอบ ' + CUR_PERIOD) + '</h1><p>' + esc('พิมพ์เมื่อ ' + stamp + ' · ปลีก = ⌈ทุน×' + (D.markup || 1.6) + '⌉ · ส่ง 5kg = 2kg−3 · 10kg = 2kg−4 (ตัวที่ตั้งเองคงค่าตามที่ตั้ง) · มีทุน — ใช้ภายในเท่านั้น') + '</p>' +
     '<p>' + esc('ไม่รู้ทุน ' + s.unknown + ' รายการ — ไม่อยู่ในใบนี้') + '</p>' +
-    '<table><thead><tr><th>' + esc('สินค้า') + '</th><th>' + esc('ราคา (฿/กก.)') + '</th></tr></thead><tbody>';
+    '<table><thead><tr><th>' + esc('สินค้า') + '</th><th>' + esc('ทุน') + '</th><th>' + esc('ปลีก') + '</th><th>' + esc('ส่ง 2kg') + '</th><th>' + esc('5kg') + '</th><th>' + esc('10kg') + '</th><th>' + esc('หน่วย') + '</th></tr></thead><tbody>';
   var group = null;
   s.rows.sort(function (a, b) { return String(a.grp || '').localeCompare(String(b.grp || ''), 'th') || String(a.name).localeCompare(String(b.name), 'th'); });
   s.rows.forEach(function (r) {
     var g = String(r.grp || '');
-    if (g !== group) { h += '<tr><th colspan="2">' + esc(g) + '</th></tr>'; group = g; }
-    h += '<tr><td>' + esc(r.name) + '</td><td>' + esc(String(Math.round(V(r).central.price))) + '</td></tr>';
+    if (g !== group) { h += '<tr><th colspan="7">' + esc(g) + '</th></tr>'; group = g; }
+    var c = V(r).central, t = c.tiers || V(r).tiers || {};
+    h += '<tr><td>' + esc(r.name) + '</td><td>' + esc(String(r.cost)) + '</td><td>' + esc(String(t.retail || retailOf(r))) + '</td><td><b>' + esc(String(Math.round(c.price))) + '</b></td><td>' + esc(String(t.s5 || Math.round(c.price) - 3)) + '</td><td>' + esc(String(t.s10 || Math.round(c.price) - 4)) + '</td><td>' + esc(r.unit || 'กก.') + '</td></tr>';
   });
   h += '</tbody></table><p>' + esc('รวม ' + s.rows.length + ' รายการ') + '</p>';
   var sheet = document.getElementById('printSheet');
@@ -363,21 +369,7 @@ function homeDashboard(rows){
   var bleed= (GD && GD.totals) ? GD.totals.loss : 0;
   var decision=rows.filter(needsWork).length;
   return '<div class="roundstamp" style="margin-top:14px"><span class="dashround">Dashboard รอบ '+CUR_PERIOD+'</span>' +
-    '<span>ข้อมูลสรุปจากการออกราคารอบนี้</span></div>' +
-    '<div class="kpi">' +
-      '<div class="k lead"><div class="kt"><span class="ic">📊</span><span class="pill">รอบ '+CUR_PERIOD+'</span></div>' +
-        '<div class="lb">Margin รวม</div><div class="v">'+(mg?mg.toFixed(1):'—')+'<small>%</small></div>' +
-        '<div class="c">ถ่วงน้ำหนักจากรายการที่มีปริมาณขาย</div></div>' +
-      '<div class="k"><div class="kt"><span class="ic">💰</span><span class="pill g">ประมาณการ</span></div>' +
-        '<div class="lb">กำไรขั้นต้น / สัปดาห์</div><div class="v">'+(known.length?money(gp):'—')+'<small>฿</small></div>' +
-        '<div class="c">อิง volume ที่มีในระบบ</div></div>' +
-      '<div class="k tap" onclick="__NAV.href=\'/customers\'"><div class="kt"><span class="ic">⚠️</span><span class="pill '+(risk?'r':'g')+'">Margin Guard</span></div>' +
-        '<div class="lb">รายการเสี่ยง</div><div class="v" style="color:'+(risk?'var(--red)':'var(--green)')+'">'+risk+'</div>' +
-        '<div class="c">ราคาสัญญารายเจ้าที่ต่ำกว่า Minimum margin ของกลุ่มสินค้า'+(bleed?' · <b style="color:var(--red)">ขายต่ำกว่าทุน '+bleed+' บรรทัด</b>':'')+'</div></div>' +
-      '<div class="k tap" onclick="openBoard()"><div class="kt"><span class="ic">🎯</span><span class="pill a">Exception</span></div>' +
-        '<div class="lb">รายการที่ต้องตัดสินใจ</div><div class="v">'+decision+'</div>' +
-        '<div class="c">กดเพื่อเปิดเรียงรายการวิกฤตก่อน →</div></div>' +
-    '</div>';
+    '<span>ข้อมูลสรุปจากการออกราคารอบนี้ · นิยามเดียวกับหน้าตั้งราคากลาง</span></div>' + sheetKPI(rows, rows);
 }
 
 function stack() {
@@ -508,22 +500,28 @@ function reqAnalysis(r) {
 
 /* คำขอลดราคาจากเซลล์ — ต้องขึ้นทั้งหน้ากองใบและหน้าใบ ดีลค้างอยู่ที่พี่จุ๋ม */
 function reqCard() {
-  if (!REQ || !REQ.open) return '';
-  var openRows = REQ.rows.filter(function(r){ return r.status === 'open'; });
-  return '<div class="todoalert' + (REQ.open > 1 ? ' stack' : '') + '">' +
-    '<div class="nah"><span style="font-size:18px">💬</span><b>ลูกค้าต่อรองกลับ · ต้องตัดสินราคาใหม่</b>' +
-      '<span class="ncount">' + REQ.open + ' เรื่อง</span></div>' +
-    '<div class="reqs">' + openRows.slice(0, 5).map(function (r) {
-      var a = r.analysis || {};
-      return '<div class="rq"><div class="rqb"><b>' + esc(r.cust) + '</b>' +
-        '<span>' + esc(r.product) + '</span>' +
-        '<em>ขอ <b>' + Math.round(r.want) + ' ฿</b>' + (a.board ? ' · ใบนี้ออกไว้ ' + a.board + ' ฿' : '') +
-          ' · ' + (r.source === 'customer' ? 'ลูกค้ากดในลิงก์' : 'เซลล์ส่งมา') + '</em>' +
-        '<i>“' + esc(r.reason) + '”</i>' + reqAnalysis(r) + '</div>' +
-        '<div class="rqa"><button class="btn pri" onclick="openNegotiation(' + r.id + ')">เปิดแผนต่อรอง</button>' +
-        '<button class="btn" onclick="decide(' + r.id + ',false)">ไม่ลด</button></div></div>';
+  var N = NEGO; if (!N || !N.total) return '';
+  var stChip = function (i) { var c = i.stage === 'new' ? 'r' : i.stage === 'supplier' ? 'a' : i.stage === 'decided' ? 'g' : 'n'; return '<span class="pill2 ' + c + '">' + esc(i.stageText) + '</span>' + (i.stale ? ' <span class="pill2 r">ค้าง ' + i.age + ' วัน ไม่มีความเคลื่อนไหว</span>' : ''); };
+  return '<div class="todoalert' + (N.total > 1 ? ' stack' : '') + '" id="negoBanner">' +
+    '<div class="nah"><span style="font-size:18px">💬</span><b>ลูกค้าต่อรองกลับ · ' + (N.open ? 'ต้องตัดสินราคาใหม่ ' + N.open + ' เรื่อง' : '') + (N.decided ? (N.open ? ' · ' : '') + 'Pricing ตัดสินแล้ว รอส่งใบแก้ไขให้ลูกค้า ' + N.decided + ' เรื่อง' : '') + '</b>' +
+      '<span class="ncount">' + N.total + ' เรื่อง</span></div>' +
+    '<div class="rnote" style="margin:-2px 0 6px">trigger: ลูกค้ากดต่อรองจากใบที่เซลส่งไป → แจ้งทั้งเซลและคนตั้งราคา → ปิดเรื่องเมื่อส่งใบราคาแก้ไขให้ลูกค้าแล้ว · ค้างเกิน ' + N.staleDays + ' วันจะเตือนซ้ำ</div>' +
+    '<div class="reqs">' + N.items.slice(0, 5).map(function (i) {
+      var rq = (REQ && REQ.rows || []).filter(function (x) { return x.id === i.id; })[0] || {}, a = rq.analysis || {};
+      return '<div class="rq"><div class="rqb"><b>' + esc(i.cust) + '</b><span>' + esc(i.product) + '</span>' +
+        '<em>เสนอไป <b>' + (i.offered ? Math.round(i.offered) + ' ฿' : '—') + '</b> · ลูกค้าขอ <b>' + Math.round(i.want) + ' ฿</b>' + (i.final_price ? ' · Pricing อนุมัติ <b>' + Math.round(i.final_price) + ' ฿</b>' : '') + ' · ' + esc(String(i.at).slice(0, 16).replace('T', ' ')) + ' · ' + (i.source === 'customer' ? 'ลูกค้ากดในลิงก์' : 'เซลล์ส่งมา') + '</em>' +
+        (i.reason ? '<i>“' + esc(i.reason) + '”</i>' : '') + '<div style="margin-top:4px">' + stChip(i) + '</div>' + (rq.status === 'open' ? reqAnalysis(rq) : '') + '</div>' +
+        '<div class="rqa">' + (i.stage === 'new' || i.stage === 'supplier'
+          ? '<button class="btn pri" onclick="openNegotiation(' + i.id + ')">เปิดแผนต่อรอง</button>' + (i.stage === 'new' ? '<button class="btn" onclick="negoStatus(' + i.id + ',\'supplier\')">กำลังต่อรองโรงงาน</button>' : '') + '<button class="btn" onclick="decide(' + i.id + ',false)">ไม่ลด</button>'
+          : '<a class="btn pri" href="/sales?c=' + esc(i.customer_id) + '">ส่งใบราคาแก้ไข →</a><button class="btn" onclick="negoStatus(' + i.id + ',\'closed\')">ปิดเรื่อง</button>') +
+          '<button class="lnk3" onclick="negoStatus(' + i.id + ',\'cancelled\')">ลูกค้ายกเลิก</button></div></div>';
     }).join('') + '</div>' +
-    (REQ.open > 5 ? '<div class="more">+ อีก ' + (REQ.open - 5) + ' เรื่อง</div>' : '') + '</div>';
+    (N.total > 5 ? '<div class="more">+ อีก ' + (N.total - 5) + ' เรื่อง</div>' : '') + '</div>';
+}
+function negoStatus(id, st) {
+  var go = function (note) { return PX.post('/api/price-requests/status', { id: id, status: st, note: note || '' }).then(function () { return Promise.all([PX.get('/api/negotiations'), PX.get('/api/price-requests')]); }).then(function (x) { NEGO = x[0]; REQ = x[1]; draw(); PX.toast(st === 'supplier' ? 'บันทึกสถานะ: กำลังต่อรองกับโรงงาน' : st === 'cancelled' ? 'ปิดเรื่อง: ลูกค้ายกเลิก' : 'ปิดเรื่องแล้ว'); }).catch(function (e) { PX.toast(esc(e.message), 'bad'); }); };
+  if (st === 'cancelled') return PX.modal({ title: 'ลูกค้ายกเลิกการต่อรอง', fields: [{ k: 'note', label: 'เหตุผล', value: 'ลูกค้ายกเลิก' }], okText: 'ปิดเรื่อง', onOk: function (v, close) { close(); go(v.note); } });
+  go();
 }
 
 /* ── ส่งใบให้เซลล์ + ตอบคำขอลดราคา ────────────────────────────────
@@ -603,15 +601,28 @@ function zone(r) {
   return { z1: z1, z2: z2, z3: z3, p: p, m: m, mk: mm.n ? mm : null };
 }
 
+/* ปุ่ม Goal: รวม Goal ที่ได้ราคาเท่ากันเป็นปุ่มเดียว (ป้ายบอกทุกชื่อ) · ปิดปุ่มพร้อมเหตุผลเมื่อไม่มีข้อมูล · ธงส้ม/แดงเมื่อต่ำกว่า Floor (ไม่ปรับเอง) */
+var GOAL_ORDER = ['hold', 'competitive', 'target', 'protect'];
 function optsOf(r) {
   var g = V(r).goals; if (!g) return [];
-  // x = [price, name, margin, key, why, disabled, belowFloor, floorPrice, equalProtect]
-  var rec = V(r).rec || {};
-  return Object.keys(STRATS).filter(function (k) { return k !== 'rec'; }).map(function (k) {
+  var rec = V(r).rec || {}, out = [], seen = {};
+  GOAL_ORDER.forEach(function (k) {
     var gk = g[k] || {};
-    return [gk.price, STRATS[k].name, gk.margin, k, gk.why || gk.reason,
-            !!gk.disabled, !!gk.belowFloor, gk.floorPrice, !!gk.equalProtect, rec.strategy === k && rec.price === gk.price];
+    if (gk.disabled) { out.push({ keys: [k], label: STRATS[k].name, disabled: true, reason: gk.reason || gk.why || 'ไม่มีข้อมูล', why: gk.why }); return; }
+    if (seen[gk.price]) { seen[gk.price].keys.push(k); return; }
+    var o = { keys: [k], price: gk.price, margin: gk.margin, why: gk.why, flag: gk.flag || (gk.belowFloor ? 'below_floor' : null), fp: gk.floorPrice, prev: gk.prev };
+    seen[gk.price] = o; out.push(o);
   });
+  var enabled = out.filter(function (o) { return !o.disabled; });
+  out.forEach(function (o) {
+    if (o.disabled) return;
+    o.isRec = rec.price === o.price && o.keys.indexOf(rec.strategy) >= 0;
+    /* ทุก Goal เท่ากันหมด → โชว์แค่ "ยืนราคาเดิม" หรือ "แข่งขันได้" */
+    var names = enabled.length === 1 && o.keys.length > 1 ? [o.keys.indexOf('hold') >= 0 ? 'hold' : o.keys.indexOf('competitive') >= 0 ? 'competitive' : o.keys[0]] : o.keys;
+    o.label = names.map(function (k) { return k === 'hold' && o.prev ? 'เดิม ' + o.prev : STRATS[k].name; }).join(' = ');
+    o.hasHold = o.keys.indexOf('hold') >= 0; o.hasComp = o.keys.indexOf('competitive') >= 0;
+  });
+  return out;
 }
 
 function why(r) {
@@ -636,55 +647,43 @@ function why(r) {
 }
 
 /* ── แถบตัวเลขของใบนี้ — ตัดสินใจจากสี่ตัวนี้ก่อนจะไล่ทีละแถว ── */
+function toggleUnpriced() { UNPRICED = UNPRICED === 'EXCLUDE' ? 'SUGGEST' : 'EXCLUDE'; draw(); }
 function sheetKPI(all, rows) {
-  var withCost = all.filter(function (r) { return r.cost > 0; });
-  /* V29 §8: unpriced_sku_handling — EXCLUDE = นับเฉพาะ row ที่ approve/confirm แล้วในรอบนี้
-     USE_SYSTEM_SUGGESTION = นับทุก row ที่มีทุน (ใช้ suggested goal price ถ้ายังไม่ approve) */
-  var exclude = (D.unpricedSkuHandling || 'EXCLUDE') === 'EXCLUDE';
-  var priced = withCost.filter(function (r) {
-    if (!exclude) return true;
-    return approvedPrice(r) != null || CONF[r.id] === true;
-  });
+  var withCost = all.filter(function (r) { return r.cost > 0 && V(r).goals; });
+  /* §6: Margin รวม real-time จากราคาที่ตั้งอยู่ตอนนี้ ถ่วงด้วยปริมาณขายรอบก่อน · SKU ที่ยังไม่ตั้งราคา: ไม่นับ (EXCLUDE) หรือใช้ราคาที่ระบบเสนอ (SUGGEST) */
+  var exclude = UNPRICED === 'EXCLUDE';
+  var priced = withCost.filter(function (r) { return !exclude || approvedPrice(r) != null || CONF[r.id] === true || EDIT[r.id] != null; });
   var knownVol = priced.filter(function (r) { return (r.vol || 0) > 0; });
-  var allVol = withCost.filter(function (r) { return (r.vol || 0) > 0; });
-  var rev = knownVol.reduce(function (a, r) { return a + priceOf(r) * r.vol; }, 0);
-  var gp = knownVol.reduce(function (a, r) { return a + (priceOf(r) - r.cost) * r.vol; }, 0);
-  var weighted = rev > 0 ? gp / rev * 100 : 0;
-  var mgs = priced.map(function (r) { return mgOf(r, priceOf(r)); });
-  var fallback = mgs.length ? mgs.reduce(function (a, b) { return a + b; }, 0) / mgs.length : 0;
-  var mgTotal = knownVol.length ? weighted : (priced.length ? fallback : 0);
-  var kpiLabel = knownVol.length
-    ? 'ถ่วงน้ำหนัก ' + knownVol.length + ' จาก ' + allVol.length + ' รายการที่มี vol' + (exclude ? ' (เฉพาะ priced)' : '')
-    : priced.length ? 'เฉลี่ย ' + priced.length + ' รายการที่รู้ทุน' : 'ยังไม่มีรายการที่ยืนยันแล้ว';
-  var low = withCost.filter(function (r) { return mgOf(r, priceOf(r)) < D.floorPct; }).length;
+  var rev = knownVol.reduce(function (a, r) { return a + priceOf(r) * r.vol; }, 0), gp = knownVol.reduce(function (a, r) { return a + (priceOf(r) - r.cost) * r.vol; }, 0);
+  var mgs = priced.map(function (r) { return mgOf(r, priceOf(r)); }), fallback = mgs.length ? mgs.reduce(function (a, b) { return a + b; }, 0) / mgs.length : 0;
+  var mgTotal = rev > 0 ? gp / rev * 100 : fallback;
+  /* รายการเสี่ยง = ราคาที่ตั้ง < Floor หรือ < ทุน · Exception = ไม่มีข้อมูลตลาด · ทุนเปลี่ยนเกิน 15% · ลูกค้าต่อรองกลับมา */
+  var risk = withCost.filter(function (r) { return priceOf(r) < guardOf(r) || priceOf(r) <= r.cost; });
   var loss = withCost.filter(function (r) { return priceOf(r) <= r.cost; }).length;
-  var up = all.filter(function (r) { return r.costJump > 0; });
-  var stuck = up.filter(function (r) { return r.prev && priceOf(r) <= r.prev; }).length;
-  var work = rows.filter(needsWork).length;
-  var done = all.length - all.filter(needsWork).length;
+  var negoP = {}; ((NEGO && NEGO.items) || []).forEach(function (i) { if (i.stage === 'new' || i.stage === 'supplier') negoP[i.product_id] = 1; });
+  var exNoMkt = withCost.filter(function (r) { return V(r).goals.competitive.disabled; }).length;
+  var exCost = withCost.filter(function (r) { return r.costPrev > 0 && Math.abs(r.costJump || 0) / r.costPrev > 0.15; }).length;
+  var exNego = withCost.filter(function (r) { return negoP[r.id]; }).length;
+  var exc = withCost.filter(function (r) { return V(r).goals.competitive.disabled || (r.costPrev > 0 && Math.abs(r.costJump || 0) / r.costPrev > 0.15) || negoP[r.id]; }).length;
+  var work = rows.filter(needsWork).length, done = all.length - all.filter(needsWork).length;
   return '<div class="kpi kpi4">' +
-    '<div class="k lead"><div class="kt"><span class="ic">📊</span>' +
-      '<span class="pill">รวมทั้งใบ</span></div>' +
-      '<div class="lb">Margin รวม</div>' +
+    '<div class="k lead"><div class="kt"><span class="ic">📊</span><span class="pill">นับแล้ว ' + priced.length + ' จาก ' + all.length + ' รายการ</span></div>' +
+      '<div class="lb">Margin รวม (real-time)</div>' +
       '<div class="v">' + (priced.length ? mgTotal.toFixed(1) : '—') + (priced.length ? '<small>%</small>' : '') + '</div>' +
-      '<div class="c">' + kpiLabel + '</div></div>' +
-    '<div class="k"><div class="kt"><span class="ic">💰</span>' +
-      '<span class="pill ' + (gp > 0 ? 'g' : 'r') + '">ประมาณการ</span></div>' +
+      '<div class="c">' + (knownVol.length ? 'ถ่วงน้ำหนักด้วยยอดขายรอบก่อน ' + knownVol.length + ' รายการ' : priced.length ? 'เฉลี่ย ' + priced.length + ' รายการ (ยังไม่รู้ปริมาณ)' : 'ยังไม่มีรายการที่ตั้งราคา') +
+        ' · SKU ที่ยังไม่ตั้ง: <button class="lnk3" style="color:#fff;text-decoration:underline" onclick="toggleUnpriced()">' + (exclude ? 'ไม่นับ' : 'ใช้ราคาที่ระบบเสนอ') + ' ⇄</button></div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">💰</span><span class="pill ' + (gp > 0 ? 'g' : 'r') + '">ประมาณการ</span></div>' +
       '<div class="lb">กำไรขั้นต้น / สัปดาห์</div>' +
       '<div class="v">' + (knownVol.length ? money(gp) : '—') + '<small>฿</small></div>' +
-      '<div class="c">ใช้ volume ที่มีอยู่ในระบบ ไม่เดาปริมาณที่ยังไม่รู้</div></div>' +
-    '<div class="k"><div class="kt"><span class="ic">⚠️</span>' +
-      '<span class="pill ' + (low || loss ? 'r' : 'g') + '">Margin Guard</span></div>' +
+      '<div class="c">Σ (ราคาที่ตั้ง − ทุน) × ยอดขายรอบก่อน · เปลี่ยนทันทีเมื่อแก้ราคา</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">⚠️</span><span class="pill ' + (risk.length ? 'r' : 'g') + '">Margin Guard</span></div>' +
       '<div class="lb">รายการเสี่ยง</div>' +
-      '<div class="v" style="color:' + (low || loss ? 'var(--red)' : 'var(--green)') + '">' + low + '</div>' +
-      '<div class="c">ต่ำกว่า Minimum ของกลุ่ม · ขาดทุนตรงๆ ' + loss + ' รายการ</div></div>' +
-    '<div class="k"><div class="kt"><span class="ic">🎯</span>' +
-      '<span class="pill ' + (work ? 'a' : 'g') + '">Exception only</span></div>' +
-      '<div class="lb">ต้องให้คนตรวจ</div>' +
-      '<div class="v">' + work + '</div>' +
-      '<div class="c">จบแล้ว ' + done + ' จาก ' + all.length +
-      (work ? ' · <button class="lnk3" onclick="jumpFirst()">พาไปตัวแรก →</button>' : '') +
-      '</div></div>' +
+      '<div class="v" style="color:' + (risk.length ? 'var(--red)' : 'var(--green)') + '">' + risk.length + '</div>' +
+      '<div class="c">ราคาที่ตั้ง &lt; Floor ของกลุ่ม หรือ &lt; ทุน · ขาดทุนตรงๆ ' + loss + ' รายการ</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">🎯</span><span class="pill ' + (exc ? 'a' : 'g') + '">Exception</span></div>' +
+      '<div class="lb">ต้องให้คนตัดสิน</div>' +
+      '<div class="v">' + exc + '</div>' +
+      '<div class="c">ไม่มีข้อมูลตลาด ' + exNoMkt + ' · ทุนเปลี่ยนเกิน 15% ' + exCost + ' · ลูกค้าต่อรอง ' + exNego + (work ? ' · <button class="lnk3" onclick="jumpFirst()">พาไปตัวแรกที่ต้องตรวจ (' + work + ') →</button>' : ' · จบแล้ว ' + done + '/' + all.length) + '</div></div>' +
     '</div>';
 }
 
@@ -771,6 +770,7 @@ function desk() {
   if (CUST && D.centralAfterRound)
     h += '<div class="warn2" style="margin:10px 0">⚠ ราคากลางชุดใหม่ยืนยันแล้ว <b>' + D.centralAfterRound + '</b> รายการ แต่ยังไม่ได้ประกาศ — ' +
       'ใบที่บันทึกตอนนี้เป็นของรอบ <b>' + esc(D.round || '') + '</b> (ใบที่ลูกค้าถืออยู่) · ถ้าจะทำใบสัปดาห์หน้า ให้ประกาศรอบใหม่ก่อน</div>';
+  h += sheetKPI(all, rows);   /* §6 การ์ด Margin รวม / กำไรขั้นต้น / เสี่ยง / Exception — real-time จากราคาที่ตั้งอยู่ */
   h += '<div class="savebar">' +
     '<button class="btn" onclick="backStack()">← ' + (CUST?'กองลูกค้า':'Pricing Home') + '</button>' +
     '<span class="decisionchip r">ต้องตรวจ ' + all.filter(needsWork).length + '</span>' +
@@ -812,14 +812,15 @@ function desk() {
   var k3 = rows.filter(mkt).length;
   var cnt = function (k) { return '<i class="cnt">' + k + '/' + rows.length + '</i>'; };
 
-  h += '<div class="tw2"><div class="sc"><table class="g zt" style="min-width:1280px">' +
+  h += '<div class="tw2"><div class="sc"><table class="g zt" style="min-width:' + (CUST ? 1280 : 1760) + 'px">' +
     '<thead><tr>' +
       '<th>สินค้า</th>' +
       '<th class="zh1">ราคาขายรอบก่อน<span class="thperiod">' + PREV_PERIOD + '</span>' + cnt(k1) + '</th>' +
       '<th class="zh2">ต้นทุนรอบก่อน<span class="thperiod">' + PREV_PERIOD + '</span></th>' +
       '<th class="zh2">ต้นทุนรอบปัจจุบัน<span class="thperiod">' + CUR_PERIOD + '</span>' + cnt(k2) + '</th>' +
       '<th class="zh3">ราคาตลาดล่าสุด<span class="thperiod">ข้อมูลล่าสุดที่ยังใช้ได้</span>' + cnt(k3) + '</th>' +
-      '<th class="zh4">ราคาที่จะออก<span class="thperiod">' + (CUST ? 'รอบ ' + CUR_PERIOD : 'ร่างครั้งถัดไป') + '</span></th>' +
+      '<th class="zh4">' + (CUST ? 'ราคาที่จะออก' : 'ส่ง 2kg · ราคากลาง') + '<span class="thperiod">' + (CUST ? 'รอบ ' + CUR_PERIOD : 'ร่างครั้งถัดไป') + '</span></th>' +
+      (CUST ? '' : '<th class="zh4">ปลีก<span class="thperiod">⌈ทุน×' + (D.markup || 1.6) + '⌉ · แก้ได้</span></th><th class="zh4">ส่ง 5kg · 10kg<span class="thperiod">2kg −3 · −4 · แก้ได้</span></th>') +
       '<th>Goal 4 แบบ · Logic · ยืนยัน</th>' +
     '</tr></thead><tbody>' +
     (rows.length ? pageRows.map(function(r){
@@ -839,25 +840,25 @@ function desk() {
         '<td class="zc z3'+(z.mk?'':' blank')+'">'+z.z3+'</td>' +
         '<td class="zc z4"><input class="pin" data-id="'+r.id+'" value="'+z.p+'" inputmode="numeric"'+(v.goals?'':' disabled')+'>' +
           '<em style="color:'+mgc+'">กำไร '+z.m.toFixed(1)+'%</em>' +
-          /* ราคาทุกระดับตามใบราคา: ปลีก = ⌈ทุน×1.6⌉ · 5kg = 2kg−3 · 10kg = 2kg−4 — คิดจากราคา 2kg ที่กำลังจะออก */
-          (r.cost>0?'<em style="color:var(--tx-3)" title="ปลีก (หน้าร้านอารีย์) · ส่ง 5kg · ส่ง 10kg">ปลีก '+(v.tiers&&v.tiers.retail||r.retail||Math.ceil(r.cost*1.6))+' · 5kg '+(z.p-3)+' · 10kg '+(z.p-4)+(r.unit&&r.unit!=='1 กก.'&&r.unit!=='กก.'?' · '+esc(r.unit):'')+'</em>':'') +
-          (gd?'<em style="color:'+(z.p<gd?'var(--red)':'var(--tx-3)')+'">ขั้นต่ำ '+gd+' ฿ (Min '+eff+'%) · Target '+(v.targetPct||'')+'% = '+(v.target||'')+' ฿</em>':'') +
+          (gd?'<em style="color:'+(z.p<gd?'var(--red)':'var(--tx-3)')+'">Floor '+eff+'% = '+gd+' ฿ · Target '+(v.targetPct||'')+'% = '+(v.target||'')+' ฿</em>':'') +
           (!CUST&&v.central?'<em style="color:'+(v.central.state==='approved'?'var(--green)':'var(--amber)')+'">'+(v.central.state==='approved'?'✓ ยืนยันไว้ '+Math.round(v.central.price)+' ฿':'⚠ '+esc(centralStateShort(v)))+'</em>':'') +
           (CUST&&v.saved?'<em style="color:var(--green)">✓ บันทึกรอบนี้ '+Math.round(v.saved.price)+' ฿</em>':'') +
           (CUST&&v.base?'<em style="color:var(--tx-3)">ราคากลาง '+v.base+' ฿'+(v.baseApproved?'':' (ยังไม่ยืนยัน)')+'</em>':'') +
         '</td>' +
-        '<td style="font-family:var(--ff);white-space:normal;min-width:260px">' +
+        (CUST?'':'<td class="zc z4" style="min-width:110px"><input class="pin" style="width:76px" data-id="'+r.id+'" data-k="retail" value="'+retailOf(r)+'" inputmode="numeric"'+(v.goals?'':' disabled')+'>'+
+          '<em style="color:var(--tx-3)">'+(EDITR[r.id]!=null||tierOverride(r,'retail')?'ตั้งเอง':'สูตร ⌈ทุน×'+(D.markup||1.6)+'⌉')+' · กำไร '+(r.cost>0&&retailOf(r)>0?Math.round((retailOf(r)-r.cost)/retailOf(r)*1000)/10:'—')+'%</em></td>'+
+          '<td class="zc z4" style="min-width:150px"><div style="display:flex;gap:4px;justify-content:center"><input class="pin" style="width:64px;padding-left:6px;padding-right:6px" data-id="'+r.id+'" data-k="s5" value="'+tierOf(r,'s5',z.p)+'" inputmode="numeric"'+(v.goals?'':' disabled')+'><input class="pin" style="width:64px;padding-left:6px;padding-right:6px" data-id="'+r.id+'" data-k="s10" value="'+tierOf(r,'s10',z.p)+'" inputmode="numeric"'+(v.goals?'':' disabled')+'></div>'+
+          '<em style="color:var(--tx-3)">5kg · 10kg'+(r.unit&&r.unit!=='1 กก.'&&r.unit!=='กก.'?' · '+esc(r.unit):'')+'</em></td>') +
+        '<td style="font-family:var(--ff);white-space:normal;min-width:' + (CUST ? 300 : 460) + 'px">' +
           '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px">' +
             o.map(function(x){
-              var dis=x[5],bf=x[6],fp=x[7],ep=x[8],isRec=x[9],sel=rowGoal(r)===x[3]||(rowGoal(r)==='rec'&&isRec);
-              if(dis) return '<button class="opt2" style="opacity:.45;cursor:not-allowed" title="'+esc(x[4]||x[3])+'" disabled>'+
-                '<b style="color:var(--tx-3)">'+esc(STRATS[x[3]].name)+'</b><i>'+esc(x[4]||'ไม่มีข้อมูล')+'</i></button>';
-              var bfCol=x[3]==='competitive'?'var(--red)':'var(--amber)';
-              var cls='opt2'+(sel?' on goalon':'');
-              return '<button class="'+cls+'" title="'+esc(x[4])+'" onclick="apply('+jsq(r.id)+','+x[0]+','+jsq(x[3])+')">'+
-                '<b'+(bf?' style="color:'+bfCol+'"':'')+'>'+x[0]+'</b>'+
-                '<i>'+esc(optLabel(r,x))+(isRec?' <b style="color:var(--blue)">★ แนะนำ</b>':'')+(ep?' = protect':'')+(bf?' · ⚠ ต่ำกว่าขั้นต่ำ '+fp+' ฿':'')+'</i>'+
-                (x[3]==='target'&&x[2]>0?'<i style="color:var(--green)"> '+x[2]+'%</i>':'<i> '+x[2]+'%</i>')+
+              if(x.disabled) return '<button class="opt2" style="opacity:.55;cursor:not-allowed" title="'+esc(x.why||x.reason)+'" disabled>'+
+                '<b style="color:var(--tx-3)">—</b><i>'+esc(x.label)+'</i><i style="color:var(--amber)">'+esc(x.reason)+'</i></button>';
+              var rg=rowGoal(r), sel=x.keys.indexOf(rg)>=0||(rg==='rec'&&x.isRec), bf=!!x.flag, bfCol=x.hasComp&&!x.hasHold?'var(--red)':'var(--amber)';
+              return '<button class="opt2'+(sel?' on goalon':'')+'" title="'+esc(x.why||'')+'" onclick="apply('+jsq(r.id)+','+x.price+','+jsq(x.keys[0])+')">'+
+                '<b'+(bf?' style="color:'+bfCol+'"':'')+'>'+x.price+'</b>'+
+                '<i>'+esc(x.label)+(x.isRec?' <b style="color:var(--blue)">★ เสนอ</b>':'')+'</i>'+
+                '<i style="color:'+(bf?bfCol:'var(--tx-3)')+'">'+x.margin+'%'+(bf?' · ⚠ ต่ำกว่า Floor '+x.fp+' ฿':'')+'</i>'+
                 '</button>';}).join('') +
             (v.goals?'<button class="lnk3" onclick="showLogic('+jsq(r.id)+')">Logic →</button>':'') +
           '</div>' +
@@ -865,7 +866,7 @@ function desk() {
           (v.goals?'<div style="margin-top:7px"><button class="confirmbtn'+(approved?' ok':'')+'" onclick="confirmRow('+jsq(r.id)+')">'+
             (approved?(EXC[r.id]?'✓ ยืนยัน (ข้อยกเว้น)':'✓ ยืนยันแล้ว'):'✓ ยืนยันราคานี้')+'</button></div>':'<div class="tablewhy" style="color:var(--red)">'+esc(v.readyText||'ยังไม่รู้ทุน — กรอกทุนก่อน')+'</div>') +
         '</td></tr>';
-    }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--tx-3)">ไม่มีรายการที่ตรงกับตัวกรอง</td></tr>') +
+    }).join('') : '<tr><td colspan="' + (CUST ? 7 : 9) + '" style="text-align:center;color:var(--tx-3)">ไม่มีรายการที่ตรงกับตัวกรอง</td></tr>') +
     '</tbody></table></div>' +
     (totalFiltered>PER?'<div class="pgb"><span>หน้า '+(PAGE+1)+'/'+pages+' · แสดง '+(PAGE*PER+1)+'–'+Math.min((PAGE+1)*PER,totalFiltered)+' จาก '+totalFiltered+' รายการ</span>' +
       '<span class="sp2"><button '+(PAGE===0?'disabled':'')+' onclick="setPage('+(PAGE-1)+')">← ก่อนหน้า</button>' +
@@ -921,7 +922,7 @@ function draw() {
     var e = document.getElementById('q'); e.focus();
     e.setSelectionRange(e.value.length, e.value.length); };
   document.querySelectorAll('.pin').forEach(function (el) {
-    el.onchange = function () { apply(el.dataset.id, Math.round(Number(el.value))); };
+    el.onchange = function () { var k = el.dataset.k, val = Math.round(Number(el.value)); if (!k) return apply(el.dataset.id, val); if (!(val > 0)) return; (k === 'retail' ? EDITR : k === 's5' ? EDIT5 : EDIT10)[el.dataset.id] = val; CONF[el.dataset.id] = false; draw(); };
     el.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } };
   });
 
