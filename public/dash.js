@@ -30,7 +30,9 @@ window.Dash = (function () {
 
   function load(force) {
     if (DATA && !force && Date.now() - AT < 20000) return Promise.resolve(DATA);
-    return PX.get('/api/dashboard').then(function (j) { DATA = j; AT = Date.now(); ROLE = j.role; return j; });
+    /* หน้าเซลล์ = แดชบอร์ดงานขายเสมอ ไม่ว่าใครเปิด (หัวหน้า/ออปส์กรองรายคนได้ด้วย Dash.rep) */
+    var qs = PAGE === 'sales' ? '?view=sales' + (REP ? '&rep=' + encodeURIComponent(REP) : '') : '';
+    return PX.get('/api/dashboard' + qs).then(function (j) { DATA = j; AT = Date.now(); ROLE = j.role; return j; });
   }
   function pill(k, t) { return '<span class="pill2 ' + k + '">' + esc(t) + '</span>'; }
   function sysRow(h) {
@@ -114,24 +116,33 @@ window.Dash = (function () {
 
   /* ── เซลล์: กระดานใบราคา ── */
   function saleHtml(d) {
-    /* เรียงตามงานที่ต้องทำก่อน · หน้าแรกโชว์ 8 เจ้าแรก (กด "ดูทั้งหมด" ได้) — กระดานต้องไม่ดันของเดิมตกจอ */
+    /* แดชบอร์ดของเซลล์ = งานขายของคนนี้เท่านั้น: ลูกค้าอยู่ขั้นไหน · วันนี้ค้างอะไร · 7 วันทำอะไรไปแล้ว · ช่องทางถึงลูกค้า
+       เรียงตามงานที่ต้องทำก่อน · หน้าแรกโชว์ 8 เจ้าแรก (กด "ดูทั้งหมด" ได้) */
     var PRI = { due: 0, waiting: 1, ready: 2, partial: 3, sent: 4, agreed: 5, won: 6, invoiced: 7, lost: 8, draft: 9 };
     var rows = d.customers.filter(function (c) { return FILTER === 'all' || c.stage === FILTER || (FILTER === 'due' && c.followupDue); })
       .sort(function (a, b) { return (a.followupDue ? 0 : PRI[a.stage]) - (b.followupDue ? 0 : PRI[b.stage]) || (b.silentDays - a.silentDays) || a.name.localeCompare(b.name); });
     var total = rows.length; if (!SHOW_ALL && rows.length > 8) rows = rows.slice(0, 8);
-    var due = d.followupDue || [];
-    return '<section class="fhd card" id="fhDash"><h2>กระดานใบราคา · รอบ ' + esc(d.round) + '</h2><p class="sub">แต่ละเจ้าอยู่ขั้นไหน · ส่งถึงลูกค้าทาง LINE · เงียบเกิน ' + d.followDays + ' วันต้องตาม · ตอบครบแล้วปิดดีล</p>' +
+    var T = d.todo || {}, D7 = d.done7 || {}, n = d.customers.length, by = {}; d.customers.forEach(function (c) { by[c.stage] = (by[c.stage] || 0) + 1; });
+    var mine = d.rep ? d.rep.name : (d.viewer && d.viewer !== 'sale' ? 'ทุกคน' : 'ทีมขาย'), lineOn = n - (d.lineMissing || 0), ob = d.outbox || {};
+    var repChips = d.reps ? '<div class="fun" style="margin:0 0 10px"><button class="' + (!REP ? 'on' : '') + '" onclick="Dash.rep(\'\')">ทุกคน <b>' + d.reps.reduce(function (a, r) { return a + r.customers; }, 0) + '</b></button>' +
+      d.reps.map(function (r) { return '<button class="' + (REP === r.id ? 'on' : '') + '" onclick="Dash.rep(' + jsq(r.id) + ')" title="ค้างตาม ' + r.due + ' · รอส่ง ' + r.ready + ' · ปิดได้ ' + r.won + '">' + esc(r.name) + ' <b>' + r.customers + '</b>' + (r.due ? ' <span style="color:var(--red)">●' + r.due + '</span>' : '') + '</button>'; }).join('') +
+      (d.provisional ? '<span style="font-size:11px;color:var(--amber);align-self:center">มอบหมายลูกค้าไว้ชั่วคราว — ยืนยันตัวจริงที่ POST /api/reps</span>' : '') + '</div>' : '';
+    return '<section class="fhd card" id="fhDash"><h2>งานขายของ' + esc(mine) + ' · รอบ ' + esc(d.round) + '</h2><p class="sub">เห็นเฉพาะลูกค้าที่ตัวเองถือ · ส่งราคาถึงลูกค้าทาง LINE → ดูว่าใครตอบ → ตามเจ้าที่เงียบเกิน ' + d.followDays + ' วัน → ปิดดีลบันทึกราคาที่ตกลง · วันนี้ ' + esc(d.today) + '</p>' + repChips +
       '<div class="grid">' +
-      '<div class="k ' + (due.length ? '' : 'lead') + ' tap" onclick="Dash.filter(\'due\')"><div class="kt"><span class="ic">⏰</span>' + pill(due.length ? 'r' : 'g', due.length ? 'ต้องตามวันนี้' : 'ไม่มีค้าง') + '</div><div class="lb">ลูกค้าเงียบ</div><div class="v">' + due.length + '<small>เจ้า</small></div><div class="c">ส่งแล้วไม่ตอบเกิน ' + d.followDays + ' วัน' + (due.length ? ' · กดเพื่อดูรายชื่อ' : '') + '</div></div>' +
-      '<div class="k tap" onclick="Dash.filter(\'ready\')"><div class="kt"><span class="ic">📨</span>' + pill(d.lineReady ? 'b' : 'n', 'พร้อมส่ง LINE ' + d.lineReady) + '</div><div class="lb">Pricing ส่งมาแล้ว ยังไม่ถึงลูกค้า</div><div class="v">' + (d.stages.find(function (s) { return s.key === 'ready'; }) || {}).n + '<small>เจ้า</small></div><div class="c">ยังไม่ผูก LINE ' + d.lineMissing + ' เจ้า' + (d.lineReady ? ' · <button class="lnk3" onclick="Dash.sendAll()">ส่ง LINE ทุกเจ้าที่พร้อม →</button>' : '') + '</div></div>' +
-      '<div class="k tap" onclick="Dash.filter(\'waiting\')"><div class="kt"><span class="ic">💬</span>' + pill(d.requests ? 'r' : 'g', 'ต่อรอง') + '</div><div class="lb">รอ Pricing ตอบ / ต้องแจ้งลูกค้า</div><div class="v">' + d.requests + '<small>/ ' + d.revised + '</small></div><div class="c">คำขอที่รอ / ราคาใหม่ที่ Pricing อนุมัติแล้วต้องแจ้งลูกค้า</div></div>' +
-      '<div class="k tap" onclick="Dash.filter(\'won\')"><div class="kt"><span class="ic">🤝</span>' + pill('g', 'ปิดได้ ' + d.deals.won) + '</div><div class="lb">ผลรอบนี้</div><div class="v">' + d.deals.won + '<small>ได้ · เสีย ' + d.deals.lost + '</small></div><div class="c">มูลค่าที่ตกลงกัน ฿' + money(d.deals.value || 0) + '</div></div>' +
+      '<div class="k lead tap" onclick="Dash.filter(\'all\')"><div class="kt"><span class="ic">👥</span>' + pill('', 'รอบ ' + d.round) + '</div><div class="lb">ลูกค้าของฉัน</div><div class="v">' + n + '<small> เจ้า</small></div>' +
+        '<div class="c">ส่งแล้วรอตอบ ' + (by.sent || 0) + ' · ตอบครบ ' + (by.agreed || 0) + ' · ปิดได้ ' + ((by.won || 0) + (by.invoiced || 0)) + ' · เสีย ' + (by.lost || 0) + ' · รอ Pricing ' + (by.draft || 0) + '</div></div>' +
+      '<div class="k tap" onclick="Dash.filter(\'due\')"><div class="kt"><span class="ic">📌</span>' + pill(T.total ? 'r' : 'g', T.total ? 'ค้าง ' + T.total : 'ไม่มีค้าง') + '</div><div class="lb">งานค้างวันนี้</div><div class="v">' + (T.total || 0) + '</div>' +
+        '<div class="c">ส่งใบให้ลูกค้า <b>' + (T.send || 0) + '</b> · ตามเจ้าที่เงียบ <b>' + (T.follow || 0) + '</b> · แจ้งราคาใหม่ที่ Pricing ตัดสินแล้ว <b>' + (T.inform || 0) + '</b> · ปิดดีลที่ตอบครบ <b>' + (T.close || 0) + '</b>' + (T.waitingPricing ? ' · รอ Pricing ตอบ ' + T.waitingPricing : '') + '</div></div>' +
+      '<div class="k"><div class="kt"><span class="ic">✅</span>' + pill('g', '7 วันล่าสุด') + '</div><div class="lb">ทำไปแล้ว</div><div class="v">' + ((D7.sent || 0) + (D7.follow || 0) + (D7.closed || 0)) + '<small> งาน</small></div>' +
+        '<div class="c">ส่งใบราคา ' + (D7.sent || 0) + ' · ตามลูกค้า ' + (D7.follow || 0) + ' · ปิดดีล ' + (D7.closed || 0) + ' · ลูกค้าตอบกลับ ' + (D7.replied || 0) + ' · ส่งคำขอต่อรอง ' + (D7.requests || 0) + '</div></div>' +
+      '<div class="k tap" onclick="Dash.filter(\'ready\')"><div class="kt"><span class="ic">📨</span>' + pill(d.lineOA ? 'g' : 'a', d.lineOA ? 'LINE OA ต่อแล้ว' : 'LINE OA ยังไม่ต่อ · จำลอง') + '</div><div class="lb">ช่องทางถึงลูกค้า</div><div class="v sm" style="font-size:22px">ผูก LINE ' + lineOn + '<small>/' + n + '</small></div>' +
+        '<div class="c">พร้อมส่ง LINE ' + (d.lineReady || 0) + ' · รอส่ง ' + (ob.queued || 0) + ' · ส่งไม่สำเร็จ <b style="color:' + (ob.failed ? 'var(--red)' : 'inherit') + '">' + (ob.failed || 0) + '</b>' + (d.lineMissing ? ' · ยังไม่ผูก ' + d.lineMissing + ' เจ้า (ส่งลิงก์/โทรแทน)' : '') + '</div></div>' +
       '</div>' + funnel(d.stages) +
-      '<div class="list" style="margin-top:8px">' + (rows.length ? rows.map(saleRow).join('') : '<p class="hint">ไม่มีเจ้าในขั้นนี้</p>') + '</div>' +
+      '<div class="list" style="margin-top:8px">' + (rows.length ? rows.map(function (c) { return saleRow(c, !!d.reps && !REP); }).join('') : '<p class="hint">ไม่มีเจ้าในขั้นนี้</p>') + '</div>' +
       (total > rows.length || SHOW_ALL ? '<div style="margin-top:8px"><button class="btn" onclick="Dash.toggleAll()">' + (SHOW_ALL ? 'ย่อเหลือ 8 เจ้า' : 'ดูทั้งหมด ' + total + ' เจ้า →') + '</button></div>' : '') +
       '<div style="margin-top:10px">' + sysRow(d.health) + alerts(d.alerts) + '</div></section>';
   }
-  function saleRow(c) {
+  function saleRow(c, showOwner) {
     var tot = c.offerLines || c.lines || 0, ans = (c.accepted || 0) + (c.declined || 0);
     var ch = c.channel ? CHAN[c.channel] || c.channel : null;
     var lineTxt = c.lineStatus === 'queued' ? 'รอส่ง' : c.lineStatus === 'sent' ? 'ส่งถึงแล้ว' : c.lineStatus === 'simulated' ? 'ส่งแล้ว (จำลอง)' : c.lineStatus === 'failed' ? 'ส่งไม่สำเร็จ' : '';
@@ -142,7 +153,7 @@ window.Dash = (function () {
     if (['agreed', 'partial', 'sent'].indexOf(c.stage) >= 0) acts.push('<button ' + (c.stage === 'agreed' ? 'class="pri"' : '') + ' onclick="Dash.close(' + jsq(c.id) + ',' + jsq(c.name) + ')">ปิดดีล</button>');
     if (!c.line && c.stage !== 'draft') acts.push('<button onclick="Dash.bindLine(' + jsq(c.id) + ',' + jsq(c.name) + ')">ผูก LINE</button>');
     acts.push('<button onclick="openSheet(' + jsq(c.id) + ')">เปิดใบ →</button>');
-    return '<div class="row ' + (c.followupDue ? 'due' : '') + '"><div><b>' + esc(c.name) + '</b><small>' + pill(STG[c.stage] || 'n', c.label) + (c.outcome && c.outcome.reason ? ' ' + esc(c.outcome.reason) : '') + '</small></div>' +
+    return '<div class="row ' + (c.followupDue ? 'due' : '') + '"><div><b>' + esc(c.name) + (showOwner && c.ownerName ? ' <span class="pill2 n" style="font-weight:500">' + esc(c.ownerName) + '</span>' : '') + '</b><small>' + pill(STG[c.stage] || 'n', c.label) + (c.outcome && c.outcome.reason ? ' ' + esc(c.outcome.reason) : '') + '</small></div>' +
       '<div><b style="font-weight:500">' + (c.sentAt ? 'ส่ง ' + ago(c.sentAt) + (ch ? ' · ' + ch : '') : c.handedAt ? 'Pricing ส่งมา ' + ago(c.handedAt) : 'รอ Pricing') + '</b><small>' + (lineTxt ? 'LINE: ' + lineTxt + ' · ' : '') + (c.opened ? 'ลูกค้าเปิด ' + ago(c.opened) : c.sentAt ? 'ยังไม่เปิดลิงก์' : '') + (!c.line ? ' · ยังไม่ผูก LINE' : '') + '</small></div>' +
       '<div><b style="font-weight:500">ตอบ ' + ans + '/' + tot + (c.waiting ? ' · <span style="color:var(--red)">ต่อรอง ' + c.waiting + '</span>' : '') + '</b><small>' + (c.followupDue ? '<span style="color:var(--red)">เงียบ ' + c.silentDays + ' วัน — ต้องตาม</span>' : c.lastFollowup ? 'ตามล่าสุด ' + ago(c.lastFollowup.at) + ' (' + esc(c.lastFollowup.channel) + ')' : c.silentDays ? 'เงียบ ' + c.silentDays + ' วัน' : '') + '</small></div>' +
       '<div class="act">' + acts.join('') + '</div></div>';
@@ -181,7 +192,8 @@ window.Dash = (function () {
   function toggleAll() { SHOW_ALL = !SHOW_ALL; paint(); }
 
   /* ── ยึดกับหน้าแม่: วาดใหม่ทุกครั้งที่หน้าแม่วาดใหม่ ── */
-  var PAGE = null, obs = null;
+  var PAGE = null, obs = null, REP = '';
+  function rep(id) { REP = id || ''; FILTER = 'all'; load(true).then(paint).catch(function () {}); }
   function anchor() {
     if (PAGE === 'exec') { var pane = document.querySelector('[data-exec-pane="overview"]'); return pane && !pane.hidden ? { el: pane, where: 'afterbegin' } : null; }
     if (PAGE === 'pricing') { if (window.VIEW !== 'home') return null; var g = document.querySelector('#aiPerf') || document.querySelector('#pxGreet'); return g ? { el: g, where: 'afterend' } : null; }
@@ -208,5 +220,5 @@ window.Dash = (function () {
     obs.observe(main, { childList: true, subtree: false });
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') load(true).then(paint).catch(function () {}); });
   }
-  return { mount: mount, refresh: refresh, filter: filter, toggleAll: toggleAll, sendLine: sendLine, sendAll: sendAll, bindLine: bindLine, follow: follow, close: close, flag: flag, ack: ack };
+  return { mount: mount, refresh: refresh, rep: rep, filter: filter, toggleAll: toggleAll, sendLine: sendLine, sendAll: sendAll, bindLine: bindLine, follow: follow, close: close, flag: flag, ack: ack };
 })();

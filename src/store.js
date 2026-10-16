@@ -135,6 +135,14 @@
       SD.total = SD.customers.length;
     }
     function sendRow(cid) { return D.sends.customers.filter(function (c) { return c.id === cid; })[0]; }
+    /* กองใบของเซลล์คนนี้เท่านั้น — ตัวเลขสรุปนับใหม่จากชุดที่กรองแล้ว */
+    function sendsFor(role, rep, q) {
+      var sc = repScope(role, rep, q); if (!sc) return D.sends;
+      var cs = D.sends.customers.filter(function (c) { return inScope(sc, c.id); });
+      return Object.assign({}, D.sends, { customers: cs, total: cs.length, sent: cs.filter(function (c) { return c.sentAt; }).length, handed: cs.filter(function (c) { return c.handedAt; }).length,
+        pending: cs.filter(function (c) { return c.handedAt && !c.sentAt; }).length, waiting: cs.reduce(function (a, c) { return a + (c.waiting || 0); }, 0),
+        negotiations: (D.sends.negotiations || []).filter(function (n) { return inScope(sc, n.customer_id); }), scope: sc, rep: repOf(sc) });
+    }
     function rebuildSheet(sh) {
       var rows = sh.rows;
       sh.total = rows.length; sh.offerTotal = rows.filter(function (r) { return r.inOffer; }).length;
@@ -459,10 +467,37 @@
     }
 
     /* ── auth ─────────────────────────────────────────────────── */
-    function meOf(role) {
+    /* ── ทีมขาย: เซลล์หลายคน ถือลูกค้าคนละชุด — เห็นเฉพาะของตัวเอง ── */
+    function ensureReps() {
+      S.sales_reps = S.sales_reps || [{ id: 's1', name: 'เซลล์ 1' }, { id: 's2', name: 'เซลล์ 2' }, { id: 's3', name: 'เซลล์ 3' }];
+      if (!S.sales_reps.length || S.customers.some(function (c) { return c.owner; })) return;
+      /* ยังไม่มีใครถือลูกค้า → มอบหมายชั่วคราวเรียงตามขนาดใบ (มากไปน้อย) สลับคน จะได้ถือมูลค่าไม่เท่ากันเหมือนของจริง · แก้ได้ที่ POST /api/customers/:id {owner} */
+      var lines = {}; (D.sends.customers || []).forEach(function (c) { lines[c.id] = c.lines || 0; });
+      S.customers.slice().sort(function (a, b) { return (lines[b.id] || 0) - (lines[a.id] || 0); }).forEach(function (c, i) { c.owner = S.sales_reps[i % S.sales_reps.length].id; c.owner_src = 'auto'; });
+    }
+    function repOf(id) { return (S.sales_reps || []).filter(function (r) { return r.id === id; })[0] || null; }
+    function ownerOf(cid) { var c = (S.customers || []).filter(function (x) { return x.id === cid; })[0]; return c ? (c.owner || '') : ''; }
+    /* ขอบเขตที่คนนี้เห็น: เซลล์ = เฉพาะลูกค้าที่ตัวเองถือ (ถ้ามีการตั้ง rep) · คนอื่น = ทั้งหมด (กรองด้วย ?rep= ได้) */
+    /* เซลล์ที่ไม่ระบุคน (session เก่า/ฝังใช้ในเทสต์) = มุมมองทีมขายรวม — server บังคับให้เลือกชื่อใหม่ก่อนเข้าอยู่แล้ว */
+    function repScope(role, rep, q) { if (LVL[role] < 2) return rep || null; return q && q.rep ? q.rep : null; }
+    function inScope(scope, cid) { return !scope || ownerOf(cid) === scope; }
+    var CUR_REP = null;
+    function repsView(role) {
+      var n = {}; S.customers.forEach(function (c) { if (c.owner) n[c.owner] = (n[c.owner] || 0) + 1; });
+      return { reps: (S.sales_reps || []).map(function (r) { return { id: r.id, name: r.name, customers: n[r.id] || 0 }; }), unassigned: S.customers.filter(function (c) { return !c.owner; }).length, provisional: S.customers.some(function (c) { return c.owner_src === 'auto'; }) };
+    }
+    function repsPost(role, body) {
+      var id = String(body.id || '').trim(), name = String(body.name || '').trim(); if (!name) return err(400, 'ต้องมีชื่อ');
+      if (!id) { var k = 1; while (repOf('s' + k)) k++; id = 's' + k; }
+      var r = repOf(id); if (r) r.name = name; else S.sales_reps.push({ id: id, name: name });
+      if (Array.isArray(body.customers)) body.customers.forEach(function (cid) { var c = S.customers.filter(function (x) { return x.id === cid; })[0]; if (c) { c.owner = id; delete c.owner_src; } });
+      audit(role, 'rep-update', name + ' (' + id + ')' + (body.customers ? ' · ลูกค้า ' + body.customers.length : ''));
+      return ok({ ok: true, id: id, reps: repsView(role).reps });
+    }
+    function meOf(role, rep) {
       if (!role || role === 'anon') return { role: null, needPin: needPin };
       var base = D['me:' + (role === 'admin' ? 'boss' : role)] || { tabs: [], dispatch: false, seeCost: false };
-      return Object.assign({}, base, { role: role, needPin: needPin, dataNote: opts.dataNote || '', sampleMarket: !!opts.sampleMarket });
+      return Object.assign({}, base, { role: role, needPin: needPin, dataNote: opts.dataNote || '', sampleMarket: !!opts.sampleMarket, rep: repOf(rep), reps: LVL[role] >= 2 ? repsView(role).reps : undefined });
     }
     function login(body) {
       var role = String(body.role || ''), pin = body.pin == null ? '' : String(body.pin);
@@ -470,6 +505,10 @@
       if (PINS) {
         if (!pin) return err(401, 'ต้องใส่รหัสของ ' + (ROLE_NAME[role] || role));
         if (PINS[role] !== pin) { audit(role, 'login-fail', 'รหัสผิด'); return err(401, 'รหัสไม่ถูกต้อง'); }
+      }
+      if (role === 'sale' && (S.sales_reps || []).length) {
+        var rp = repOf(String(body.rep || '')); if (!rp) return err(400, 'เลือกชื่อเซลล์ก่อน — แต่ละคนเห็นเฉพาะลูกค้าของตัวเอง');
+        return { status: 200, body: { ok: true, role: role, rep: rp }, session: role + '|' + rp.id };
       }
       return { status: 200, body: { ok: true, role: role }, session: role };
     }
@@ -483,11 +522,12 @@
       o.rows.forEach(function (r) { delete r.cost; delete r.margin; delete r.costSrc; delete r.costSrcAt; });
       return o;
     }
-    function guardFor(role) {
+    function guardFor(role, rep) {
       var G = D.guard;
       if (LVL[role] >= 2) return G;
+      var sc = repScope(role, rep);
       return { today: G.today, asOf: G.asOf, forSale: true,
-        customers: G.customers.map(function (c) { return { id: c.id, name: c.name, grade: c.grade, n: c.n }; }),
+        customers: G.customers.filter(function (c) { return inScope(sc, c.id); }).map(function (c) { return { id: c.id, name: c.name, grade: c.grade, n: c.n }; }),
         suggest: (G.suggest || []).map(function (s) { return { cid: s.cid, cust: s.cust, from: s.from, to: s.to, toId: s.toId, toPrice: s.toPrice, diff: s.diff, grp: s.grp }; }) };
     }
     function serviceLogsFor(name) {
@@ -1152,10 +1192,10 @@
     var EXT = extend({ D: D, S: S, CFG: CFG, today: today, stamp: stamp, r1: r1, mg: mg, num: num, err: err, ok: ok, clone: clone, hashId: hashId, LVL: LVL, ROLE_NAME: ROLE_NAME,
       product: product, custOf: custOf, custByName: custByName, sheetFor: sheetFor, deskFor: deskFor, sendRow: sendRow, desks: desks, rebuildSheet: rebuildSheet, rebuildGuard: rebuildGuard, rebuildTotals: rebuildTotals,
       setCost: setCost, afterCosts: afterCosts, tiersOf: tiersOf, recalcProduct: recalcProduct, policyOf: policyOf, goalsFor: goalsFor, closeNegotiations: closeNegotiations, mgState: mgState, priceAt: priceAt, holdCost: holdCost, releaseCost: releaseCost, costMasterOf: costMasterOf, ensureCostMaster: ensureCostMaster, spOf: spOf, competitorPrices: competitorPrices, quoteFor: quoteFor, quoteLink: quoteLink, quoteResponse: quoteResponse, priceRequest: priceRequest, audit: function () { return audit.apply(null, arguments); }, targetPct: targetPct, floorPct: floorPct,
-      lineConfigured: function () { return !!opts.lineConfigured; } });
+      lineConfigured: function () { return !!opts.lineConfigured; }, ownerOf: ownerOf, repOf: repOf, repScope: repScope, inScope: inScope, curRep: function () { return CUR_REP; } });
     /* audit เดิม (หน้า "ความจำ") → ลง log กลางด้วย รูปแบบเดียวกับงานของระบบ */
     var audit0 = audit;
-    audit = function (role, action, detail) { audit0(role, action, detail); EXT.logEvent({ actor: role, kind: 'human', action: action, detail: detail }); };
+    audit = function (role, action, detail) { audit0(role, action, detail); EXT.logEvent({ actor: role, rep: CUR_REP, kind: 'human', action: action, detail: detail }); };
 
     /* ── ตารางเส้นทาง ───────────────────────────────────────────── */
     function handle0(req) {
@@ -1167,7 +1207,7 @@
       try {
         if (path === '/api/login' && method === 'POST') return login(body);
         if (path === '/api/logout') return { status: 200, body: { ok: true }, session: null };
-        if (path === '/api/me') return ok(meOf(role));
+        if (path === '/api/me') return ok(meOf(role, req.rep));
         /* หน้าสาธารณะของลูกค้า (ลิงก์ใบราคา) — ไม่ต้องล็อกอิน */
         var pm = path.match(/^\/api\/public-quotes\/([A-Za-z0-9]+)(\/respond)?$/);
         if (pm) { if (pm[2] && method === 'POST') return publicRespond(pm[1], body); var pq = publicQuote(pm[1]); return pq ? ok(pq) : err(404, 'ลิงก์นี้ใช้ไม่ได้แล้ว'); }
@@ -1175,8 +1215,9 @@
         if (method === 'GET') {
           switch (path) {
             case '/api/pricelist': need(1); return ok(pricelistFor(role));
-            case '/api/guard': need(1); return ok(guardFor(role));
-            case '/api/sends': need(1); return ok(D.sends);
+            case '/api/guard': need(1); return ok(guardFor(role, req.rep));
+            case '/api/sends': need(1); return ok(sendsFor(role, req.rep, q));
+            case '/api/reps': return ok(repsView(role));
             case '/api/deliveries': need(1); return ok(D.deliveries);
             case '/api/prospects': need(1); return ok(D.prospects);
             case '/api/preflight': need(1); return ok(D.preflight);
@@ -1204,7 +1245,7 @@
             case '/api/ui-state': need(1); return ok({ role: role, today: today() });
             case '/api/price-history': need(2); return ok({ rows: D.history });
             case '/api/policy': need(2); return ok(policyView());
-            case '/api/negotiations': need(1); return ok(negotiationsView(role));
+            case '/api/negotiations': need(1); var nv = negotiationsView(role), nsc = repScope(role, req.rep, q); if (nsc) { nv.items = nv.items.filter(function (i) { return inScope(nsc, i.customer_id); }); nv.total = nv.items.length; nv.open = nv.items.filter(function (i) { return i.stage === 'new' || i.stage === 'supplier'; }).length; nv.decided = nv.items.filter(function (i) { return i.stage === 'decided'; }).length; nv.stale = nv.items.filter(function (i) { return i.stale; }).length; } return ok(nv);
             case '/api/cost-master': need(2); return ok({ rows: Object.keys(S.cost_master).map(function (k) { var c = S.cost_master[k], P = product(k) || {}; return Object.assign({ name: P.name, grp: P.grp }, c); }), waiting: Object.keys(S.cost_master).filter(function (k) { return S.cost_master[k].state === 'waiting'; }).length });
             case '/api/price-versions': need(2); return ok({ rows: S.price_versions.filter(function (x) { return (!q.id || x.product_id === q.id) && (!q.customer || x.customer_id === q.customer); }).slice(0, Number(q.limit) || 100) });
           }
@@ -1234,6 +1275,7 @@
           case '/api/price-decide': need(2); return priceDecide(role, body);
           case '/api/contract-price': need(2); return contractPrice(role, body);
           case '/api/customers': need(2); return addCustomer(role, body);
+          case '/api/reps': need(2); return repsPost(role, body);
           case '/api/costs': need(2); return costs(role, body);
           case '/api/products': need(2); return addProduct(role, body);
           case '/api/competitor-prices': need(2); return competitorPrices(role, body);
@@ -1258,20 +1300,28 @@
 
     /* ทุกคำสั่งเขียนลง log กลางรูปแบบเดียวกัน (สำเร็จ/ล้มเหลว) — ยกเว้น activity ping · /api/log เขียนเองแล้ว */
     function handle(req) {
-      var r = handle0(req), m = (req.method || 'GET').toUpperCase(), p = String(req.url || '').split('?')[0];
+      CUR_REP = req.rep || null;
+      var m = (req.method || 'GET').toUpperCase(), p = String(req.url || '').split('?')[0];
+      /* เซลล์เห็น/แตะได้เฉพาะลูกค้าที่ตัวเองถือ — ด่านเดียวคุมทุกเส้นทางที่ระบุลูกค้า (customer_id ใน body · ?customer= · /api/customers/:id) */
+      if (req.role && LVL[req.role] === 1 && req.rep) {
+        var bq = {}; String(req.url || '').split('?')[1] && String(req.url).split('?')[1].split('&').forEach(function (kv) { var j = kv.indexOf('='); try { bq[decodeURIComponent(kv.slice(0, j < 0 ? kv.length : j))] = decodeURIComponent(j < 0 ? '' : kv.slice(j + 1)); } catch (e) {} });
+        var cm2 = p.match(/^\/api\/customers\/([^/]+)$/), cidX = (req.body && req.body.customer_id) || bq.customer || (cm2 && cm2[1]) || '';
+        if (cidX && ownerOf(cidX) && ownerOf(cidX) !== (req.rep || '')) return err(403, 'ลูกค้ารายนี้อยู่กับเซลล์คนอื่น');
+      }
+      var r = handle0(req);
       if (m !== 'GET' && !/\/api\/(activity|log|login|logout|line\/webhook)$/.test(p)) {
         var b = req.body || {}, cid = b.customer_id || (b.id && /customers/.test(p) ? b.id : ''), pid = b.product_id || '';
         var detail = r.status < 300 ? '' : (r.body && r.body.error) || ('ผิดพลาด ' + r.status);
         var ent = cid ? (custOf(cid) || {}).name || cid : pid ? (product(pid) || {}).name || pid : b.id != null ? String(b.id) : '';
         var already = r.status < 300 && D.events[0] && D.events[0].actor === (req.role || 'anon') && Date.parse(D.events[0].at + '+07:00') > Date.now() - 1500 && D.events[0].kind === 'human';
-        if (!already) EXT.logEvent({ actor: req.role || 'anon', kind: 'human', action: p.replace('/api/', ''), entity: cid ? 'customer' : pid ? 'product' : '', entity_id: cid || pid || (b.id == null ? '' : b.id), detail: (ent ? ent + ' · ' : '') + detail, status: r.status < 300 ? 'ok' : 'fail' });
+        if (!already) EXT.logEvent({ actor: req.role || 'anon', rep: req.rep || null, kind: 'human', action: p.replace('/api/', ''), entity: cid ? 'customer' : pid ? 'product' : '', entity_id: cid || pid || (b.id == null ? '' : b.id), detail: (ent ? ent + ' · ' : '') + detail, status: r.status < 300 ? 'ok' : 'fail' });
       }
       return r;
     }
 
     /* ทำให้ตัวเลขสรุปตรงกับบรรทัดจริงตั้งแต่เปิด (fixture บางก้อนจับมาคนละวินาที) */
     ensurePolicy(); ensureCostMaster(); syncPrevRound(); recalcAll(); rebuildCategoryGuard();
-    rebuildSends(); rebuildDeliveries();
+    rebuildSends(); rebuildDeliveries(); ensureReps();
 
     return { handle: handle, docs: D, meOf: meOf, publicQuote: publicQuote, today: today, goalsFor: goalsFor, LVL: LVL, ROLE_NAME: ROLE_NAME, GOAL_NAMES: GOAL_NAMES, esc: esc, ext: EXT };
   }

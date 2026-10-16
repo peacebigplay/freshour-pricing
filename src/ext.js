@@ -23,12 +23,13 @@
     D.jobs = D.jobs || { 'market-sync': { label: 'ดึงราคาตลาด (ทุกวัน)', every_h: 24, last_run: null, status: 'never', detail: '', runs: 0 },
       'line-outbox': { label: 'ส่ง LINE', every_h: 0, last_run: null, status: 'never', detail: '', runs: 0 },
       'cost-import': { label: 'อ่านไฟล์ทุน AL', every_h: 0, last_run: null, status: 'never', detail: '', runs: 0 } };
+    D.jobs['followup-check'] = D.jobs['followup-check'] || { label: 'ตามลูกค้าที่เงียบ (ทุกวัน)', every_h: 24, last_run: null, status: 'never', detail: '', runs: 0 };
     var seq = { ev: 0, al: 0, ob: 0, pr: 0, ci: 0, cf: 0, fu: 0, dl: 0, ob2: 0 };
     var nextId = function (k) { return ++seq[k]; };
 
     /* ════════ 5 · LOG รูปแบบเดียวทั้งคนและระบบ ════════ */
     function logEvent(e) {
-      var ev = { id: nextId('ev'), at: stamp(), actor: e.actor || 'system', kind: e.kind || (e.actor && e.actor !== 'system' ? 'human' : 'system'),
+      var ev = { id: nextId('ev'), at: stamp(), actor: e.actor || 'system', rep: e.rep || (e.actor && e.actor !== 'system' && X.curRep ? X.curRep() : null) || null, kind: e.kind || (e.actor && e.actor !== 'system' ? 'human' : 'system'),
         action: e.action, entity: e.entity || '', entity_id: e.entity_id == null ? '' : String(e.entity_id), detail: e.detail || '', status: e.status || 'ok', step: e.step || stepOf(e.action) };
       D.events.unshift(ev); if (D.events.length > 3000) D.events.length = 3000;
       return ev;
@@ -502,10 +503,10 @@
       var ob = D.outbox.filter(function (o) { return o.customer_id === cid; })[0];
       return { stage: st, label: STAGE_LABEL[st], silentDays: silentDays, followupDue: !!due, lastFollowup: lastFu || null, line: !!lineIdOf(cid), lineStatus: ob ? ob.status : null, channel: c.channel || (c.sentAt ? 'manual' : null), opened: c.opened || null, deal: deal || null };
     }
-    function board(role) {
-      var rows = D.sends.customers.map(function (c) {
-        var s = stageOf(c.id), sh = sheetFor(c.id);
-        return { id: c.id, name: c.name, stage: s.stage, label: s.label, lines: c.lines, offerLines: c.offerLines, handedAt: c.handedAt, sentAt: c.sentAt, sentBy: c.sentBy, channel: s.channel, lineStatus: s.lineStatus, line: s.line, opened: s.opened,
+    function board(role, scope) {
+      var rows = D.sends.customers.filter(function (c) { return X.inScope(scope, c.id); }).map(function (c) {
+        var s = stageOf(c.id), sh = sheetFor(c.id), ow = X.ownerOf(c.id), owr = X.repOf(ow);
+        return { id: c.id, name: c.name, owner: ow, ownerName: owr ? owr.name : '', stage: s.stage, label: s.label, lines: c.lines, offerLines: c.offerLines, handedAt: c.handedAt, sentAt: c.sentAt, sentBy: c.sentBy, channel: s.channel, lineStatus: s.lineStatus, line: s.line, opened: s.opened,
           accepted: c.accepted, declined: c.declined, waiting: c.waiting, revised: c.revised, invoiced: c.invoiced, silentDays: s.silentDays, followupDue: s.followupDue, lastFollowup: s.lastFollowup ? { at: s.lastFollowup.at, channel: s.lastFollowup.channel, note: s.lastFollowup.note } : null,
           outcome: s.deal ? { outcome: s.deal.outcome, at: s.deal.at, reason: s.deal.reason, value: s.deal.value } : null, link: sh && sh.link ? sh.link.url : null };
       });
@@ -515,8 +516,8 @@
 
     /* ════════ 4 · ต่อรองจนจบ: ตามเจ้าที่เงียบ · บันทึกผล ════════ */
     function nudgeText(sh) { return 'สวัสดีครับ ' + sh.customer.name + ' ใบราคา Freshour รอบ ' + sh.label + ' ที่ส่งไป ยังไม่ได้รับคำตอบครับ ' + (sh.link ? 'ยืนยัน/ขอต่อรองได้ที่ ' + sh.link.url : 'ตอบกลับทางไลน์นี้ได้เลยครับ') + ' ขอบคุณครับ'; }
-    function followups(role) {
-      var b = board(role).body, due = b.rows.filter(function (r) { return r.followupDue; }).sort(function (a, c) { return c.silentDays - a.silentDays; });
+    function followups(role, scope) {
+      var b = board(role, scope).body, due = b.rows.filter(function (r) { return r.followupDue; }).sort(function (a, c) { return c.silentDays - a.silentDays; });
       return ok({ today: today(), afterDays: FOLLOW_DAYS, due: due, silent: b.rows.filter(function (r) { return r.stage === 'sent'; }).length, log: D.followups.slice(0, 50) });
     }
     function followup(role, body) {
@@ -527,10 +528,21 @@
       X.audit(role, 'followup', c.name + ' · ' + f.channel);
       return ok({ ok: true, id: f.id });
     }
-    function followupAuto(role) {
-      var due = followups(role).body.due, sent = [], skipped = [];
+    function followupAuto(role, scope) {
+      var due = followups(role, scope).body.due, sent = [], skipped = [];
       due.forEach(function (r) { if (!r.line) return skipped.push(r.name); var x = followup(role, { customer_id: r.id, channel: 'line' }); (x.status === 200 ? sent : skipped).push(r.name); });
       return ok({ ok: true, sent: sent, skipped: skipped });
+    }
+    /* งานระบบรายวัน: เจ้าที่เงียบเกินกำหนด → มี LINE = ส่งข้อความตามให้เอง · ไม่มี = ขึ้นเป็นงานค้างของเซลล์คนนั้น · ทุกเจ้าลง log */
+    function followupTick() {
+      jobStart('followup-check');
+      try {
+        var due = followups('system', null).body.due, sent = [], todo = [];
+        due.forEach(function (r) { if (r.line) { var x = followup('system', { customer_id: r.id, channel: 'line' }); (x.status === 200 ? sent : todo).push(r.name); } else todo.push(r.name); });
+        if (todo.length) alert('warn', 'ลูกค้าเงียบ ' + todo.length + ' เจ้า ไม่มี LINE ให้ระบบตาม — เซลล์ต้องโทร', todo.slice(0, 6).join(' · '), 'followup-check');
+        jobDone('followup-check', 'เงียบเกินกำหนด ' + due.length + ' เจ้า · ส่ง LINE ตามให้ ' + sent.length + ' · รอคนตาม ' + todo.length);
+        return { due: due.length, sent: sent, todo: todo };
+      } catch (e) { jobFail('followup-check', e); return { error: String(e && e.message || e) }; }
     }
     function dealClose(role, body) {
       var cid = body.customer_id, sh = sheetFor(cid), c = custOf(cid); if (!sh || !c) return err(404, 'ไม่พบลูกค้า');
@@ -552,27 +564,41 @@
       X.audit(role, 'deal-close', c.name + ' → ' + (outcome === 'won' ? 'ได้ ' + value + ' ฿ (margin ' + deal.margin + '%)' : 'เสีย: ' + deal.reason));
       return ok({ ok: true, id: deal.id, outcome: outcome, value: value, margin: deal.margin, agreedN: won.length });
     }
-    function dealsView(role) {
-      var label = D.sends.label, cur = D.deals.filter(function (d) { return d.label === label; }), won = cur.filter(function (d) { return d.outcome === 'won'; }), lost = cur.filter(function (d) { return d.outcome === 'lost'; });
+    function dealsView(role, scope) {
+      var label = D.sends.label, cur = D.deals.filter(function (d) { return d.label === label && X.inScope(scope, d.customer_id); }), custN = D.sends.customers.filter(function (c) { return X.inScope(scope, c.id); }).length, won = cur.filter(function (d) { return d.outcome === 'won'; }), lost = cur.filter(function (d) { return d.outcome === 'lost'; });
       var value = won.reduce(function (a, d) { return a + d.value; }, 0), gp = won.reduce(function (a, d) { return a + d.gp; }, 0);
       var reasons = {}; lost.forEach(function (d) { var k = d.reason.split(/[·,/]/)[0].trim() || 'ไม่ระบุ'; reasons[k] = (reasons[k] || 0) + 1; });
       var sale = LVL[role] < 2;
-      return ok({ label: label, summary: { customers: D.sends.customers.length, won: won.length, lost: lost.length, open: D.sends.customers.length - cur.length, value: value, gp: sale ? undefined : gp, margin: sale ? undefined : (value ? r1(gp / value * 100) : null), lostValue: lost.reduce(function (a, d) { return a + d.centralValue; }, 0),
+      return ok({ label: label, summary: { customers: custN, won: won.length, lost: lost.length, open: custN - cur.length, value: value, gp: sale ? undefined : gp, margin: sale ? undefined : (value ? r1(gp / value * 100) : null), lostValue: lost.reduce(function (a, d) { return a + d.centralValue; }, 0),
         reasons: Object.keys(reasons).map(function (k) { return { reason: k, n: reasons[k] }; }).sort(function (a, b) { return b.n - a.n; }) },
-        deals: D.deals.slice(0, 100).map(function (d) { var o = clone(d); if (sale) { delete o.gp; delete o.margin; o.lines.forEach(function (l) { delete l.cost; delete l.margin; }); } return o; }) });
+        deals: D.deals.filter(function (d) { return X.inScope(scope, d.customer_id); }).slice(0, 100).map(function (d) { var o = clone(d); if (sale) { delete o.gp; delete o.margin; o.lines.forEach(function (l) { delete l.cost; delete l.margin; }); } return o; }) });
     }
 
     /* ════════ 6 · DASHBOARD แยกตามคน ════════ */
-    function dashboard(role, origin) {
-      var td = today(), b = board(role).body, dv = dealsView(role).body, h = health(), stale = {};
+    function dashboard(role, origin, req, q) {
+      q = q || {}; var scope = X.repScope(role, req && req.rep, q), salesView = LVL[role] < 2 || q.view === 'sales';
+      var td = today(), b = board(role, salesView ? scope : null).body, dv = dealsView(role, salesView ? scope : null).body, h = health(), stale = {};
       var oldCost = S.products.filter(function (p) { return p.cost > 0 && (!p.cost_src_at || ageDays(p.cost_src_at) > STALE_COST_DAYS); }).length;
       var noCost = D.pricelist.rows.filter(function (r) { return !(r.cost > 0); }).length;
       var mk = D.pricelist.rows.filter(function (r) { return (r.marks || []).some(function (m) { return m.price > 0 && m.state === 'fresh'; }); }).length;
       var mkOld = D.pricelist.rows.filter(function (r) { return (r.marks || []).some(function (m) { return m.price > 0; }) && !(r.marks || []).some(function (m) { return m.price > 0 && m.state === 'fresh'; }); }).length;
       var common = { today: td, round: D.sends.label, stages: b.stages, alerts: h.alerts.slice(0, 5), health: { ok: h.ok, jobs: h.jobs.map(function (j) { return { key: j.key, label: j.label, status: j.status, stale: j.stale, last_run: j.last_run, detail: j.detail }; }), outbox: h.outbox } };
-      if (LVL[role] < 2) {
-        return ok(Object.assign(common, { role: 'sale', customers: b.rows, followupDue: b.rows.filter(function (r) { return r.followupDue; }), lineMissing: b.lineMissing, lineReady: b.lineReady, deals: dv.summary, followDays: FOLLOW_DAYS,
-          requests: D.sends.negotiations.filter(function (n) { return n.status === 'open'; }).length, revised: b.rows.reduce(function (a, r) { return a + (r.revised || 0); }, 0) }));
+      if (salesView) {
+        /* แดชบอร์ดของเซลล์ = งานขาย: ลูกค้าของฉันอยู่ขั้นไหน · วันนี้ค้างอะไร · 7 วันทำอะไรไปแล้ว · ช่องทางถึงลูกค้า — ไม่มีทุน/margin */
+        var reqs = D['price-requests'].rows.filter(function (rq) { return !rq.closed && X.inScope(scope, rq.customer_id); });
+        var d7 = (function () { var d = new Date(td + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - 7); return d.toISOString().slice(0, 10); })();
+        var ev7 = D.events.filter(function (e) { return e.at >= d7 && (!scope || e.rep === scope || (e.kind === 'customer' && X.inScope(scope, e.entity_id))); });
+        var cnt = function (re, kind) { return ev7.filter(function (e) { return re.test(e.action) && (!kind || e.kind === kind) && e.status !== 'fail'; }).length; };
+        var todo = { send: b.rows.filter(function (r) { return r.stage === 'ready'; }).length, follow: b.rows.filter(function (r) { return r.followupDue; }).length,
+          inform: reqs.filter(function (rq) { return rq.status !== 'open' && rq.status !== 'cancelled'; }).length, waitingPricing: reqs.filter(function (rq) { return rq.status === 'open'; }).length,
+          close: b.rows.filter(function (r) { return r.stage === 'agreed'; }).length, bindLine: b.rows.filter(function (r) { return !r.line && r.stage !== 'draft'; }).length };
+        todo.total = todo.send + todo.follow + todo.inform + todo.close;
+        var done7 = { sent: cnt(/^(line\/send|line\/send-all|quote-sent|line-send)$/), follow: cnt(/^followups?$/), closed: cnt(/^deal-close$/), replied: cnt(/quote-response|line-inbound|public-respond|respond/, 'customer') + cnt(/^quote-response$/, 'human'), requests: cnt(/^price-request$/) };
+        var repsSum = LVL[role] >= 2 ? (S.sales_reps || []).map(function (r) { var rows = D.sends.customers.filter(function (c) { return X.ownerOf(c.id) === r.id; }); var st = rows.map(function (c) { return stageOf(c.id); });
+          return { id: r.id, name: r.name, customers: rows.length, due: st.filter(function (x) { return x.followupDue; }).length, ready: st.filter(function (x) { return x.stage === 'ready'; }).length, won: st.filter(function (x) { return x.stage === 'won' || x.stage === 'invoiced'; }).length, lost: st.filter(function (x) { return x.stage === 'lost'; }).length }; }) : undefined;
+        return ok(Object.assign(common, { role: 'sale', viewer: role, rep: X.repOf(scope), scope: scope, reps: repsSum, provisional: S.customers.some(function (c) { return c.owner_src === 'auto'; }),
+          customers: b.rows, followupDue: b.rows.filter(function (r) { return r.followupDue; }), lineMissing: b.rows.filter(function (r) { return !r.line; }).length, lineReady: b.rows.filter(function (r) { return r.stage === 'ready' && r.line; }).length, lineOA: h.line, outbox: h.outbox,
+          deals: dv.summary, followDays: FOLLOW_DAYS, requests: todo.waitingPricing, revised: b.rows.reduce(function (a, r) { return a + (r.revised || 0); }, 0), todo: todo, done7: done7 }));
       }
       var cc = D.desk.centralCount || {}, flags = D.cost_flags.filter(function (f) { return f.status === 'pending' || f.status === 'hold'; });
       var tr = computeTrend(false);
@@ -741,15 +767,15 @@
       if (path === '/api/line/webhook' && method === 'POST') return lineWebhook(body);   /* ของจริงตรวจลายเซ็นที่ server */
       if (method === 'GET') switch (path) {
         case '/api/health': return ok(health());
-        case '/api/events': need(1); var list = D.events.filter(function (e) { return (!q.actor || e.actor === q.actor) && (!q.kind || e.kind === q.kind) && (!q.step || e.step === q.step) && (!q.status || e.status === q.status) && (!q.q || (e.detail + ' ' + e.action + ' ' + e.entity_id).indexOf(q.q) >= 0); });
+        case '/api/events': need(1); var evScope = X.repScope(role, req.rep, q); var list = D.events.filter(function (e) { return (!evScope || e.rep === evScope || (e.entity === 'customer' && X.inScope(evScope, e.entity_id))) && (!q.actor || e.actor === q.actor) && (!q.kind || e.kind === q.kind) && (!q.step || e.step === q.step) && (!q.status || e.status === q.status) && (!q.q || (e.detail + ' ' + e.action + ' ' + e.entity_id).indexOf(q.q) >= 0); });
           if (LVL[role] < 2) list = list.filter(function (e) { return !/cost|import|central|config|category/.test(e.action); });
           return ok({ total: list.length, rows: list.slice(0, Number(q.limit) || 200), steps: ['ทุนเข้า', 'เทียบตลาด', 'ตั้งราคา', 'ส่งราคา', 'ต่อรอง', 'ปิดรอบ', 'บริการ', 'ระบบ'] });
         case '/api/alerts': need(1); return ok({ rows: D.alerts.slice(0, 100) });
-        case '/api/dashboard': need(1); return dashboard(role, req.origin);
-        case '/api/board': if (q.view === 'sales') { need(1); return board(role); } return undefined;
+        case '/api/dashboard': need(1); return dashboard(role, req.origin, req, q);
+        case '/api/board': if (q.view === 'sales') { need(1); return board(role, X.repScope(role, req.rep, q)); } return undefined;
         case '/api/sales-board': need(1); return board(role);
-        case '/api/followups': need(1); return followups(role);
-        case '/api/deals': need(1); return dealsView(role);
+        case '/api/followups': need(1); return followups(role, X.repScope(role, req.rep, q));
+        case '/api/deals': need(1); return dealsView(role, X.repScope(role, req.rep, q));
         case '/api/outbox': need(1); return ok({ rows: D.outbox.slice(0, 100).map(function (o) { var x = clone(o); if (LVL[role] < 2) x.text = x.text.slice(0, 80); return x; }), queued: D.outbox.filter(function (o) { return o.status === 'queued'; }).length });
         case '/api/cost-flags': need(2); return ok(reviewQueue(q));
         case '/api/cost-batches': need(2); return ok({ rows: D.cost_batches.slice(0, Number(q.limit) || 50), aliases: D.sku_alias_log || [] });
@@ -774,13 +800,14 @@
         case '/api/line/send-all': need(1); body.origin = req.origin; return lineSendAll(role, body);
         case '/api/line/retry': need(2); return retryOutbox(role, body);
         case '/api/followups': need(1); return followup(role, body);
-        case '/api/followups/auto': need(1); return followupAuto(role);
+        case '/api/followups/auto': need(1); return followupAuto(role, X.repScope(role, req.rep));
+        case '/api/followups/tick': need(4); return ok(followupTick());
         case '/api/deal-close': need(1); return dealClose(role, body);
         case '/api/alerts/ack': need(1); var a = D.alerts.filter(function (x) { return x.id === Number(body.id); })[0]; if (!a) return err(404, 'ไม่พบ'); a.acked = true; a.acked_by = role; a.acked_at = stamp(); return ok();
         case '/api/log': need(1); return ok(logEvent({ actor: role, kind: 'human', action: body.action || 'note', entity: body.entity, entity_id: body.entity_id, detail: body.detail, status: body.status }));
       }
       return undefined;
     }
-    return { route: route, logEvent: logEvent, alert: alert, health: health, drainOutbox: drainOutbox, marketSync: marketSync, computeTrend: computeTrend, stageOf: stageOf, board: board, matchProduct: matchProduct, costChecks: costChecks, importCosts: importCosts, decideFlag: decideFlag, normUnit: normUnit, STAGES: STAGES, parseSurvey: parseSurvey, sourceFail: sourceFail, intakePerf: intakePerf };
+    return { route: route, logEvent: logEvent, alert: alert, health: health, drainOutbox: drainOutbox, followupTick: followupTick, marketSync: marketSync, computeTrend: computeTrend, stageOf: stageOf, board: board, matchProduct: matchProduct, costChecks: costChecks, importCosts: importCosts, decideFlag: decideFlag, normUnit: normUnit, STAGES: STAGES, parseSurvey: parseSurvey, sourceFail: sourceFail, intakePerf: intakePerf };
   };
 });

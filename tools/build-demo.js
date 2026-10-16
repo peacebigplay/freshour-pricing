@@ -63,12 +63,14 @@ var DATA_VERSION=${JSON.stringify(DATA_VERSION)};var FEED_B64=${JSON.stringify(g
 (function(){
   var fr=document.getElementById('fr'),nav=document.getElementById('nav'),LS='fh-demo-journal:'+DATA_VERSION,RS='fh-demo-role',OLD_LS=Object.keys(localStorage).filter(function(k){return k==='fh-demo-journal'||(k.indexOf('fh-demo-journal:')===0&&k!==LS);});
   var ROLE=sessionStorage.getItem(RS)||null,STORE=null,CUR=null,HIST=[],cache={};
+  /* ROLE อาจเป็น "sale|s1" (เซลล์ + รหัสคนขาย) — บทบาทจริงคือส่วนหน้า | */
+  function roleOnly(r){return String(r||'').split('|')[0]||null;}function repOf(r){return String(r||'').split('|')[1]||null;}
   function unzip(b64){var bin=atob(b64),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'))).text();}
   function cached(k,b64){return cache[k]||(cache[k]=unzip(b64));}
   function toast(t){var el=document.getElementById('toast');el.textContent=t;el.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(function(){el.classList.remove('on');},2600);}
   function journal(e){try{var j=JSON.parse(localStorage.getItem(LS)||'[]');j.push(e);localStorage.setItem(LS,JSON.stringify(j));}catch(x){}}
   window.RESET=function(){if(!confirm('ล้างทุกอย่างที่บันทึกไว้ในเครื่องนี้ กลับเป็นชุดตั้งต้น?'))return;localStorage.removeItem(LS);sessionStorage.removeItem(RS);location.reload();};
-  function who(){document.getElementById('who').textContent=ROLE?('เข้าระบบเป็น '+(FHStore.ROLE_NAME[ROLE]||ROLE)):'ยังไม่เข้าระบบ';}
+  function who(){var rp=repOf(ROLE),nm=rp&&STORE?((STORE.docs.state.sales_reps||[]).filter(function(x){return x.id===rp;})[0]||{}).name:'';document.getElementById('who').textContent=ROLE?('เข้าระบบเป็น '+(FHStore.ROLE_NAME[roleOnly(ROLE)]||ROLE)+(nm?' · '+nm:'')):'ยังไม่เข้าระบบ';}
   /* ตัวแทน fetch/location ในหน้า — ยิงมาที่ store ในกรอบนอกผ่าน postMessage (ส่ง body ด้วย) */
   function shim(page,search){
     return '<script>(function(){var PATH='+JSON.stringify('/'+page)+',SEARCH='+JSON.stringify(search||'')+',n=0,pend={};'+
@@ -103,7 +105,7 @@ var DATA_VERSION=${JSON.stringify(DATA_VERSION)};var FEED_B64=${JSON.stringify(g
     var p=a.pathname.replace(/\\.html$/,'').replace(/\\/+$/,'')||'/';
     var MOVED={'/price':'/pricing','/market':'/costs','/trend':'/costs?tab=trend','/index':'/'};if(MOVED[p]){a.href='https://x'+MOVED[p];p=a.pathname;}
     if(p==='/logout'){ROLE=null;sessionStorage.removeItem(RS);who();p='/login';}
-    if(p==='/')p=ROLE?HOME[ROLE]:'/login';
+    if(p==='/')p=ROLE?HOME[roleOnly(ROLE)]:'/login';
     var qm=p.match(/^\\/q\\/([A-Za-z0-9]+)$/);
     if(qm){CUR={id:'q',search:''};document.getElementById('load').style.display='flex';var h=FHQuotePage.render(STORE.publicQuote(qm[1]),qm[1]).replace(/<head([^>]*)>/i,function(m){return m+shim('q/'+qm[1],'');});show(h);return;}
     open(p.slice(1),a.search);
@@ -115,7 +117,7 @@ var DATA_VERSION=${JSON.stringify(DATA_VERSION)};var FEED_B64=${JSON.stringify(g
     if(!d.fx)return;
     var q=d.fx,src=e.source,body={};
     try{body=q.body?JSON.parse(q.body):{};}catch(x){}
-    var entry={method:q.method,url:q.url.replace(/^https?:\\/\\/[^/]+/,''),body:body,role:ROLE||'anon',origin:''};
+    var entry={method:q.method,url:q.url.replace(/^https?:\\/\\/[^/]+/,''),body:body,role:roleOnly(ROLE)||'anon',rep:repOf(ROLE),origin:''};
     var r=entry.url==='/api/market-feed-sample'?{status:200,body:window.__FEED||{rows:[]}}:entry.url==='/api/connectors/test'?(function(){STORE.ext.sourceFail(body.competitor_id,'ไฟล์เดโมในเบราว์เซอร์ดึงข้ามโดเมนไม่ได้ — ของจริงให้ server ดึง');return {status:200,body:{ok:false,error:'เบราว์เซอร์ดึงข้ามโดเมนไม่ได้ (ต้องให้ server ดึง)'}};})():STORE.handle(entry);
     if('session' in r){ROLE=r.session;if(ROLE)sessionStorage.setItem(RS,ROLE);else sessionStorage.removeItem(RS);who();}
     else if(q.method!=='GET'&&r.status<300&&!/\\/(parse|connectors\\/test|log)$/.test(entry.url))journal({method:entry.method,url:entry.url,body:body,role:entry.role,at:new Date().toISOString()});
@@ -126,7 +128,7 @@ var DATA_VERSION=${JSON.stringify(DATA_VERSION)};var FEED_B64=${JSON.stringify(g
   nav.innerHTML=Object.keys(groups).map(function(w){return '<div class="grp"><span>'+w+'</span>'+groups[w].map(function(p){return '<button type="button" data-id="'+p.id+'" data-role="'+(p.role||'')+'">'+p.title+'</button>';}).join('')+'</div>';}).join('');
   nav.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;var need=b.dataset.role;
     if(b.dataset.id==='login'){ROLE=null;sessionStorage.removeItem(RS);who();}
-    else if(need&&ROLE!==need&&!(need==='boss'&&ROLE==='admin')&&!(FHStore.LVL[ROLE]>=FHStore.LVL[need])){ROLE=need;sessionStorage.setItem(RS,ROLE);who();toast('สลับเป็น '+FHStore.ROLE_NAME[need]+' ให้แล้ว');}
+    else if(need&&roleOnly(ROLE)!==need&&!(need==='boss'&&roleOnly(ROLE)==='admin')&&!(FHStore.LVL[roleOnly(ROLE)]>=FHStore.LVL[need])){ROLE=need==='sale'?'sale|'+(((STORE.docs.state.sales_reps||[])[0]||{}).id||''):need;sessionStorage.setItem(RS,ROLE);who();toast('สลับเป็น '+FHStore.ROLE_NAME[need]+' ให้แล้ว');}
     open(b.dataset.id,'');});
   /* เตรียมข้อมูล: แตกทุกก้อน → store → เล่นซ้ำสิ่งที่เคยบันทึกในเครื่องนี้ */
   var keys=Object.keys(DOCS_B64),docs={};

@@ -107,11 +107,24 @@ window.PX = (function () {
     /* ถามสิทธิ์จริงแล้วตัดเมนูที่เข้าไม่ได้ทิ้ง */
     fetch('/api/me', { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (me) { if (me && me.role) { ME = me; applyRole(me.role); fillGreet(); } })
+      .then(function (me) { if (me && me.role) { ME = me; applyRole(me.role); fillGreet(); sysBar(me.role); } })
       .catch(function () {});
     return document.getElementById('main');
   }
 
+  /* ระบบล้มต้องมีคนรู้: ops/boss/admin เห็นแถบแดงบนทุกหน้าเมื่อ health ไม่ปกติ (งานระบบล้ม · LINE ส่งไม่สำเร็จ · alert ค้าง) — กดไปหน้า log */
+  function sysBar(role) {
+    if (['ops', 'boss', 'admin'].indexOf(role) < 0) return;
+    fetch('/api/health', { credentials: 'same-origin' }).then(function (r) { return r.json().catch(function () { return null; }); }).then(function (h) {
+      var old = document.getElementById('sysBar'); if (old) old.remove();
+      if (!h || h.ok) return;
+      var bad = (h.alerts || []).filter(function (a) { return a.level === 'bad'; }), jobs = (h.jobs || []).filter(function (j) { return j.status === 'fail' || j.stale; });
+      var what = bad.slice(0, 2).map(function (a) { return a.title; }).concat(jobs.filter(function (j) { return j.status === 'fail'; }).map(function (j) { return j.label + ' ล้ม'; })).concat(jobs.filter(function (j) { return j.stale && j.status !== 'fail'; }).map(function (j) { return j.label + ' ขาดรอบ'; }));
+      if (!what.length) return;
+      if (!document.getElementById('sysBarCss')) document.head.insertAdjacentHTML('beforeend', '<style id="sysBarCss">#sysBar{position:fixed;top:0;left:50%;transform:translateX(-50%);z-index:60;max-width:min(92vw,760px);background:var(--red);color:#fff;font-size:12px;padding:6px 14px;border-radius:0 0 12px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 8px 20px -8px rgba(220,38,38,.6)}#sysBar a{color:#fff;font-weight:700;white-space:nowrap}#sysBar span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}</style>');
+      document.body.insertAdjacentHTML('beforeend', '<div id="sysBar" role="alert"><b>⛔ ระบบมีปัญหา</b><span>' + esc(what.join(' · ')) + (bad.length > 2 ? ' · +' + (bad.length - 2) : '') + '</span><a href="/log">ดู log →</a></div>');
+    }).catch(function () {});
+  }
   function badge(name, text) {
     var el = document.querySelector('[data-bdg="' + name + '"]');
     if (el) el.textContent = text;
@@ -241,7 +254,7 @@ window.PX = (function () {
     var link = TODO_LINK[ME.role] || TODO_LINK[role] || '/';
     if (Array.isArray(link)) link = link[wd];
     var todo = (TODO[role] || TODO.boss)[wd];
-    return '<div><div class="g-hi">' + hi + ', ' + esc(ROLE_NAME[ME.role] || '') + '<span>' + (wd === 0 || wd === 6 ? 'พักผ่อนบ้างนะ' : 'วันนี้มีอะไรต้องทำบ้าง') + '</span></div>' +
+    return '<div><div class="g-hi">' + hi + ', ' + esc(ME.rep && ME.rep.name ? ME.rep.name : ROLE_NAME[ME.role] || '') + '<span>' + (wd === 0 || wd === 6 ? 'พักผ่อนบ้างนะ' : 'วันนี้มีอะไรต้องทำบ้าง') + '</span></div>' +
       '<div class="g-when">วัน' + DAYS[wd] + 'ที่ <b>' + d.getDate() + ' ' + MON[d.getMonth()] + ' ' + (d.getFullYear() + 543) + '</b> · <b class="g-clock">' + z(h) + ':' + z(d.getMinutes()) + '</b> น.</div></div>' +
       '<div class="g-todo"><span class="g-day">วันนี้</span><a href="' + esc(link) + '">' + esc(todo) + ' →</a></div>' +
       (ME.dataNote ? '<div class="g-data" style="grid-column:1/-1;font-size:11px;color:var(--tx-3);margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)">' + (ME.sampleMarket ? '<b style="color:var(--red)">⚠ โหมดทดสอบ</b> · ' : '<b style="color:var(--green)">● ข้อมูลจริง</b> · ') + esc(ME.dataNote) + '</div>' : '');

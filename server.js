@@ -133,6 +133,8 @@ async function tick() {
     const j = store.docs.jobs['market-sync'], age = j.last_run ? (Date.now() - Date.parse(j.last_run + '+07:00')) / 36e5 : 99;
     if (age > 24) { if (MARKET_FEED_URL || SAMPLE_MARKET) await runMarketSync('ครบรอบ 24 ชม.'); else { j.status = 'off'; j.detail = 'ยังไม่ต่อ connector ราคาตลาด (ตั้ง MARKET_FEED_URL) — ใช้สำรวจหน้าร้านแทน'; } }
     scanInbox();
+    const fj = store.docs.jobs['followup-check'], fage = fj.last_run ? (Date.now() - Date.parse(fj.last_run + '+07:00')) / 36e5 : 99;
+    if (fage > 24) { const fr = store.ext.followupTick(); journal({ method: 'POST', url: '/api/followups/tick', body: {}, role: 'system', at: new Date().toISOString(), system: true }); console.log('[freshour] followup-check:', JSON.stringify(fr).slice(0, 160)); }
     await notifyAlerts();
   } finally { draining = false; }
 }
@@ -141,11 +143,13 @@ if (process.env.FH_JOBS !== '0') { setTimeout(tick, 800).unref(); setInterval(ti
 
 /* ── session: cookie เซ็นด้วย HMAC (ไม่ต้องมีฐานข้อมูล session) ── */
 function sign(role) { return role + '.' + crypto.createHmac('sha256', SECRET).update(role).digest('base64url').slice(0, 24); }
+/* ค่าใน cookie = "role" หรือ "sale|s1" (เซลล์ + รหัสคนขาย) — เซ็นทั้งก้อน */
 function roleOf(req) {
   const m = /(?:^|;\s*)fh_role=([^;]+)/.exec(req.headers.cookie || ''); if (!m) return null;
-  const v = decodeURIComponent(m[1]), role = v.split('.')[0];
-  return sign(role) === v ? role : null;
+  const v = decodeURIComponent(m[1]), sess = v.split('.')[0];
+  return sign(sess) === v ? sess : null;
 }
+function splitSess(sess) { const p = String(sess || '').split('|'); return { role: p[0] || null, rep: p[1] || null }; }
 function setRole(res, role) {
   res.setHeader('Set-Cookie', role ? `fh_role=${encodeURIComponent(sign(role))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`
                                    : 'fh_role=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
@@ -185,19 +189,21 @@ const MOVED = { '/price': '/pricing', '/market': '/costs', '/trend': '/costs?tab
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
   let p = u.pathname.replace(/\.html$/, '').replace(/\/+$/, '') || '/';
-  const role = roleOf(req);
+  const sess = roleOf(req); let { role, rep } = splitSess(sess);
+  /* เซลล์ต้องระบุคน — cookie เก่าที่มีแต่ "sale" ให้เข้าระบบใหม่ (จะได้เห็นเฉพาะลูกค้าของตัวเอง) */
+  if (role === 'sale' && !rep && (store.docs.state.sales_reps || []).length) { role = null; rep = null; }
   try {
     if (p === '/api/connectors/test' && req.method === 'POST') { if (!role || store.LVL[role] < 2) return json(res, { status: 403, body: { error: 'ไม่มีสิทธิ์' } }); const b = await readBody(req); const r = await testConnector(b.competitor_id); return json(res, { status: 200, body: r }); }
     if (p === '/api/market-feed-sample') { if (!roleOf(req)) return json(res, { status: 401, body: { error: 'กรุณาเข้าระบบ' } }); return send(res, 200, fs.readFileSync(path.join(DATA, 'market-feed-sample.json'))); }
     if (p.startsWith('/api/')) {
       const body = req.method === 'GET' || req.method === 'HEAD' ? {} : await readBody(req);
       if (body.__bad) return json(res, { status: 400, body: { error: 'อ่าน JSON ไม่ได้' } });
-      const entry = { method: req.method, url: u.pathname + u.search, body, role: role || 'anon', origin: `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}` };
+      const entry = { method: req.method, url: u.pathname + u.search, body, role: role || 'anon', rep: rep || null, origin: `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}` };
       const r = store.handle(entry);
       if (p === '/api/health' && !r.body.ok) r.status = 503;
       if ('session' in r) setRole(res, r.session);
       if (p === '/api/line/webhook' && req.method === 'POST' && !verifyLine(req, body)) return json(res, { status: 401, body: { error: 'ลายเซ็น LINE ไม่ถูกต้อง' } });
-      if (req.method !== 'GET' && r.status < 300 && !/\/api\/(login|logout|survey\/parse)$/.test(p)) journal({ method: entry.method, url: entry.url, body, role: entry.role, at: new Date().toISOString() });
+      if (req.method !== 'GET' && r.status < 300 && !/\/api\/(login|logout|survey\/parse)$/.test(p)) journal({ method: entry.method, url: entry.url, body, role: entry.role, rep: entry.rep, at: new Date().toISOString() });
       return json(res, r);
     }
     if (p === '/logout') { setRole(res, null); return redirect(res, '/login'); }

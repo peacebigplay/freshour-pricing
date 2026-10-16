@@ -23,7 +23,7 @@
 <script>
 /* บันทึกเหตุการณ์ — คอมเมนต์ผู้ใช้: "ตอนนี้จดเป็นข้อความกระจัดกระจาย ร้อยต่อกันไม่ได้ ทุกขั้นต้องจดในรูปแบบเดียวกัน ทั้งงานที่คนทำและงานที่ระบบทำเอง และถ้าระบบล้มต้องมีคนรู้"
    ทุกแถว = {เวลา · ใคร (คน/ระบบ/ลูกค้า) · ทำอะไร · กับใคร/อะไร · ผล · อยู่ขั้นไหนของ flow} · งานระบบ 3 ตัวมี heartbeat · ล้ม = alert + LINE admin */
-var esc = PX.esc, ago = PX.ago, H = null, EV = null, F = { step: '', kind: '', status: '', q: '' };
+var esc = PX.esc, ago = PX.ago, H = null, EV = null, F = { step: '', kind: '', status: '', q: '' }, REPS = {};   /* ชื่อเซลล์จาก /api/reps — เหตุการณ์ของเซลล์บอกว่าใครทำ */
 PX.shell('log', '<div class="float"><div class="ic">🧾</div><b>ระบบยังหายใจอยู่ไหม</b><span id="floatSub">กำลังอ่าน…</span><button onclick="load()">โหลดใหม่</button></div>');
 var KIND = { human: 'คน', system: 'ระบบ', customer: 'ลูกค้า' };
 var WHO = { boss: 'พี่หมิง', ops: 'พี่จุ๋ม', sale: 'เซลล์', admin: 'อิ๊บ', system: 'ระบบ', customer: 'ลูกค้า', anon: 'ไม่ล็อกอิน' };
@@ -45,7 +45,7 @@ function draw() {
     '<div class="fl"><span class="hint2">ใคร:</span>' + [['', 'ทุกคน'], ['human', 'คน'], ['system', 'ระบบ'], ['customer', 'ลูกค้า']].map(function (k) { return '<button class="' + (F.kind === k[0] ? 'on' : '') + '" onclick="setF(\'kind\',\'' + k[0] + '\')">' + k[1] + '</button>'; }).join('') +
     '<span class="hint2" style="margin-left:8px">ผล:</span>' + [['', 'ทั้งหมด'], ['ok', 'สำเร็จ'], ['fail', 'ล้มเหลว'], ['warn', 'เตือน']].map(function (k) { return '<button class="' + (F.status === k[0] ? 'on' : '') + '" onclick="setF(\'status\',\'' + k[0] + '\')">' + k[1] + '</button>'; }).join('') +
     '<input id="q" placeholder="ค้นชื่อลูกค้า / สินค้า / ข้อความ…" value="' + esc(F.q) + '"></div>' +
-    '<div>' + (EV.rows.length ? EV.rows.map(function (e) { return '<div class="ev ' + e.status + '"><div class="t">' + esc(String(e.at).replace('T', ' ')) + '<br>' + ago(e.at) + '</div><div class="who ' + e.kind + '">' + esc(WHO[e.actor] || e.actor) + '<br><span style="font-weight:400;color:var(--tx-3)">' + (KIND[e.kind] || e.kind) + '</span></div>' +
+    '<div>' + (EV.rows.length ? EV.rows.map(function (e) { return '<div class="ev ' + e.status + '"><div class="t">' + esc(String(e.at).replace('T', ' ')) + '<br>' + ago(e.at) + '</div><div class="who ' + e.kind + '">' + esc(e.actor === 'sale' && e.rep ? (REPS[e.rep] || e.rep) : (WHO[e.actor] || e.actor)) + '<br><span style="font-weight:400;color:var(--tx-3)">' + (KIND[e.kind] || e.kind) + '</span></div>' +
       '<div class="d"><b>' + esc(ACT[e.action] || e.action) + '</b><span class="step">' + esc(e.step) + '</span>' + (e.status === 'fail' ? ' <span class="pill2 r">ล้มเหลว</span>' : e.status === 'warn' ? ' <span class="pill2 a">เตือน</span>' : '') + '<small>' + esc(e.detail || '') + (e.entity_id && !/^(\d+)$/.test(e.entity_id) && (e.detail || '').indexOf(e.entity_id) < 0 ? ' · ' + esc(e.entity) + ' ' + esc(e.entity_id) : '') + '</small></div><div class="t">#' + e.id + '</div></div>'; }).join('') : '<p class="hint">ไม่มีเหตุการณ์ตามตัวกรอง</p>') + '</div></div>';
   main.innerHTML = h;
   var q = document.getElementById('q'); q.onkeydown = function (e) { if (e.key === 'Enter') { F.q = q.value.trim(); loadEv(); } };
@@ -53,7 +53,7 @@ function draw() {
 }
 function setF(k, v) { F[k] = v; loadEv(); }
 function loadEv() { var qs = Object.keys(F).filter(function (k) { return F[k]; }).map(function (k) { return k + '=' + encodeURIComponent(F[k]); }).join('&'); return PX.get('/api/events' + (qs ? '?' + qs : '')).then(function (j) { EV = j; draw(); }); }
-function load() { return PX.get('/api/health').catch(function (e) { if (e.body && e.body.jobs) return e.body; throw e; }).then(function (h) { H = h; return loadEv(); }).catch(PX.fail); }
+function load() { PX.get('/api/reps').then(function (j) { (j.reps || []).forEach(function (r) { REPS[r.id] = r.name; }); }).catch(function () {}); return PX.get('/api/health').catch(function (e) { if (e.body && e.body.jobs) return e.body; throw e; }).then(function (h) { H = h; return loadEv(); }).catch(PX.fail); }
 function ack(id) { PX.post('/api/alerts/ack', { id: id }).then(function () { PX.toast('รับทราบแล้ว'); return load(); }); }
 function retry() { PX.post('/api/line/retry', {}).then(function (r) { PX.toast('เข้าคิวใหม่ ' + r.requeued + ' ข้อความ'); return load(); }); }
 load();

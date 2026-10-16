@@ -56,7 +56,7 @@ var SH = null, SHEETID = '', SHEETFILTER = 'priority', SHEETG = 'all', SHEETPG =
 /* งวดราคามาจากชุดที่ประกาศจริง (dispatches.label) — เดิมพิมพ์ตายตัวว่า 10–16/09 ทุกรอบ */
 var SALE_PREV_PERIOD = 'รอบก่อน', SALE_CUR_PERIOD = '…';
 var SALESQ = '';
-var SL = null;
+var SL = null, REPME = null;   /* เซลล์คนที่ล็อกอิน (จาก /api/me) */
 
 function custData(id){ return SEND && SEND.customers ? SEND.customers.filter(function(c){return c.id===id;})[0] : null; }
 
@@ -569,7 +569,7 @@ function drawList(){
   });
   if(SSORT==='name')cs.sort(function(a,b){return a.name.localeCompare(b.name,'th');});else if(SSORT==='lines')cs.sort(function(a,b){return b.lines-a.lines;});else cs.sort(function(a,b){return customerPriority(b)-customerPriority(a);});
   var counts={action:0,ready:0,await:0,done:0};(SEND&&SEND.customers||[]).forEach(function(c){var st=stOf(c)[0];if(st==='action'||st==='work')counts.action++;else if(st==='ready')counts.ready++;else if(st==='await')counts.await++;else if(st==='done')counts.done++;});
-  var h=PX.head('Sales · ใบเสนอราคา & การต่อรอง','รอบ '+SALE_CUR_PERIOD+' · เปิดมาดูเฉพาะใบและ SKU ที่ต้องจัดการก่อน แล้วส่งลูกค้าด้วย Quotation Link',['ขาย','ทีม Sales','Priority queue → Quote Link → Negotiation']);
+  var h=PX.head('Sales · ใบเสนอราคา & การต่อรอง','รอบ '+SALE_CUR_PERIOD+' · เปิดมาดูเฉพาะใบและ SKU ที่ต้องจัดการก่อน แล้วส่งลูกค้าด้วย Quotation Link',(REPME ? ['ขาย', REPME.name, 'ทีมขาย · เห็นเฉพาะลูกค้าของตัวเอง'] : ['ขาย','ทีม Sales','Priority queue → Quote Link → Negotiation']));
   h+=negoAlert();
   h+='<div class="card" style="background:var(--blue-l);border-color:var(--blue-b);display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div><span class="pill2 b">รอบ '+SALE_CUR_PERIOD+'</span><b style="display:block;margin-top:6px">Sales ไม่ต้องตั้งราคาทุก SKU ใหม่</b><span style="font-size:11.5px;color:var(--tx-2)">ตรวจ Exception ที่ Pricing ส่งมา → ส่ง Link → จัดการเฉพาะสินค้าที่ลูกค้าต่อรองกลับ</span></div><span style="margin-left:auto;font-size:11px;color:var(--tx-3)">ลูกค้าไม่เห็นต้นทุน · Margin · ราคาคู่แข่ง</span></div>';
   h+='<div class="sales-summary"><button class="ss urgent" onclick="salesFilter(\'action\')"><b>'+counts.action+'</b><span>ต้องจัดการก่อน</span><em>ต่อรองกลับ / ใบที่มี exception</em></button><button class="ss ready" onclick="salesFilter(\'ready\')"><b>'+counts.ready+'</b><span>พร้อมส่ง Link</span><em>ตรวจราคาเสร็จแล้ว</em></button><button class="ss wait" onclick="salesFilter(\'await\')"><b>'+counts.await+'</b><span>รอลูกค้าตอบ</span><em>ส่ง Quotation Link แล้ว</em></button><button class="ss done" onclick="salesFilter(\'done\')"><b>'+counts.done+'</b><span>จบแล้ว</span><em>ลูกค้ายืนยันครบ / ปิดการต่อรอง</em></button></div>';
@@ -588,6 +588,7 @@ function saleDelivery(){
       function(){ PX.toast('บันทึกรอบส่งแล้ว'); });
   });
 }
+PX.get('/api/me').then(function (m) { REPME = m && m.rep || null; }).catch(function () {});
 PX.get('/api/pricelist').then(function (j) {
   D = j;
   /* ก้อนที่สองคือชื่อลูกค้า + เกรด + ของที่ควรเสนอแทน — ฉบับที่ไม่มีทุนติดมา

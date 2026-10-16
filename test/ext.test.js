@@ -153,7 +153,7 @@ test('6 Dashboard แยกตามคน', () => {
   const boss = okj(call('boss', 'GET', '/api/dashboard'));
   assert.equal(boss.role, 'boss'); assert.equal(boss.deals.won, 1); assert.equal(boss.deals.lost, 1); assert.ok(boss.realMargin != null); assert.ok(boss.centralMargin != null); assert.ok(boss.stages.length);
   const ops = okj(call('ops', 'GET', '/api/dashboard'));
-  assert.equal(ops.role, 'ops'); assert.ok('central' in ops && 'stale' in ops); assert.ok(ops.stale.marketFresh >= 25); assert.ok(ops.trendWarnings.length); assert.ok(ops.jobs.length === 3);
+  assert.equal(ops.role, 'ops'); assert.ok('central' in ops && 'stale' in ops); assert.ok(ops.stale.marketFresh >= 25); assert.ok(ops.trendWarnings.length); assert.ok(ops.jobs.length === 4, 'market-sync · line-outbox · cost-import · followup-check');
   const sale = okj(call('sale', 'GET', '/api/dashboard'));
   assert.equal(sale.role, 'sale'); assert.ok(sale.customers.length >= 42); assert.ok(sale.customers.find(c => c.id === 'cd6f5').stage === 'won');
   const s = JSON.stringify(sale); assert.ok(!/"cost"|"margin"|"gp"/.test(s), 'dashboard เซลล์ต้องไม่มีทุน/margin');

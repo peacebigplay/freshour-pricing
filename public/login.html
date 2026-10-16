@@ -18,7 +18,7 @@ var R = [
   { k: 'sale',  ic: '📊', t: 'ทีมขาย',              s: 'ดูราคาที่ประกาศ · เปิดใบราคา', go: '/sales' },
   { k: 'admin', ic: '🔧', t: 'อิ๊บ',                s: 'ผู้ดูแลระบบ',            go: '/exec' }
 ];
-var NEED = true, PICK = null, BUSY = false;
+var NEED = true, PICK = null, BUSY = false, REPS = [], REP = '';   /* ทีมขายมีหลายคน — เลือกชื่อก่อน จะได้เห็นเฉพาะลูกค้าของตัวเอง */
 
 function nextUrl(def) {
   var q = new URLSearchParams(__NAV.search).get('next');
@@ -50,7 +50,11 @@ function draw() {
             '<i>' + r.ic + '</i><span><b>' + esc(r.t) + '</b><em>' + esc(r.s) + '</em></span>' +
             '<u>' + (PICK === r.k ? '✓' : '›') + '</u></button>';
         }).join('') + '</div>' +
-        (NEED && PICK
+        (PICK === 'sale' && REPS.length
+          ? '<div class="lgp" style="padding-top:14px"><label>คุณคือใครในทีมขาย — เห็นเฉพาะลูกค้าของตัวเอง</label><div class="lgs" style="margin-top:0;flex-direction:row;flex-wrap:wrap">' +
+            REPS.map(function (r) { return '<button type="button" class="lgb' + (REP === r.id ? ' on' : '') + '" style="width:auto;flex:1 1 140px;padding:9px 12px" data-rep="' + esc(r.id) + '"><span><b>' + esc(r.name) + '</b><em>ลูกค้า ' + r.customers + ' เจ้า</em></span><u>' + (REP === r.id ? '✓' : '›') + '</u></button>'; }).join('') + '</div></div>'
+          : '') +
+        (NEED && PICK && (PICK !== 'sale' || REP || !REPS.length)
           /* เป็น form จริง เพราะกด Enter ต้องเข้าได้ ไม่ใช่ต้องเล็งปุ่ม
              เคยผูกแค่ onkeydown แล้ว Enter เงียบ — คนพิมพ์รหัสแล้วนึกว่าระบบค้าง */
           ? '<form class="lgp" id="pinF"><label for="pin">รหัสของ' + esc(nameOf(PICK)) + '</label>' +
@@ -72,11 +76,15 @@ function bind() {
   document.querySelectorAll('[data-r]').forEach(function (b) {
     b.onclick = function () {
       PICK = b.dataset.r;
+      if (PICK === 'sale' && REPS.length && !REP) { draw(); return; }
       if (!NEED) return send('');
       draw();
       var el = document.getElementById('pin');
       if (el) el.focus();
     };
+  });
+  document.querySelectorAll('[data-rep]').forEach(function (b) {
+    b.onclick = function () { REP = b.dataset.rep; if (!NEED) return send(''); draw(); var el = document.getElementById('pin'); if (el) el.focus(); };
   });
   var frm = document.getElementById('pinF');
   if (frm) frm.onsubmit = function (e) {
@@ -98,7 +106,7 @@ function send(pin) {
   fetch('/api/login', {
     method: 'POST', headers: { 'content-type': 'application/json' },
     credentials: 'same-origin',
-    body: JSON.stringify(pin ? { role: PICK, pin: pin } : { role: PICK })
+    body: JSON.stringify(Object.assign(pin ? { role: PICK, pin: pin } : { role: PICK }, PICK === 'sale' && REP ? { rep: REP } : {}))
   }).then(function (r) {
     return r.json().catch(function () { return {}; }).then(function (j) {
       BUSY = false;
@@ -119,6 +127,7 @@ fetch('/api/me', { credentials: 'same-origin' })
     if (me && me.role) { location.replace(nextUrl(goOf(me.role))); return; }
     NEED = me.needPin !== false;
     draw();
+    fetch('/api/reps', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { REPS = (j && j.reps) || []; if (PICK === 'sale') draw(); }).catch(function () {});
   })
   .catch(function () { draw(); });
 </script>
