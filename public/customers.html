@@ -3,7 +3,7 @@
 <title>ลูกค้า &amp; ราคาสัญญา · Freshour</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/peach.css">
 </head><body>
 <script src="/peach.js"></script>
@@ -161,7 +161,7 @@ function card(c) {
       '<div class="u">รายการล็อก</div></div>' +
       '<div class="mg2"><b style="color:' + (c.margin < 0 ? 'var(--red)'
         : c.margin < D.floorPct ? 'var(--amber)' : 'var(--green)') + '">' +
-        c.margin + '%</b><span>margin เฉลี่ย</span></div></div>' +
+        (c.margin == null ? '—' : c.margin + '%') + '</b><span>margin เฉลี่ย</span></div></div>' +
     '<div class="ok2' + (vAll ? '' : ' warn') + '">' +
       (vAll ? '✓ ยืนยันครบ' : '● ยังไม่ยืนยัน ' + (c.n - c.verified) + ' รายการ') + '</div>' +
     '</button>';
@@ -186,11 +186,11 @@ function pickCust(id) {
   var GC = { A: 'g', B: 'b', C: 'a', D: 'r', F: 'r' };
   PX.modal({
     title: 'ใบราคา · ' + c.name,
-    sub: 'เกรด ' + (c.grade || '—') + ' · ' + c.n + ' รายการ · margin เฉลี่ย ' + c.margin + '%',
+    sub: 'เกรด ' + (c.grade || '—') + ' · ' + c.n + ' รายการ · margin เฉลี่ย ' + (c.margin == null ? '—' : c.margin + '%'),
     html:
       '<div class="kpi kpi3" style="margin-bottom:14px">' +
         '<div class="k"><div class="lb">เกรด</div><div class="v">' + esc(c.grade || '—') +
-          '</div><div class="c">margin เฉลี่ย ' + c.margin + '%</div></div>' +
+          '</div><div class="c">margin เฉลี่ย ' + (c.margin == null ? '—' : c.margin + '%') + '</div></div>' +
         '<div class="k"><div class="lb">ต่ำกว่าพื้น ' + D.floorPct + '%</div>' +
           '<div class="v" style="color:' + (c.low ? 'var(--red)' : 'var(--green)') + '">' +
           c.low + '</div><div class="c">จาก ' + c.n + ' รายการ</div></div>' +
@@ -245,7 +245,7 @@ function draw() {
   var cs = D.customers.slice();
   if (SORT === 'name') cs.sort(function (a, b) { return a.name.localeCompare(b.name, 'th'); });
   else if (SORT === 'n') cs.sort(function (a, b) { return b.n - a.n; });
-  else cs.sort(function (a, b) { return a.margin - b.margin; });
+  else cs.sort(function (a, b) { return (a.margin == null) - (b.margin == null) || a.margin - b.margin; });   /* ร้านที่ยังไม่มีบรรทัดล็อก (margin ว่าง) ไปท้าย */
 
   /* กรองตามเกรด — มาจากการกดเกรดบนหน้าผู้บริหาร หรือกดชิปตรงนี้ */
   var byG = {};

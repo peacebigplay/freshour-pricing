@@ -22,19 +22,19 @@ const html = `<!doctype html>
 <html lang="th"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Freshour · ต้นแบบใช้งานได้ (ทุกหน้า)</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap">
 <style>
-:root{--ink:#1d1a17;--mute:#6b635b;--line:#e4ddd5;--soft:#f6f2ed;--act:#DF3A20;--bar:#fff}
+:root{--ink:#0F172A;--mute:#64748B;--line:#E6EAF2;--soft:#F5F6FA;--act:#0052F3;--bar:#fff}
 *{box-sizing:border-box}html,body{height:100%;margin:0}
-body{display:flex;flex-direction:column;background:var(--soft);color:var(--ink);font-family:'IBM Plex Sans Thai','Sukhumvit Set','Thonburi',sans-serif;font-size:14px}
+body{display:flex;flex-direction:column;background:var(--soft);color:var(--ink);font-family:'Prompt','Sukhumvit Set','Thonburi',sans-serif;font-size:14px}
 .bar{background:var(--bar);border-bottom:1px solid var(--line);padding:8px 14px;display:flex;flex-direction:column;gap:6px}
 .row1{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
-.brand b{letter-spacing:.08em}.brand span{color:var(--mute);margin-left:6px}
+.brand b{letter-spacing:.08em;color:var(--act)}.brand span{color:var(--mute);margin-left:6px}
 .note{font-size:12px;color:var(--mute);display:flex;gap:10px;align-items:center;flex-wrap:wrap}.note em{font-style:normal;color:var(--act);font-weight:600}
 .note button{font:inherit;font-size:12px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:2px 10px;cursor:pointer}
 .nav{display:flex;gap:14px;flex-wrap:wrap;align-items:center}.grp{display:flex;gap:4px;align-items:center;flex-wrap:wrap}.grp>span{font-size:11.5px;color:var(--mute);margin-right:2px}
 .nav button{font:inherit;font-size:13px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 11px;cursor:pointer;color:var(--ink)}
-.nav button[aria-current="page"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.nav button[aria-current="page"]{background:var(--act);color:#fff;border-color:var(--act)}
 .who{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--soft);border:1px solid var(--line)}
 .stage{flex:1;position:relative;min-height:0}iframe{border:0;width:100%;height:100%;background:#fff;display:block}
 .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;z-index:9}

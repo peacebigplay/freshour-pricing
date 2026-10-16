@@ -3,7 +3,7 @@
    ข้อมูลจาก /api/ai-perf (นับจากของจริงในระบบ) · ตัวเลข "เวลา" แยก 2 แบบชัด: วัดจริง (ops-perf) กับ ประมาณการ (จำนวนงาน × นาที/ชิ้น ตามสมมติฐานที่ประกาศไว้)
    ไม่มีทุน/margin ใน payload นี้ → ไม่หลุดให้เซลล์ แต่ API ยังกันที่ ops ขึ้นไป */
 window.AIPerf = (function () {
-  var esc = PX.esc, DATA = null, AT = 0, LOADING = false, BLUE = '#2563EB', AMBER = '#D97706', GREEN = '#16A34A', GREY = '#CBD5E1';
+  var esc = PX.esc, DATA = null, AT = 0, LOADING = false, BLUE = '#0052F3', AMBER = '#D97706', GREEN = '#16A34A', GREY = '#CBD5E1';
   var CSS = '<style id="apCss">' +
     '.ap{margin:14px 0 6px}.ap .aph{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 8px}.ap .aph b{font-size:15px}.ap .aph span{font-size:12px;color:var(--tx-3)}.ap .aph .apl{margin-left:auto;font-size:12px;color:var(--tx-2);background:var(--card);border:1px solid var(--line);border-radius:99px;padding:3px 10px}.ap .aph .apl b{font-size:12px;color:var(--blue)}' +
     '.ap .apg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}' +
@@ -11,7 +11,7 @@ window.AIPerf = (function () {
     '.ap .ac .ah{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--tx-2);gap:8px}.ap .ac .ah span{display:flex;align-items:center;gap:5px;min-width:0}.ap .ac .ah .why{font-style:normal;color:var(--tx-3);font-size:12px}.ap .ac .ah em{font-style:normal;color:var(--blue);font-size:14px;line-height:1;flex:none}' +
     '.ap .ac .av{display:flex;align-items:baseline;gap:7px;margin:6px 0 4px;flex-wrap:wrap}.ap .ac .av b{font-family:var(--fn);font-size:32px;font-weight:700;letter-spacing:-.04em;line-height:1.05}.ap .ac .av small{font-size:13px;color:var(--tx-3);font-weight:600}.ap .ac .av .ad{font-size:12px;font-weight:700}.ap .ac .ad.up{color:var(--green)}.ap .ac .ad.dn{color:var(--red)}.ap .ac .ad.fl{color:var(--tx-3)}' +
     '.ap .ac .as{font-size:11px;color:var(--tx-3);margin-top:auto;padding-top:8px;line-height:1.45}' +
-    '.ap .ac.lead{background:var(--blue);color:#fff;border-color:var(--blue)}.ap .ac.lead .ah,.ap .ac.lead .as,.ap .ac.lead .av small,.ap .ac.lead .why{color:rgba(255,255,255,.82)}.ap .ac.lead .ah em{color:#fff}.ap .ac.lead .ad.up{color:#BBF7D0}.ap .ac.lead .ad.fl{color:rgba(255,255,255,.75)}' +
+    '.ap .ac.lead{background:var(--blue);color:#fff;border-color:var(--blue)}.ap .ac.lead .ah,.ap .ac.lead .ah .why{color:#fff;font-weight:500}.ap .ac.lead .as,.ap .ac.lead .av small{color:rgba(255,255,255,.85)}.ap .ac.lead .ah em{color:#fff}.ap .ac.lead .ad.up{color:#BBF7D0}.ap .ac.lead .ad.fl{color:rgba(255,255,255,.75)}' +
     /* แท่งนอน 3 บรรทัด (เวลา) */
     '.ap .tb{display:grid;gap:5px;margin-top:4px}.ap .tb div{display:grid;grid-template-columns:92px 1fr 54px;align-items:center;gap:8px;font-size:11px}.ap .tb div em{font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ap .tb div i{display:block;height:8px;border-radius:99px;background:rgba(255,255,255,.22);overflow:hidden}.ap .tb div i b{display:block;height:100%;background:#fff;border-radius:99px}.ap .tb div small{text-align:right;font-weight:700;font-size:11px;color:#fff}' +
     /* แท่งตั้ง batch */

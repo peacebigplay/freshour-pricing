@@ -4,7 +4,7 @@
    ══════════════════════════════════════════════════════════════════ */
 window.Charts = (function () {
   /* ชุดสีหมวดหมู่ (ตรวจแล้ว: ความสว่าง/โครมา/คนตาบอดสี/คอนทราสต์ ผ่าน) — ใช้ตามลำดับนี้เสมอ */
-  var CAT = ['#2563EB', '#DB2777', '#16A34A', '#8B5CF6', '#D97706', '#0891B2'];
+  var CAT = ['#0052F3', '#DB2777', '#16A34A', '#8B5CF6', '#D97706', '#0891B2'];
   var esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
   var fmt = function (n) { return n == null ? '—' : Math.abs(n) >= 1000 ? Math.round(n).toLocaleString('en-US') : (Math.round(n * 10) / 10).toString(); };
   var uid = 0;
@@ -77,13 +77,13 @@ window.Charts = (function () {
       var hit = el.querySelector('.hit');
       hit.addEventListener('mousemove', function (e) { var rect = svg.getBoundingClientRect(), x = (e.clientX - rect.left) / rect.width * W, i = Math.round((x - L) / (W - L - R) * (n - 1)); i = Math.max(0, Math.min(n - 1, i)); var px = L + i / (n - 1) * (W - L - R);
         cur.setAttribute('x1', px); cur.setAttribute('x2', px); cur.style.opacity = 1; el.querySelectorAll('.dot').forEach(function (c) { c.style.opacity = +c.dataset.i === i ? 1 : 0; });
-        tip.innerHTML = '<div style="color:#C7DAFE">' + esc(d.labels[i]) + '</div>' + d.series.map(function (s) { return s.values[i] == null ? '' : '<div><i style="background:' + s.color + '"></i>' + esc(s.name) + ' <b>' + fmt(s.values[i]) + d.unit + '</b></div>'; }).join('');
+        tip.innerHTML = '<div style="color:#BFD2FF">' + esc(d.labels[i]) + '</div>' + d.series.map(function (s) { return s.values[i] == null ? '' : '<div><i style="background:' + s.color + '"></i>' + esc(s.name) + ' <b>' + fmt(s.values[i]) + d.unit + '</b></div>'; }).join('');
         tip.style.left = (px / W * rect.width) + 'px'; tip.style.top = '8px'; tip.style.opacity = 1; });
       hit.addEventListener('mouseleave', function () { tip.style.opacity = 0; cur.style.opacity = 0; el.querySelectorAll('.dot').forEach(function (c) { c.style.opacity = 0; }); });
     });
     (root || document).querySelectorAll('.ch[data-ch="bars"]').forEach(function (el) {
       if (el.__b) return; el.__b = 1; var d = JSON.parse(el.getAttribute('data-d')), tip = el.querySelector('.tip'), svg = el.querySelector('svg');
-      el.querySelectorAll('.bar').forEach(function (b) { b.addEventListener('mousemove', function (e) { var it = d.items[+b.dataset.i], rect = el.getBoundingClientRect(); tip.innerHTML = '<div style="color:#C7DAFE">' + esc(it.label) + '</div><div><i style="background:' + it.color + '"></i><b>' + fmt(it.value) + d.unit + '</b>' + (it.sub ? ' · ' + esc(it.sub) : '') + '</div>'; tip.style.left = (e.clientX - rect.left) + 'px'; tip.style.top = (e.clientY - rect.top - 6) + 'px'; tip.style.opacity = 1; }); b.addEventListener('mouseleave', function () { tip.style.opacity = 0; }); });
+      el.querySelectorAll('.bar').forEach(function (b) { b.addEventListener('mousemove', function (e) { var it = d.items[+b.dataset.i], rect = el.getBoundingClientRect(); tip.innerHTML = '<div style="color:#BFD2FF">' + esc(it.label) + '</div><div><i style="background:' + it.color + '"></i><b>' + fmt(it.value) + d.unit + '</b>' + (it.sub ? ' · ' + esc(it.sub) : '') + '</div>'; tip.style.left = (e.clientX - rect.left) + 'px'; tip.style.top = (e.clientY - rect.top - 6) + 'px'; tip.style.opacity = 1; }); b.addEventListener('mouseleave', function () { tip.style.opacity = 0; }); });
     });
   }
   function spark(values, color, w, h) { if (!values || values.length < 2) return ''; var W = w || 120, H = h || 28, lo = Math.min.apply(null, values), hi = Math.max.apply(null, values), rg = hi - lo || 1; var pts = values.map(function (v, i) { return (i / (values.length - 1) * W).toFixed(1) + ',' + ((1 - (v - lo) / rg) * (H - 4) + 2).toFixed(1); }); return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:' + W + 'px;height:' + H + 'px;display:block;overflow:visible"><polyline fill="none" stroke="' + (color || CAT[0]) + '" stroke-width="2" stroke-linejoin="round" points="' + pts.join(' ') + '"/><circle cx="' + W + '" cy="' + ((1 - (values[values.length - 1] - lo) / rg) * (H - 4) + 2).toFixed(1) + '" r="2.5" fill="' + (color || CAT[0]) + '"/></svg>'; }

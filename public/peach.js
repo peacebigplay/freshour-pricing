@@ -76,11 +76,13 @@ window.PX = (function () {
     document.head.appendChild(l);
   })();
 
+  /* โลโก้ Freshour (ตะกร้ายิ้ม) — วาดเป็น SVG จะได้คมทุกขนาดและไม่ต้องโหลดรูป */
+  var LOGO = '<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="50" fill="#0052F3"/><circle cx="35" cy="34" r="3.6" fill="#fff"/><circle cx="65" cy="34" r="3.6" fill="#fff"/><path d="M43 49v-5.5a7 7 0 0 1 14 0V49" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/><clipPath id="fhc"><path d="M22 50h56a28 28 0 0 1-56 0z"/></clipPath><g clip-path="url(#fhc)" stroke="#fff" stroke-width="1.4"><path d="M31 50v30M39 50v30M47 50v30M55 50v30M63 50v30M71 50v30M22 59h56M22 68h56"/></g><path d="M22 50h56a28 28 0 0 1-56 0z" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/></svg>';
   function shell(cur, floatCard) {
     document.body.insertAdjacentHTML('afterbegin',
       '<div class="app"><aside class="side">' +
         /* โลโก้คือปุ่มกลับหน้าแรก — / จะพาไปหน้าเริ่มงานของบทบาทนั้นเอง */
-        '<a class="brand" href="/" title="กลับหน้าแรกของคุณ"><span class="mk">F</span>' +
+        '<a class="brand" href="/" title="กลับหน้าแรกของคุณ"><span class="mk">' + LOGO + '</span>' +
           '<span><b>Freshour</b><span>ราคาหมูสด</span></span></a>' +
         /* เมนูเลื่อนได้ในตัวเอง — การ์ดงานถัดไปกับปุ่มออกจากระบบต้องอยู่ให้เห็นเสมอ
            ไม่ใช่ตกไปอยู่ใต้จอจนคนหาไม่เจอ */
@@ -555,7 +557,7 @@ window.PX = (function () {
     if (d < 86400 * 7) return Math.floor(d / 86400) + ' วันก่อน';
     return String(iso).slice(0, 10).split('-').reverse().join('/');
   }
-  return { esc: esc, money: money, shell: shell, ago: ago, badge: badge, why: why, pageNums: pageNums,
+  return { logo: function () { return LOGO; }, esc: esc, money: money, shell: shell, ago: ago, badge: badge, why: why, pageNums: pageNums,
            ISSUE_TYPES: ISSUE_TYPES, issueNeedsCarrier: issueNeedsCarrier,
            bindTips: bindTips, get: get, fail: fail, head: head, back: back, COL: COL,
            deliveryForm: deliveryForm, deliveryFinish: deliveryFinish, prospectForm: prospectForm,
