@@ -580,7 +580,7 @@
         else okRows.push({ product_id: r.id, price: px, goal: rec.strategy || 'target' });
       });
       var saved = 0, error = null;
-      if (!preview && okRows.length) { var r1x = X.savePriceSheet(role, { goal: 'rec', rows: okRows }); if (r1x.status === 200) saved = r1x.body.saved; else error = r1x.body.error; }
+      if (!preview && okRows.length) { var nBefore = (S.price_versions || []).length, r1x = X.savePriceSheet(role, { goal: 'rec', rows: okRows }); if (r1x.status === 200) { saved = r1x.body.saved; var nNew = S.price_versions.length - nBefore; for (var vi = 0; vi < nNew; vi++) S.price_versions[vi].auto = true; } else error = r1x.body.error; }   /* ติดธง auto: ยืนยันโดยระบบ ไม่นับเป็น "คนยอมรับ" */
       return { auto: okRows.length, saved: saved, need: need, error: error, already: already };
     }
     function autoSheets(role, body) {
@@ -1099,6 +1099,125 @@
         time: { week: sm.week || null, steps: steps, now: sm.totalNow == null ? null : sm.totalNow, before: sm.totalBefore == null ? null : sm.totalBefore, savedMin: sm.totalBefore != null && sm.totalNow != null ? Math.round(sm.totalBefore - sm.totalNow) : null, units: units, est: est, assumptions: EST_MIN },
         load: { human: humanRows, machine: machineRows, humanPct: humanRows + machineRows ? Math.round(humanRows / (humanRows + machineRows) * 100) : null } };
     }
+
+    /* ════════ Executive Decision Cockpit (/api/exec) ════════
+       ไม่ใช่หน้ารวมทุกอย่าง — ตอบ 4 คำถามใน 2 นาที: AI ทำงานดีแค่ไหน · ธุรกิจขายได้จริงเท่าไร · มีอะไรผิดปกติ · ต้องตัดสินใจอะไร
+       ทุกตัวเลขบอกที่มา (basis) และถ้ายังไม่มีข้อมูลจริง (invoice / มูลค่าลูกค้า) บอกว่า "ยังไม่มี" ไม่เดา */
+    function execCockpit() {
+      var td = today(), rows = D.desk.rows || [], total = rows.length, jumpB = CFG.jump_baht || 8;
+      var pendingFlag = {}; D.cost_flags.forEach(function (f) { if ((f.status === 'pending' || f.status === 'hold') && f.product_id) pendingFlag[f.product_id] = f; });
+      /* ── 1 AI Pricing Performance ── */
+      var reasons = { cost_anomaly: 0, pricing_exception: 0, jump: 0, central_changed: 0, no_cost: 0 }, reviewList = [], autoN = 0, marketFresh = 0, marketUsable = 0, marketStale = 0, marketBlind = 0;
+      rows.forEach(function (r) {
+        var v = r.v21 || {}, why = [];
+        var m = v.market || {}, comp = (v.goals || {}).competitive || {};
+        if (m.n > 0) { if (m.freshness === 'fresh') marketFresh++; else marketUsable++; } else if (comp.stale && comp.stale.length) marketStale++; else marketBlind++;
+        if (!v.goals || !(r.cost > 0)) { why.push('no_cost'); }
+        else {
+          var rec = v.rec || {}, px = rec.price > 0 ? Math.round(rec.price) : 0;
+          if (pendingFlag[r.id] || (r.costPrev > 0 && Math.abs(r.costJump || 0) / r.costPrev > 0.15)) why.push('cost_anomaly');
+          if (!px || rec.state === 'below_min' || (v.guard > 0 && px < v.guard)) why.push('pricing_exception');
+          if (v.central && v.central.state && v.central.state !== 'approved') why.push('central_changed');
+          if (px && unexplainedJump(px, r.prev, r.cost, r.costPrev, jumpB)) why.push('jump');
+        }
+        if (why.length) { why.forEach(function (w) { reasons[w]++; }); reviewList.push({ id: r.id, name: r.name, grp: r.grp, why: why, price: (v.rec || {}).price || null, cost: r.cost, prev: r.prev }); } else autoN++;
+      });
+      var REASON_TEXT = { cost_anomaly: 'ทุนผิดปกติ / ทุนกระโดด', pricing_exception: 'ราคาแนะนำต่ำกว่า Floor / ไม่มีราคาแนะนำ', jump: 'ราคาขยับเกินที่ทุนอธิบายได้', central_changed: 'ทุนเปลี่ยนหลังยืนยัน ต้องดูใหม่', no_cost: 'ไม่รู้ทุน' };
+      var PV = (S.price_versions || []).filter(function (v) { return v.kind === 'central' && !v.auto; }), acc = 0, up = 0, down = 0, dsum = 0;
+      PV.forEach(function (v) { var rp = v.recommended_price, ap = v.approved_price; if (!(rp > 0) || !(ap > 0)) return; if (Math.round(rp) === Math.round(ap)) acc++; else { if (ap > rp) up++; else down++; dsum += ap - rp; } });
+      var decided = acc + up + down, autoApproved = (S.price_versions || []).filter(function (v) { return v.kind === 'central' && v.auto; }).length;
+      var ai = {
+        coverage: { auto: autoN, total: total, pct: total ? Math.round(autoN / total * 1000) / 10 : null, basis: 'SKU ที่ระบบรับทุน → ตรวจทุน → แนะนำราคาได้เองโดยไม่ติดด่าน (ทุนผิดปกติ · ต่ำกว่า Floor · ขยับเกินที่ทุนอธิบายได้)' },
+        review: { n: reviewList.length, reasons: reasons, reasonText: REASON_TEXT, top: reviewList.slice(0, 30) },
+        acceptance: { decided: decided, accepted: acc, pct: decided ? Math.round(acc / decided * 1000) / 10 : null, overrides: up + down, up: up, down: down, avgDelta: up + down ? Math.round(dsum / (up + down) * 10) / 10 : null, autoApproved: autoApproved,
+          direction: up + down ? (up > down ? 'คนมักแก้ "ขึ้น" จากที่ AI เสนอ (AI ตั้งต่ำไป)' : down > up ? 'คนมักแก้ "ลง" จากที่ AI เสนอ (AI ตั้งสูงไป)' : 'แก้ขึ้นลงพอ ๆ กัน') : null,
+          basis: 'เทียบราคาแนะนำ vs ราคากลางที่คนยืนยัน (price_versions ที่ไม่ใช่ auto) — ยืนยันโดยระบบ ' + autoApproved + ' รายการไม่นับ' },
+        market: { total: total, fresh: marketFresh, usable: marketUsable, stale: marketStale, blind: marketBlind, confidentPct: total ? Math.round((marketFresh + marketUsable) / total * 1000) / 10 : null,
+          note: marketFresh + marketUsable === 0 ? 'ยังไม่มีราคาตลาดที่ใช้ได้เลย — ราคาแนะนำทั้งหมดคิดจากทุน+เป้า ไม่ได้เทียบตลาด' : null }
+      };
+      /* ── 2 Pricing Flow Health ── */
+      var CM = S.cost_master || {}, costReady = rows.filter(function (r) { var c = CM[r.id]; return c && c.state === 'approved' && c.current_cost > 0 && !pendingFlag[r.id]; }).length;
+      var approved = rows.filter(function (r) { return r.v21 && r.v21.central && r.v21.central.state === 'approved'; }).length;
+      var custAll = D.desk.customers.filter(function (c) { return D.guard.lines.some(function (l) { return l.cid === c.id; }); }), custReady = custAll.filter(function (c) { return c.handed; }).length;
+      var flow = { steps: [
+        { key: 'cost', label: 'ทุนพร้อม', n: costReady, total: total, drop: total - costReady, why: 'ไม่รู้ทุน / ทุนรอตรวจ ' + (total - costReady), href: '/costs' },
+        { key: 'market', label: 'ตลาดพร้อม', n: marketFresh + marketUsable, total: total, drop: total - marketFresh - marketUsable, why: 'ไม่มีราคาตลาดที่ใช้ได้ ' + (total - marketFresh - marketUsable) + ' (ไม่บล็อกการตั้งราคา)', href: '/costs?tab=sources', soft: true },
+        { key: 'ai', label: 'AI แนะนำราคาได้เอง', n: autoN, total: total, drop: reviewList.length, why: 'ติดด่านให้คนดู ' + reviewList.length, href: '/pricing' },
+        { key: 'approved', label: 'ราคากลางยืนยันแล้ว', n: approved, total: total, drop: total - approved, why: 'รอคนยืนยัน ' + (total - approved), href: '/pricing' },
+        { key: 'customer', label: 'ใบรายเจ้าส่ง Sales แล้ว', n: custReady, total: custAll.length, unit: 'เจ้า', drop: custAll.length - custReady, why: 'ลูกค้าที่ยังไม่มีใบ ' + (custAll.length - custReady) + ' เจ้า', href: '/pricing' }
+      ] };
+      /* ── 3 Bottlenecks ── */
+      var q = salesQueue(null), stateN = {}; q.forEach(function (r) { stateN[r.state] = (stateN[r.state] || 0) + 1; });
+      var valOf = function (list) { var known = list.filter(function (r) { return r.value != null; }); return { value: known.reduce(function (a, r) { return a + r.value; }, 0), known: known.length, unknown: list.length - known.length }; };
+      var waitingP = q.filter(function (r) { return r.state === 'waiting_pricing'; }), silent = q.filter(function (r) { return r.state === 'followup_due' || r.state === 'decide'; });
+      var blindComp = rows.filter(function (r) { var v = r.v21 || {}; return v.category && v.category.key === 'competitive' && !((v.market || {}).n > 0); });
+      var blindIds = {}; blindComp.forEach(function (r) { blindIds[r.id] = 1; });
+      var blindCust = {}; D.guard.lines.forEach(function (l) { if (blindIds[l.pid]) blindCust[l.cid] = 1; });
+      var flagIds = Object.keys(pendingFlag), flagSheets = {}; D.guard.lines.forEach(function (l) { if (pendingFlag[l.pid]) flagSheets[l.cid] = 1; });
+      var sheetsLate = sourceStatus().filter(function (x) { return x.sheetOverdue; }), obFailed = D.outbox.filter(function (o) { return o.status === 'failed'; });
+      var B = [];
+      if (total - approved > 0 || waitingP.length) B.push({ key: 'approval', title: total - approved > 0 ? 'ราคากลางรอคนยืนยัน' : 'ใบรายเจ้ายังไม่ได้ทำ/ส่ง Sales', n: total - approved > 0 ? total - approved : waitingP.length, unit: total - approved > 0 ? 'SKU' : 'เจ้า', impact: { customers: waitingP.length, text: 'ลูกค้า ' + waitingP.length + ' เจ้ายังไม่ได้ใบราคา' }, opportunity: valOf(waitingP), action: { label: 'ให้ระบบทำรอบนี้ / ยืนยันที่เหลือ', href: '/pricing' }, severity: (total - approved) * 2 + waitingP.length * 3 });
+      if (silent.length) B.push({ key: 'followup', title: 'ลูกค้าเงียบเกิน SLA', n: silent.length, unit: 'เจ้า', impact: { customers: silent.length, text: 'ส่งราคาไปแล้วไม่ตอบเกิน ' + SLA.responseH + ' ชม.' }, opportunity: valOf(silent), action: { label: 'ดูคิวเซลล์', href: '/sales' }, severity: silent.length * 4 });
+      if (flagIds.length) B.push({ key: 'cost', title: 'ทุนผิดปกติรอตัดสิน', n: flagIds.length, unit: 'SKU', impact: { customers: Object.keys(flagSheets).length, text: 'กระทบใบราคา ' + Object.keys(flagSheets).length + ' เจ้า' }, opportunity: null, action: { label: 'Review Queue', href: '/costs#flags' }, severity: flagIds.length * 3 + Object.keys(flagSheets).length });
+      if (blindComp.length) B.push({ key: 'market', title: 'หมวดแข่งขันไม่มีราคาตลาด', n: blindComp.length, unit: 'SKU', impact: { customers: Object.keys(blindCust).length, text: 'กระทบลูกค้า ' + Object.keys(blindCust).length + ' เจ้า · Goal "แข่งขันได้" ใช้ไม่ได้' }, opportunity: null, action: { label: 'ตั้งบัญชี B2B / สำรวจ', href: '/costs?tab=sources' }, severity: blindComp.length });
+      if (sheetsLate.length) B.push({ key: 'b2b', title: 'ใบราคาคู่แข่งรอบนี้ยังไม่มา', n: sheetsLate.length, unit: 'เจ้า', impact: { customers: 0, text: sheetsLate.map(function (x) { return x.label; }).join(', ') }, opportunity: null, action: { label: 'ทวงที่บัญชี B2B', href: '/costs?tab=sources' }, severity: sheetsLate.length * 2 });
+      if (obFailed.length) B.push({ key: 'line', title: 'ส่ง LINE ไม่สำเร็จ', n: obFailed.length, unit: 'ข้อความ', impact: { customers: obFailed.length, text: 'ลูกค้ายังไม่ได้ราคา' }, opportunity: null, action: { label: 'ดู log', href: '/log' }, severity: obFailed.length * 5 });
+      B.sort(function (a, b) { return b.severity - a.severity; }); B.forEach(function (b, i) { b.rank = i + 1; delete b.severity; });
+      /* ── 4 Commercial ── */
+      var perf = salesPerf(q), sentRows = q.filter(function (r) { return r.sentAt; }), quoted = valOf(sentRows);
+      var commercial = { customers: q.length, portfolio: valOf(q), quoted: quoted, won: { n: perf.won, value: perf.wonValue, known: perf.wonValueKnown }, lost: { n: perf.lost, value: perf.lostValue }, winRate: perf.winRate, valueWinRate: perf.valueWinRate, responsePct: perf.responsePct,
+        basis: 'มูลค่าลูกค้า = value_month ที่นำเข้า (รู้ ' + valOf(q).known + '/' + q.length + ' เจ้า) · Won/Lost จาก deal-close' };
+      /* ── 5 Actual (invoice + cost snapshot ณ วันออกบิล) ── */
+      var INV = D.invoices || {}, ytd = INV.ytd || { revenue: 0, gp: 0, kg: 0, invoices: 0, margin: 0 };
+      var actual = { year: INV.year || td.slice(0, 4), revenue: ytd.revenue || 0, kg: ytd.kg || 0, gp: ytd.gp || 0, margin: ytd.invoices ? ytd.margin : null, invoices: ytd.invoices || 0, months: (INV.months || []).slice(-12),
+        basis: 'จาก Invoice จริงเท่านั้น · GP = ราคาขายจริง − ทุน ณ วันออกบิล (snapshot ในบรรทัด invoice) ไม่ใช้ทุนวันนี้ย้อนหลัง', none: !ytd.invoices };
+      /* ── 6 Margin by product group ── */
+      var PG = (S.policy && S.policy.groups) || {}, skuAgg = {}; (INV.sku || []).forEach(function (x) { skuAgg[x.id] = x; });
+      var byGrp = {};
+      D.guard.lines.forEach(function (l) { if (!(l.locked > 0 && l.cost > 0)) return; var g = byGrp[l.grp] = byGrp[l.grp] || { grp: l.grp, cN: 0, cPx: 0, cCost: 0, iRev: 0, iGp: 0 }; g.cN++; g.cPx += l.locked; g.cCost += l.cost; });
+      Object.keys(skuAgg).forEach(function (pid) { var x = skuAgg[pid]; var g = byGrp[x.grp] = byGrp[x.grp] || { grp: x.grp, cN: 0, cPx: 0, cCost: 0, iRev: 0, iGp: 0 }; g.iRev += x.revenue; g.iGp += x.gp; });
+      var marginByGroup = Object.keys(byGrp).map(function (k) { var g = byGrp[k], pol = PG[k] || { target: CFG.target_pct || 15, min: CFG.floor_pct || 12 };
+        var actualM = g.iRev > 0 ? r1(g.iGp / g.iRev * 100) : g.cPx > 0 ? r1((g.cPx - g.cCost) / g.cPx * 100) : null, basis = g.iRev > 0 ? 'invoice' : 'contract';
+        var state = actualM == null ? 'unknown' : actualM < pol.min ? 'risk' : actualM < pol.target - 1 ? 'below' : actualM < pol.target ? 'near' : 'healthy';
+        return { grp: k, target: pol.target, min: pol.min, actual: actualM, basis: basis, lines: g.cN, state: state, stateText: { risk: 'Risk · ต่ำกว่าขั้นต่ำ', below: 'Below Target', near: 'Near Target', healthy: 'Healthy', unknown: '—' }[state] }; })
+        .filter(function (g) { return g.lines >= 2 || g.basis === 'invoice'; }).sort(function (a, b) { return (a.actual == null ? 99 : a.actual - a.target) - (b.actual == null ? 99 : b.actual - b.target); });
+      /* ── 7 Customers: largest / at risk ── */
+      var PR = D['price-requests'].rows || [];
+      var byValue = q.filter(function (r) { return r.value != null; }).sort(function (a, b) { return b.value - a.value; });
+      var largest = (byValue.length ? byValue : q.slice().sort(function (a, b) { return (b.lines.total || 0) - (a.lines.total || 0); })).slice(0, 5).map(function (r) { return { id: r.id, name: r.name, value: r.value, lines: r.lines.total, state: r.state, stateText: typeof SQ_STATE[r.state] === 'string' ? SQ_STATE[r.state] : (SQ_STATE[r.state] || {}).label || (SQ_STATE[r.state] || {}).text || r.state, owner: r.ownerName }; });
+      var atRisk = [];
+      silent.slice(0, 5).forEach(function (r) { atRisk.push({ id: r.id, name: r.name, value: r.value, why: 'เงียบ ' + (r.silentDays || 0) + ' วัน หลังส่งราคา', kind: 'silent', owner: r.ownerName }); });
+      PR.filter(function (x) { return x.status !== 'ok' && x.status !== 'closed' && x.want > 0 && x.floor_at > 0 && x.want < x.floor_at; }).slice(0, 5).forEach(function (x) { var c = X.custOf(x.customer_id) || {}; atRisk.push({ id: x.customer_id, name: c.name || x.customer_id, value: c.value_month != null ? Number(c.value_month) : null, why: 'ขอ ' + x.product + ' ' + x.want + ' ฿ ต่ำกว่าขั้นต่ำ ' + x.floor_at + ' ฿', kind: 'below_min' }); });
+      D.deals.filter(function (d) { return d.outcome === 'lost' && d.reason_code === 'competitor'; }).slice(0, 3).forEach(function (d) { var c = X.custOf(d.customer_id) || {}; atRisk.push({ id: d.customer_id, name: c.name || d.customer_id, value: d.value || null, why: 'เสียให้คู่แข่ง — ราคา', kind: 'lost' }); });
+      /* ── 8 Sales ── */
+      var reps = (S.sales_reps || []).map(function (rep) { var mine = q.filter(function (r) { return r.owner === rep.id; }), pf = salesPerf(mine), pv = valOf(mine);
+        return { id: rep.id, name: rep.name, customers: mine.length, portfolio: pv.value, portfolioKnown: pv.known, wonValue: pf.wonValue, won: pf.won, lost: pf.lost, winRate: pf.winRate, valueWinRate: pf.valueWinRate, slaPct: pf.followupSlaPct, open: pf.open }; });
+      /* ── 9 Market intelligence accuracy ── */
+      var tr = computeTrend(false), sc = tr.score || {}, preds = (D.predictions || []).slice(0, 50);
+      var partial = preds.filter(function (p) { return p.resolved && p.result === 'partial'; }).length;
+      var intel = { total30: sc.total || 0, resolved: sc.resolved || 0, correct: sc.hits || 0, partial: partial, wrong: Math.max(0, (sc.resolved || 0) - (sc.hits || 0) - partial), pct: sc.pct, open: sc.open || 0, warnings: (tr.warnings || []).slice(0, 5), list: preds.slice(0, 10).map(function (p) { return { at: p.at || p.made_at, text: p.text || p.title || '', resolved: !!p.resolved, result: p.result || (p.hit === true ? 'hit' : p.hit === false ? 'miss' : null) }; }),
+        note: !(sc.total) ? 'ยังไม่มีคำทำนายตลาด — จะเริ่มมีเมื่อมีราคาตลาดเข้าระบบต่อเนื่อง' : null };
+      /* ── 10 Automation health ── */
+      var h = health(), issues = [];
+      h.jobs.forEach(function (j) { if (j.status === 'fail' || j.stale) issues.push({ kind: 'job', title: j.label, detail: j.status === 'fail' ? 'ล้ม: ' + (j.detail || '') : 'ขาดรอบ ' + (j.age_h == null ? '' : Math.round(j.age_h) + ' ชม.'), retried: j.runs > 0, owner: 'Pricing' }); });
+      if (h.outbox.failed) issues.push({ kind: 'line', title: 'LINE OA', detail: 'ส่งไม่สำเร็จ ' + h.outbox.failed + ' ข้อความ (ลองซ้ำครบ 3 ครั้ง)', retried: true, owner: 'Admin' });
+      h.alerts.filter(function (a) { return a.level === 'bad'; }).slice(0, 5).forEach(function (a) { issues.push({ kind: 'alert', title: a.title, detail: a.detail, retried: null, owner: a.source === 'b2b-check' ? 'Admin' : 'Pricing' }); });
+      var noLine = D.desk.customers.filter(function (c) { return c.handed && !lineIdOf(c.id); }).length;
+      var automation = { ok: !issues.length, issues: issues, jobs: h.jobs.map(function (j) { return { key: j.key, label: j.label, status: j.status, last_run: j.last_run }; }), lineConfigured: h.line, customersNoLine: noLine, outbox: h.outbox };
+      /* ── Decisions ── */
+      var decisions = [];
+      marginByGroup.filter(function (g) { return g.state === 'risk' || g.state === 'below'; }).slice(0, 2).forEach(function (g) { decisions.push({ type: 'policy', title: 'กลุ่ม ' + g.grp + ' margin จริง ' + g.actual + '% ต่ำกว่า Target ' + g.target + '%', why: 'ที่มา: ' + (g.basis === 'invoice' ? 'invoice จริง' : 'ราคาสัญญาปัจจุบัน ' + g.lines + ' บรรทัด') + ' · ' + g.stateText, options: ['ขึ้นราคาสัญญากลุ่มนี้ในรอบถัดไป', 'ลด Target เพราะตลาดบังคับ (ต้องมีราคาตลาดยืนยัน)', 'ยอมเป็น loss leader เฉพาะลูกค้า strategic'], href: '/guard' }); });
+      (tr.warnings || []).filter(function (w) { return w.level === 'bad'; }).slice(0, 1).forEach(function (w) { decisions.push({ type: 'market', title: w.text, why: 'สัญญาณจากแนวโน้มตลาด', options: ['ให้ Pricing ขึ้นราคากลุ่มนี้เร็วขึ้น', 'รอดูอีกรอบ'], href: '/costs?tab=trend' }); });
+      atRisk.filter(function (x) { return x.kind === 'below_min'; }).slice(0, 2).forEach(function (x) { decisions.push({ type: 'commercial', title: x.name + ' ขอราคาต่ำกว่า Minimum Policy', why: x.why + (x.value != null ? ' · มูลค่า ' + Math.round(x.value).toLocaleString('th-TH') + ' ฿/เดือน' : ' · ยังไม่รู้มูลค่าลูกค้า'), options: ['ยอม margin ต่ำเพื่อรักษาลูกค้า (บันทึกเป็นข้อยกเว้น)', 'ยืนราคาขั้นต่ำ', 'ให้โรงงานช่วยลดทุน'], href: '/pricing' }); });
+      var lossLines = D.guard.lines.filter(function (l) { return l.locked > 0 && l.cost > 0 && l.locked <= l.cost; }), lossCust = {}; lossLines.forEach(function (l) { lossCust[l.cust] = (lossCust[l.cust] || 0) + 1; });
+      if (lossLines.length) decisions.push({ type: 'commercial', title: 'ราคาสัญญา ≤ ทุน ' + lossLines.length + ' บรรทัด ใน ' + Object.keys(lossCust).length + ' เจ้า', why: Object.keys(lossCust).sort(function (a, b) { return lossCust[b] - lossCust[a]; }).slice(0, 3).map(function (k) { return k + ' ' + lossCust[k]; }).join(' · ') + ' · ทุน AL = ทุนจริง (ยืนยันแล้ว)', options: ['ขึ้นราคาผ่านลิงก์ใบราคารอบถัดไป', 'ยอมรับเป็น loss leader และบันทึกเหตุผล'], href: '/guard' });
+      if (total - approved > 20) { var passRule = reviewList.length ? autoN : autoN; decisions.push({ type: 'process', title: 'ราคากลางรอคนยืนยัน ' + (total - approved) + ' SKU — คอขวดคือการกดยืนยัน ไม่ใช่ AI', why: 'AI แนะนำได้เองโดยไม่ติดด่าน ' + passRule + '/' + total + ' SKU', options: ['เปิด Auto-Approve: ไม่ติดด่าน + margin ≥ Target + ราคาขยับไม่เกินที่ทุนอธิบายได้ → ยืนยันเอง (ปุ่ม "ให้ระบบทำรอบนี้")', 'คงให้คนยืนยันทุกแถว'], href: '/pricing' }); }
+      if (!sourceStatus().some(function (x) { return x.b2b || x.mode === 'online'; })) decisions.push({ type: 'market', title: 'ยังไม่มีแหล่งราคาตลาดเลย (0 connector · 0 บัญชี B2B)', why: 'Goal "แข่งขันได้" และคำทำนายตลาดทำงานไม่ได้จนกว่าจะมีข้อมูล', options: ['สมัครบัญชี B2B กับ Betagro / Makro Pro แล้วตั้งในระบบ', 'ต่อ connector ราคาตลาด'], href: '/costs?tab=sources' });
+      /* ── YTD SKU ── */
+      var ytdSku = (INV.sku || []).slice().sort(function (a, b) { return b.revenue - a.revenue; }).slice(0, 15).map(function (x) { return { name: x.name, grp: x.grp, revenue: Math.round(x.revenue), kg: Math.round(x.kg * 10) / 10, gp: Math.round(x.gp), margin: x.revenue ? r1(x.gp / x.revenue * 100) : null }; });
+      return { today: td, round: D.sends.label || null, ai: ai, flow: flow, bottlenecks: B, commercial: commercial, actual: actual, marginByGroup: marginByGroup, customers: { largest: largest, atRisk: atRisk.slice(0, 8) }, sales: reps, intel: intel, automation: automation, decisions: decisions, ytdSku: ytdSku,
+        sources: { 'Automation Coverage / Human Review': 'Pricing Engine (desk v21) + Cost Review Queue', 'Recommendation Acceptance / Override': 'price_versions (recommended vs approved)', 'Market Coverage': 'market_obs ผ่าน marketOf (อายุ ≤30 วัน)', 'Flow': 'cost_master · desk · guard lines · handoff', 'Bottleneck': 'sales queue · cost_flags · source_status · outbox', 'Commercial': 'sales queue + deal-close', 'Actual': 'invoices (cost snapshot ต่อบรรทัด)', 'Margin by group': 'invoice sku agg → fallback ราคาสัญญา', 'Intelligence': 'predictions + market history', 'Automation': 'jobs · outbox · alerts' } };
+    }
     /* ── เส้นทางของส่วนขยาย — คืน undefined ถ้าไม่ใช่ของตัวเอง ── */
     function route(method, path, q, body, role, need, req) {
       var cm = path.match(/^\/api\/customers\/([^/]+)$/);
@@ -1106,6 +1225,7 @@
       if (path === '/api/line/webhook' && method === 'POST') return lineWebhook(body);   /* ของจริงตรวจลายเซ็นที่ server */
       if (method === 'GET') switch (path) {
         case '/api/health': return ok(health());
+        case '/api/exec': need(3); return ok(execCockpit());
         case '/api/events': need(1); var evScope = X.repScope(role, req.rep, q); var list = D.events.filter(function (e) { return (!q.customer || (e.entity === 'customer' && e.entity_id === q.customer)) && (!evScope || e.rep === evScope || (e.entity === 'customer' && X.inScope(evScope, e.entity_id))) && (!q.actor || e.actor === q.actor) && (!q.kind || e.kind === q.kind) && (!q.step || e.step === q.step) && (!q.status || e.status === q.status) && (!q.q || (e.detail + ' ' + e.action + ' ' + e.entity_id).indexOf(q.q) >= 0); });
           if (LVL[role] < 2) list = list.filter(function (e) { return !/cost|import|central|config|category/.test(e.action); });
           return ok({ total: list.length, rows: list.slice(0, Number(q.limit) || 200), steps: ['ทุนเข้า', 'เทียบตลาด', 'ตั้งราคา', 'ส่งราคา', 'ต่อรอง', 'ปิดรอบ', 'บริการ', 'ระบบ'] });
