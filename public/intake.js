@@ -131,23 +131,45 @@ window.Intake = (function () {
     h += '</div><p class="hint" style="margin-top:10px">กติกา: ออนไลน์ต้องเป็น feed/API ที่ได้รับสิทธิ์ (ตั้ง <code>MARKET_FEED_URL</code>) · ดึงไม่ได้ 2 ครั้งติด ระบบสลับร้านนั้นเป็นโหมดสำรวจเอง · ราคาจากการสำรวจเข้าตารางเดียวกับออนไลน์ (ติดป้าย "survey")</p></div>';
     /* แผนสำรวจ */
     var pl = PLAN;
-    if (pl.off) { h += '<div class="card" style="margin-top:12px"><h3>สำรวจหน้าร้าน <span class="pill a">ปิดอยู่</span></h3><p class="hint">' + esc(pl.note || '') + '</p><button class="btn" onclick="Intake.toggleSurvey(true)">เปิดโหมดสำรวจ</button></div>'; return h; }
+    h += '<div class="card" style="margin-top:12px"><h3>📄 ใบราคาคู่แข่งที่ลูกค้าถือ <span class="sub">ทางที่ถูกที่สุดที่จะรู้ราคาส่งของคู่แข่ง — ไม่ต้องไปร้าน</span></h3>' +
+      '<p class="hint">ลูกค้า B2B ได้ใบราคา Betagro / CPF / Makro B2B ทุกสัปดาห์อยู่แล้ว · เซลล์ถ่ายรูปส่งเข้า LINE OA หรือกดปุ่มนี้ · ระบบอ่านตัวเลข จับคู่ SKU แล้วนับเป็นราคาตลาดของเจ้านั้น (ป้าย "ใบราคา") · ได้ใบมาแล้วสัปดาห์นั้นไม่ต้องไปสำรวจร้านนั้น</p>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" onclick="Intake.sheet()">📷 อัปโหลด/ถ่ายรูปใบราคา</button></div>' +
+      (pl.lineInbox && pl.lineInbox.length ? '<p class="hint" style="margin:12px 0 4px"><b>รูป/ไฟล์ที่ส่งเข้า LINE รอตรวจ ' + pl.lineInbox.length + '</b></p><div class="inbox">' + pl.lineInbox.map(function (x) { return '<div><span>' + esc(ago(x.at)) + '</span><span>' + esc(x.from || '') + ' · ' + esc(x.file || '') + '</span><button class="btn" style="padding:2px 8px;font-size:11px;margin-left:auto" onclick="Intake.sheet({ lineId: ' + JSON.stringify(String(x.message_id)).replace(/"/g, '&quot;') + ' })">อ่านรูปนี้</button></div>'; }).join('') + '</div>' : '<p class="hint" style="margin-top:8px">ยังไม่มีรูปค้างจาก LINE</p>') + '</div>';
+        if (pl.off) { h += '<div class="card" style="margin-top:12px"><h3>สำรวจหน้าร้าน <span class="pill a">ปิดอยู่</span></h3><p class="hint">' + esc(pl.note || '') + '</p><button class="btn" onclick="Intake.toggleSurvey(true)">เปิดโหมดสำรวจ</button></div>'; return h; }
     h += '<p class="hint" style="margin:10px 0 -4px">โหมดสำรวจเปิดอยู่ · <a href="#" onclick="Intake.toggleSurvey(false);return false">ปิดชั่วคราว</a> ถ้ายังไม่มีคนลงพื้นที่</p>';
-    h += '<div class="card" style="margin-top:12px"><h3>สำรวจหน้าร้าน · สัปดาห์ ' + esc(pl.week) + ' <span class="sub">' + esc(pl.rules.per) + ' · ' + esc(pl.rules.due) + ' · บันทึกได้ 3 ทาง: ' + pl.rules.modes.join(' / ') + '</span></h3>' +
+    h += '<div class="card" style="margin-top:12px"><h3>สำรวจหน้าร้าน (แบบประหยัด) · สัปดาห์ ' + esc(pl.week) + ' <span class="sub">' + esc(pl.rules.per) + ' · ' + esc(pl.rules.due) + (pl.focus ? ' · โฟกัส ' + pl.focus.competitive + ' SKU หมวดแข่งขัน + ' + pl.focus.top + ' ตัวขายดี' : '') + ' · บันทึกได้ 3 ทาง: ' + pl.rules.modes.join(' / ') + '</span></h3>' +
       '<p class="hint">ระบบเลือก SKU ที่ควรไปดูให้แล้ว (ไม่เคยรู้ราคา → ขายเยอะก่อน · ราคาเก่าเกิน 7 วัน) ร้านละไม่เกิน 15 ตัว · ถ่ายรูปป้ายหรือพูดใส่โทรศัพท์ได้ ระบบจับคู่ชื่อให้</p><div class="plan">' +
-      pl.stores.map(function (s) { var pct = s.total ? Math.round(s.done / s.total * 100) : 0; return '<div><h4>' + esc(s.label) + ' <span class="pill2 ' + (s.mode === 'online' ? 'b' : 'a') + '">' + (s.mode === 'online' ? 'มีออนไลน์ · สำรวจเสริม' : 'ต้องสำรวจ') + '</span><span style="margin-left:auto;font-size:11px;color:var(--tx-3)">' + esc(s.assignee) + ' · ส่งภายใน ' + esc(s.due.slice(5).split('-').reverse().join('/')) + '</span></h4>' +
+      pl.stores.map(function (s) { var pct = s.total ? Math.round(s.done / s.total * 100) : 0; return '<div><h4>' + esc(s.label) + ' ' + (s.note ? '<span class="pill2 ' + (s.dueThisWeek ? (s.needed ? 'r' : 'g') : 'n') + '">' + esc(s.note) + '</span> ' : '') + (s.mode !== 'online' && !s.dueThisWeek ? '' : '<span class="pill2 ' + (s.mode === 'online' ? 'b' : 'a') + '">' + (s.mode === 'online' ? 'มีออนไลน์ · สำรวจเสริม' : 'ต้องสำรวจ') + '</span><span style="margin-left:auto;font-size:11px;color:var(--tx-3)">' + esc(s.assignee) + ' · ส่งภายใน ' + esc(s.due.slice(5).split('-').reverse().join('/')) + '</span></h4>' +
         '<div class="prog"><i style="width:' + pct + '%"></i></div><div style="font-size:11.5px;color:var(--tx-2);margin-bottom:6px">ทำแล้ว ' + s.done + '/' + s.total + ' SKU · ส่ง ' + s.submissions + ' ครั้ง</div>' +
-        '<ul>' + (s.targets.length ? s.targets.map(function (t) { return '<li class="' + (t.done ? 'done' : '') + '">' + (t.done ? '✓ ' : '○ ') + esc(t.name) + '<small>' + (t.done ? t.done + ' ฿' : esc(t.why)) + '</small></li>'; }).join('') : '<li style="color:var(--tx-3)">ครบแล้ว — ไม่มีตัวที่ต้องไปดู</li>') + '</ul>' +
+        '<ul>' + (s.targets.length ? s.targets.map(function (t) { return '<li class="' + (t.done ? 'done' : '') + '">' + (t.done ? '✓ ' : '○ ') + esc(t.name) + '<small>' + (t.done ? t.done + ' ฿' : esc(t.why)) + '</small></li>'; }).join('') : '<li style="color:var(--tx-3)">' + (s.dueThisWeek ? 'ครบแล้ว — ไม่มีตัวที่ต้องไปดู' : 'ยังไม่ถึงคิว — สัปดาห์นี้ไม่ต้องไป') + '</li>') + '</ul>' +
         '<div style="margin-top:8px"><button class="btn pri" style="padding:6px 12px;font-size:12px" onclick="Intake.survey(\'' + s.competitor_id + '\')">บันทึกการสำรวจ ' + esc(s.label) + '</button></div></div>'; }).join('') + '</div>' +
       (pl.recent.length ? '<p class="hint" style="margin:12px 0 4px"><b>ส่งล่าสุด</b></p><div class="inbox">' + pl.recent.slice(0, 8).map(function (r) { return '<div><span>' + esc(r.label) + (r.branch ? ' · ' + esc(r.branch) : '') + ' · ' + r.n + ' รายการ (' + esc({ type: 'พิมพ์', voice: 'พูด', photo: 'ถ่ายรูป', line: 'LINE' }[r.mode] || r.mode) + (r.photos ? ' · รูป ' + r.photos : '') + ')</span><span>' + esc(r.by) + '</span><span>' + ago(r.at) + '</span></div>'; }).join('') + '</div>' : '') + '</div>';
     return h;
   }
   /* ── โมดัลสำรวจ: พิมพ์ / พูด / ถ่ายรูป → แปลงเป็นรายการ → แก้ได้ → ส่ง ── */
   var SV = { store: '', mode: 'type', rows: [], photos: 0, rec: null };
-  function survey(store) {
-    css(); SV = { store: store, mode: 'type', rows: [], photos: 0, rec: null };
+  /* ใบราคาคู่แข่งที่ลูกค้าถือ (Betagro / CPF / Makro B2B …): เซลล์ถ่ายรูปส่งเข้ามา → อ่านตัวเลขในเบราว์เซอร์ → จับคู่ SKU → เป็นราคาตลาดของเจ้านั้น (ป้าย "ใบราคา") */
+  function sheet(opts) {
+    opts = opts || {}; css();
+    var comps = (PLAN && PLAN.stores && PLAN.stores.length ? PLAN.stores : (window.__COMPS || [])).map(function (s) { return { id: s.competitor_id || s.id, label: s.label }; });
+    var pick = function () {
+      var sel = document.getElementById('shStore'), v = sel.value, nw = (document.getElementById('shNew') || {}).value || '';
+      if (v === '__new' && !nw.trim()) { PX.toast('พิมพ์ชื่อแบรนด์/ร้านก่อน', 'bad'); return false; }
+      var dt = (document.getElementById('shDate') || {}).value || '';
+      survey(v === '__new' ? '__new' : v, { sheet: true, newStore: v === '__new' ? nw.trim() : '', date: dt, lineId: opts.lineId });
+      return true;
+    };
+    PX.modal({ title: '📄 ใบราคาคู่แข่งที่ลูกค้าถือ', sub: 'ของใครก็ได้ที่ลูกค้าได้รับ (Betagro · CPF · Makro B2B …) — ถ่ายรูป/อัปโหลด ระบบอ่านตัวเลขและจับคู่ SKU ให้ · ใช้แทนการไปสำรวจหน้าร้านได้ทั้งสัปดาห์',
+      html: '<label class="fld"><span>ใบราคาของ</span><select id="shStore" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:10px;font-family:var(--ff)" onchange="document.getElementById(\'shNewWrap\').hidden=this.value!==\'__new\'">' + comps.map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.label) + '</option>'; }).join('') + '<option value="__new">+ แบรนด์/ร้านอื่น (พิมพ์ชื่อ)</option></select></label>' +
+        '<label class="fld" id="shNewWrap" hidden><span>ชื่อแบรนด์/ร้าน</span><input id="shNew" placeholder="เช่น CPF"></label>' +
+        '<label class="fld"><span>วันที่บนใบราคา (ว่าง = วันนี้)</span><input id="shDate" type="date"></label>',
+      okText: 'ถัดไป → แนบรูป', onOk: function (v, close) { if (pick()) { close(); } return false; } });
+  }
+  function survey(store, opts) {
+    opts = opts || {}; css(); SV = { store: store, mode: opts.sheet ? 'sheet' : 'type', rows: [], photos: 0, rec: null, sheet: !!opts.sheet, newStore: opts.newStore || '', date: opts.date || '', lineId: opts.lineId || null };
     var st = (PLAN && PLAN.stores.filter(function (s) { return s.competitor_id === store; })[0]) || { label: store, targets: [] };
-    var m = PX.modal({ title: 'สำรวจราคาหน้าร้าน · ' + st.label, sub: 'พิมพ์ทีละบรรทัด "ชื่อสินค้า ราคา" · หรือกดพูด · หรือถ่ายรูปป้ายแล้วพิมพ์ตาม · ระบบจับคู่กับ SKU ของเราให้ ตรวจแล้วค่อยส่ง',
+    if (SV.sheet) st = { label: SV.newStore || st.label || store, targets: [] };
+    var m = PX.modal({ title: (SV.sheet ? '📄 ใบราคา · ' : 'สำรวจราคาหน้าร้าน · ') + st.label, sub: 'พิมพ์ทีละบรรทัด "ชื่อสินค้า ราคา" · หรือกดพูด · หรือถ่ายรูปป้ายแล้วพิมพ์ตาม · ระบบจับคู่กับ SKU ของเราให้ ตรวจแล้วค่อยส่ง',
       html: '<div class="sv-modes"><button class="on" data-m="type" onclick="Intake.mode(\'type\')">⌨️ พิมพ์</button><button data-m="voice" onclick="Intake.mode(\'voice\')">🎙 พูด</button><button data-m="photo" onclick="Intake.mode(\'photo\')">📷 ถ่ายรูปป้าย</button></div>' +
         '<div id="svPhoto" hidden><label class="fld"><span>รูปป้ายราคา (เลือกได้หลายรูป)</span><input type="file" id="svImg" accept="image/*" capture="environment" multiple></label><div id="svThumbs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px"></div><p class="hint">ถ่ายให้เห็นชื่อ+ราคาชัด · กด "ลองอ่านอัตโนมัติ" ถ้าเครื่องต่อเน็ต (ทดลอง) · ไม่ได้ก็พิมพ์ตามรูปในช่องด้านล่าง</p><button class="btn" style="margin-bottom:8px" onclick="Intake.ocr()">ลองอ่านป้ายอัตโนมัติ (ทดลอง)</button></div>' +
         '<div id="svVoice" hidden><button class="btn pri" id="svRec" onclick="Intake.rec()">🎙 เริ่มพูด</button> <span class="hint" style="display:inline">พูดว่า "สามชั้น หนึ่งร้อยแปดสิบเก้า" หรือ "สันคอ 178" · หยุดพูดแล้วกดอีกครั้ง</span></div>' +
@@ -158,14 +180,15 @@ window.Intake = (function () {
       onOk: function (v, close) {
         var ok = SV.rows.filter(function (r) { return r.ok && r.product_id; });
         if (!ok.length) { PX.toast('ยังไม่มีรายการที่จับคู่ได้ — กด "จับคู่ SKU" ก่อน', 'bad'); return false; }
-        return PX.post('/api/survey/submit', { store: SV.store, mode: SV.mode, rows: ok.map(function (r) { return { product_id: r.product_id, price: r.price, raw: r.raw }; }), photos: SV.photos, branch: document.getElementById('svBranch').value })
-          .then(function (r) { close(); PX.toast('บันทึกผลสำรวจ ' + esc(st.label) + ' ' + r.n + ' รายการ' + (r.unmatched.length ? ' · ข้าม ' + r.unmatched.length : '')); return load(true).then(function () { if (window.redrawTab) redrawTab(); }); });
+        return PX.post('/api/survey/submit', { store: SV.store === '__new' ? '' : SV.store, new_store: SV.newStore || undefined, mode: SV.mode, observed_at: SV.date || undefined, rows: ok.map(function (r) { return { product_id: r.product_id, price: r.price, raw: r.raw }; }), photos: SV.photos, branch: document.getElementById('svBranch').value || (SV.sheet ? 'ใบราคาที่ลูกค้าถือ' : '') })
+          .then(function (r) { close(); PX.toast((SV.sheet ? 'บันทึกใบราคา ' : 'บันทึกผลสำรวจ ') + esc(st.label) + ' ' + r.n + ' รายการ' + (r.unmatched.length ? ' · ข้าม ' + r.unmatched.length : '')); if (SV.lineId) PX.post('/api/inbox/done', { id: SV.lineId, status: 'ok', detail: 'อ่านแล้ว ' + r.n + ' รายการ → ' + st.label }).catch(function () {}); return load(true).catch(function () {}).then(function () { if (window.redrawTab) redrawTab(); }); });
       } });
     SV.el = m.el;
+    if (SV.sheet) { mode('photo'); if (SV.lineId) { fetch('/api/line/content?id=' + encodeURIComponent(SV.lineId), { credentials: 'same-origin' }).then(function (r) { if (!r.ok) throw new Error('โหลดรูปจาก LINE ไม่ได้ (' + r.status + ')'); return r.blob(); }).then(function (b) { var f = new File([b], 'line.jpg', { type: b.type || 'image/jpeg' }); SV.files = [f]; SV.photos = 1; var th = m.el.querySelector('#svThumbs'); var img = document.createElement('img'); img.style.cssText = 'height:72px;border-radius:8px;border:1px solid var(--line)'; img.src = URL.createObjectURL(b); th.appendChild(img); ocr(); }).catch(function (e) { PX.toast(esc(e.message), 'bad'); }); } }
     m.el.querySelector('#svImg').onchange = function () { var th = m.el.querySelector('#svThumbs'); th.innerHTML = ''; SV.photos = this.files.length; SV.files = this.files;
       [].forEach.call(this.files, function (f) { var img = document.createElement('img'); img.style.cssText = 'height:72px;border-radius:8px;border:1px solid var(--line)'; img.src = URL.createObjectURL(f); th.appendChild(img); }); PX.toast('แนบ ' + this.files.length + ' รูปแล้ว — พิมพ์ชื่อ+ราคาที่เห็นในรูปด้านล่าง หรือลองอ่านอัตโนมัติ'); };
   }
-  function mode(k) { SV.mode = k; var el = SV.el; el.querySelectorAll('.sv-modes button').forEach(function (b) { b.classList.toggle('on', b.dataset.m === k); }); el.querySelector('#svPhoto').hidden = k !== 'photo'; el.querySelector('#svVoice').hidden = k !== 'voice'; }
+  function mode(k) { if (k === 'photo' && SV.sheet) { SV.mode = 'sheet'; } else SV.mode = k; var kk = k === 'sheet' ? 'photo' : k; k = kk; var el = SV.el; el.querySelectorAll('.sv-modes button').forEach(function (b) { b.classList.toggle('on', b.dataset.m === k); }); el.querySelector('#svPhoto').hidden = k !== 'photo'; el.querySelector('#svVoice').hidden = k !== 'voice'; }
   function rec() {
     var el = SV.el, btn = el.querySelector('#svRec'), SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { PX.toast('เบราว์เซอร์นี้ไม่รองรับการพูด (ใช้ Chrome/Edge บนมือถือหรือเดสก์ท็อป) — พิมพ์แทนได้', 'bad'); return; }
@@ -188,12 +211,12 @@ window.Intake = (function () {
   }
   function parse() {
     var txt = SV.el.querySelector('#svText').value.trim(); if (!txt) { PX.toast('ยังไม่มีข้อความ', 'bad'); return; }
-    PX.post('/api/survey/parse', { text: txt, store: SV.store }).then(function (r) { SV.rows = r.rows; drawRows(); PX.toast('จับคู่ได้ ' + r.rows.filter(function (x) { return x.ok; }).length + '/' + r.rows.length + ' รายการ'); }).catch(function (e) { PX.toast(esc(e.message), 'bad'); });
+    PX.post('/api/survey/parse', { text: txt, store: SV.store === '__new' ? '' : SV.store }).then(function (r) { SV.rows = r.rows; drawRows(); PX.toast('จับคู่ได้ ' + r.rows.filter(function (x) { return x.ok; }).length + '/' + r.rows.length + ' รายการ'); }).catch(function (e) { PX.toast(esc(e.message), 'bad'); });
   }
   function drawRows() {
     var box = SV.el.querySelector('#svRows');
     box.innerHTML = SV.rows.map(function (r, i) {
-      if (r.ok) return '<div class="' + (r.warn ? 'warn' : '') + '"><div><b>' + esc(r.product) + '</b><small>' + esc(r.raw) + ' · ' + (r.how === 'exact' ? 'ตรง' : r.how === 'normalized' ? 'ตรง (ล้างชื่อ)' : 'เดา ' + Math.round(r.score * 100) + '%') + (r.warn ? ' · <span style="color:var(--amber)">' + esc(r.warn) + '</span>' : '') + '</small></div><b>' + r.price + ' ฿</b><button class="lnk3" onclick="Intake.drop(' + i + ')">ลบ</button></div>';
+      if (r.ok) return '<div class="' + (r.warn ? 'warn' : '') + '"><div><b>' + esc(r.product) + '</b><small>' + esc(r.raw) + ' · ' + (r.how === 'exact' ? 'ตรง' : r.how === 'normalized' ? 'ตรง (ล้างชื่อ)' : 'เดา ' + Math.round(r.score * 100) + '%') + (r.warn ? ' · <span style="color:var(--amber)">' + esc(r.warn) + '</span>') : '') + '</small></div><b>' + r.price + ' ฿</b><button class="lnk3" onclick="Intake.drop(' + i + ')">ลบ</button></div>';
       return '<div class="bad"><div><b>' + esc(r.raw) + '</b><small>' + esc(r.reason) + (r.alts && r.alts.length ? ' — เลือกสินค้า:' : '') + '</small>' + (r.alts && r.alts.length ? '<select onchange="Intake.pick(' + i + ',this.value)"><option value="">— เลือก —</option>' + r.alts.map(function (a) { return '<option value="' + esc(a.id) + '">' + esc(a.name) + '</option>'; }).join('') + '</select>' : '') + '</div><b>' + (r.price || '—') + '</b><button class="lnk3" onclick="Intake.drop(' + i + ')">ลบ</button></div>';
     }).join('');
   }
@@ -211,5 +234,5 @@ window.Intake = (function () {
     onOk: function (v, close) { return PX.post('/api/config', { competitors: SRC.sources.map(function (x) { return { id: x.id, label: x.label, tier: x.tier, source: x.id === cid ? v.source : x.source }; }) }, 'PUT').then(function () { close(); return load(true).then(function () { if (window.redrawTab) redrawTab(); }); }); } }); }
   function sample() { PX.csv('ทุน-AL-แม่แบบ.csv', [['สินค้า', 'ทุน (บาท/กก.)'], ['มันแข็งหมู', '65'], ['หมูบด มัน 20%', '101']]); }
   function toggleSurvey(on) { return PX.post('/api/config', { survey_mode: !!on }).then(function () { PLAN = null; return load(true).then(function () { if (window.redrawTab) redrawTab(); else if (window.draw) draw(); }); }).catch(function (e) { PX.toast(esc(e.message), 'bad'); }); }
-  return { load: load, toggleSurvey: toggleSurvey, perfStrip: perfStrip, sourcesTab: sourcesTab, survey: survey, mode: mode, rec: rec, parse: parse, pick: pick, drop: drop, ocr: ocr, testConn: testConn, editSource: editSource, sample: sample, thaiNum: thaiNum };
+  return { load: load, toggleSurvey: toggleSurvey, sheet: sheet, perfStrip: perfStrip, sourcesTab: sourcesTab, survey: survey, mode: mode, rec: rec, parse: parse, pick: pick, drop: drop, ocr: ocr, testConn: testConn, editSource: editSource, sample: sample, thaiNum: thaiNum };
 })();

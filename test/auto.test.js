@@ -58,10 +58,10 @@ test('ส่งเอง: ก๊อปลิงก์ (silent) ไม่นั�
   assert.equal(okj(call('anon', 'POST', '/api/line/webhook', { events: [{ source: { userId: 'Ux' }, message: { text: 'FH-ZZZZZ' } }] })).handled[0].result, 'unknown');
 });
 
-test('โหมดสำรวจหน้าร้านปิดเป็นค่าเริ่มต้น (เปิดได้จากตั้งค่า) · งานที่ยังไม่เคยรันไม่นับว่าล้ม', () => {
-  assert.equal(okj(call('ops', 'GET', '/api/survey')).off, true);
-  okj(call('ops', 'POST', '/api/config', { survey_mode: true })); assert.ok(!okj(call('ops', 'GET', '/api/survey')).off && okj(call('ops', 'GET', '/api/survey')).stores.length);
+test('โหมดสำรวจ: เปิดแบบประหยัดเป็นค่าเริ่มต้น · ปิด/เปิดได้จากตั้งค่า · งานที่ยังไม่เคยรันไม่นับว่าล้ม', () => {
+  assert.ok(okj(call('ops', 'GET', '/api/survey')).lean);
   okj(call('ops', 'POST', '/api/config', { survey_mode: false })); assert.equal(okj(call('ops', 'GET', '/api/survey')).off, true);
+  okj(call('ops', 'POST', '/api/config', { survey_mode: true })); assert.ok(!okj(call('ops', 'GET', '/api/survey')).off && okj(call('ops', 'GET', '/api/survey')).stores.length);
   const h = okj(call('ops', 'GET', '/api/health'));
   assert.ok(h.jobs.every(j => !j.stale), 'เพิ่งเปิดระบบ งานรายวันยังไม่ถึงรอบ ต้องไม่ขึ้น "ขาดรอบ": ' + JSON.stringify(h.jobs.map(j => [j.key, j.status, j.stale])));
   assert.equal(h.ok, true);

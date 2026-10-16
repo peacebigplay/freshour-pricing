@@ -195,6 +195,14 @@ const server = http.createServer(async (req, res) => {
   if (role === 'sale' && !rep && (store.docs.state.sales_reps || []).length) { role = null; rep = null; }
   try {
     if (p === '/api/connectors/test' && req.method === 'POST') { if (!role || store.LVL[role] < 2) return json(res, { status: 403, body: { error: 'ไม่มีสิทธิ์' } }); const b = await readBody(req); const r = await testConnector(b.competitor_id); return json(res, { status: 200, body: r }); }
+    if (p === '/api/line/content') {   /* รูป/ไฟล์ที่ส่งเข้า LINE OA → ดึงมาอ่านในเบราว์เซอร์ (OCR) — เฉพาะ Pricing ขึ้นไป */
+      if (!role || store.LVL[role] < 2) return json(res, { status: 403, body: { error: 'ไม่มีสิทธิ์' } });
+      if (!LINE_TOKEN) return json(res, { status: 503, body: { error: 'ยังไม่ตั้ง LINE_CHANNEL_TOKEN' } });
+      const mid = String(u.searchParams.get('id') || '').replace(/[^0-9A-Za-z_-]/g, ''); if (!mid) return json(res, { status: 400, body: { error: 'ไม่มี id' } });
+      const lr = await fetch('https://api-data.line.me/v2/bot/message/' + mid + '/content', { headers: { authorization: 'Bearer ' + LINE_TOKEN } });
+      if (!lr.ok) return json(res, { status: 502, body: { error: 'LINE ' + lr.status } });
+      const buf = Buffer.from(await lr.arrayBuffer()); res.writeHead(200, { 'content-type': lr.headers.get('content-type') || 'application/octet-stream', 'cache-control': 'private, max-age=300' }); return res.end(buf);
+    }
     if (p === '/api/market-feed-sample') { if (!roleOf(req)) return json(res, { status: 401, body: { error: 'กรุณาเข้าระบบ' } }); return send(res, 200, fs.readFileSync(path.join(DATA, 'market-feed-sample.json'))); }
     if (p.startsWith('/api/')) {
       const body = req.method === 'GET' || req.method === 'HEAD' ? {} : await readBody(req);

@@ -9,6 +9,7 @@
 <script src="/peach.js"></script>
 <script src="/charts.js"></script>
 <script src="/dash.js"></script>
+<script src="/intake.js"></script>
 <style>
 /* ── Issues dashboard section (list view) ────────────────── */
 .id-kpi-row{display:flex;gap:8px;margin:8px 0 10px}
@@ -41,7 +42,10 @@ var D = null, G = 'all', Q = '', PG = 0, PER = 14;
 PX.shell('sale',
   '<div class="float"><div class="ic">📋</div><b>ส่งราคาให้ลูกค้า</b>' +
   '<span>สร้างใบเสนอราคา / ส่ง LINE</span>' +
-  '<button onclick="sendQuote()">สร้างรายการเสนอราคา</button></div>');
+  '<button onclick="sendQuote()">สร้างรายการเสนอราคา</button>' +
+  '<button style="margin-top:6px;background:rgba(255,255,255,.12);color:#fff" onclick="window.__COMPS=(window.__COMPS||[]);Intake.sheet()">📷 ส่งใบราคาคู่แข่งที่ลูกค้าถือ</button></div>');
+/* เซลล์เห็นใบราคา Betagro/CPF ที่ลูกค้าได้รับ → ถ่ายรูปส่งที่นี่ (หรือส่งเข้า LINE OA) = ราคาตลาดเข้าระบบโดยไม่ต้องมีใครไปร้าน */
+PX.get('/api/sources').then(function (j) { window.__COMPS = (j.sources || j || []).map(function (x) { return { id: x.id, label: x.label }; }); }).catch(function () {});
 
 /* ── ส่งราคาให้ลูกค้า: ดึงใบราคาจริงมาให้คัดลอกไปวางในไลน์ ──────────
    /api/quote คืนข้อความที่จัดรูปแบบไว้แล้ว ไม่ต้องประกอบเองในหน้าจอ */

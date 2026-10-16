@@ -835,6 +835,7 @@
     }
     function config(role, body) {
       var changed = [];
+      if (body.survey_max_sku != null) { var smx = Math.max(5, Math.min(40, Math.round(num(body.survey_max_sku)) || 15)); CFG.survey_max_sku = smx; changed.push('survey_max_sku'); }
       if (body.survey_mode != null) { CFG.survey_mode = !!body.survey_mode && body.survey_mode !== '0' && body.survey_mode !== 'false'; changed.push('survey_mode'); audit(role, 'config', 'โหมดสำรวจหน้าร้าน ' + (CFG.survey_mode ? 'เปิด' : 'ปิด')); }
       if (Array.isArray(body.competitors)) {
         body.competitors.forEach(function (c) { D.pricelist.comps.forEach(function (x) { if (x.id === c.id) { x.label = c.label || x.label; x.tier = c.tier || x.tier; x.source = c.source || ''; } });
