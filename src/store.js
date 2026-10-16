@@ -497,7 +497,7 @@
     function meOf(role, rep) {
       if (!role || role === 'anon') return { role: null, needPin: needPin };
       var base = D['me:' + (role === 'admin' ? 'boss' : role)] || { tabs: [], dispatch: false, seeCost: false };
-      return Object.assign({}, base, { role: role, needPin: needPin, dataNote: opts.dataNote || '', sampleMarket: !!opts.sampleMarket, rep: repOf(rep), reps: LVL[role] >= 2 ? repsView(role).reps : undefined });
+      return Object.assign({}, base, { role: role, needPin: needPin, dataNote: (opts.dataNote || '') + (CFG.cost_basis ? ' · ' + CFG.cost_basis : ''), costBasis: CFG.cost_basis || '', sampleMarket: !!opts.sampleMarket, rep: repOf(rep), reps: LVL[role] >= 2 ? repsView(role).reps : undefined });
     }
     function login(body) {
       var role = String(body.role || ''), pin = body.pin == null ? '' : String(body.pin);
