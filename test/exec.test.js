@@ -53,3 +53,14 @@ test('หลังระบบทำรอบนี้ + คนแก้รา�
   assert.equal(g.basis, 'invoice'); assert.equal(g.actual, Math.round((line.offer - P.cost) / line.offer * 1000) / 10);
   assert.equal(e.ytdSku.length, 1); assert.equal(e.ytdSku[0].kg, 100);
 });
+
+test('Decide now = รีวิวแล้วมอบหมาย: assign → เข้าคิวพร้อม owner/กำหนดวัน + log · ปิดเรื่องได้ · ops ไม่มีสิทธิ์', () => {
+  assert.equal(call('ops', 'POST', '/api/exec-attention/assign', { title: 'x', owner: 'ops' }).status, 403);
+  const r = okj(call('boss', 'POST', '/api/exec-attention/assign', { title: 'กลุ่ม เครื่องใน margin ต่ำกว่า Target', detail: 'ราคาสัญญา 44 บรรทัด', owner: 'ops', owner_name: 'พี่จุ๋ม (Pricing)', due_at: '2026-10-20', severity: 'medium', note: 'ขึ้นราคารอบหน้า' }));
+  assert.ok(r.item.id && r.item.status === 'assigned' && r.item.owner_name === 'พี่จุ๋ม (Pricing)');
+  const q = okj(call('boss', 'GET', '/api/exec-attention')); assert.ok(q.items.some(x => x.id === r.item.id && x.due_at === '2026-10-20'));
+  assert.ok(docs.events.some(e => e.action === 'assign' && /มอบหมาย/.test(e.detail) && /พี่จุ๋ม/.test(e.detail)));
+  okj(call('boss', 'POST', '/api/exec-attention/done', { id: r.item.id }));
+  assert.equal(okj(call('boss', 'GET', '/api/exec-attention')).items.find(x => x.id === r.item.id).status, 'done');
+  assert.equal(call('boss', 'POST', '/api/exec-attention/assign', { title: '' }).status, 400);
+});

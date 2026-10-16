@@ -1259,6 +1259,19 @@
         case '/api/inbox/done': need(2); var ib = D.inbox.filter(function (x) { return x.message_id === String(body.id || ''); })[0]; if (ib) { ib.status = body.status || 'ok'; ib.detail = body.detail || ib.detail; } return ok({ ok: !!ib });
         case '/api/sources/fail': need(2); return ok(sourceFail(body.competitor_id, body.why || 'ดึงไม่ได้'));
         case '/api/inbox/note': need(2); D.inbox.unshift({ at: stamp(), file: body.file, status: body.status || 'ok', detail: body.detail || '' }); if (D.inbox.length > 200) D.inbox.length = 200; return ok();
+        /* Attention Queue ของผู้บริหาร: รีวิวแล้ว "มอบหมาย" คนรับผิดชอบ — ผู้บริหารไม่ต้องลงมือบันทึก/แก้เอง */
+        case '/api/exec-attention/assign': need(3); {
+          var XA = D['exec-attention'] = D['exec-attention'] || { items: [] }; XA.items = XA.items || [];
+          var ttl = String(body.title || '').trim(); if (!ttl) return err(400, 'ต้องมีหัวข้อ');
+          var it = { id: 'xa' + Date.now().toString(36) + (XA.items.length + 1), at: stamp(), by: role, title: ttl.slice(0, 160), detail: String(body.detail || '').slice(0, 400), owner: String(body.owner || '').slice(0, 40), owner_name: String(body.owner_name || body.owner || '').slice(0, 60), due_at: body.due_at ? String(body.due_at).slice(0, 10) : null, severity: ['high', 'medium', 'low'].indexOf(body.severity) >= 0 ? body.severity : 'medium', source: String(body.source || 'exec').slice(0, 40), status: 'assigned', note: String(body.note || '').slice(0, 300) };
+          XA.items.unshift(it); if (XA.items.length > 300) XA.items.length = 300;
+          logEvent({ actor: role, kind: 'human', action: 'assign', entity: 'attention', entity_id: it.id, detail: 'มอบหมาย "' + it.title + '" → ' + it.owner_name + (it.due_at ? ' ภายใน ' + it.due_at : ''), status: 'ok' });
+          return ok({ ok: true, item: it }); }
+        case '/api/exec-attention/done': need(3); {
+          var XD = (D['exec-attention'] || { items: [] }).items || [], di = XD.filter(function (x) { return x.id === body.id; })[0]; if (!di) return err(404, 'ไม่พบรายการ');
+          di.status = body.status === 'reopen' ? 'assigned' : 'done'; di.done_at = di.status === 'done' ? stamp() : null;
+          logEvent({ actor: role, kind: 'human', action: 'assign', entity: 'attention', entity_id: di.id, detail: (di.status === 'done' ? 'ปิดเรื่อง "' : 'เปิดเรื่องใหม่ "') + di.title + '"', status: 'ok' });
+          return ok({ ok: true, item: di }); }
         case '/api/auto-round': need(2); return autoRound(role, body);
         case '/api/auto-sheets': need(2); body.step = 'customers'; return autoRound(role, body);
         case '/api/cost-flags/decide': need(2); return decideFlag(role, body);

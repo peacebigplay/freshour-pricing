@@ -183,7 +183,7 @@ function jsq(v) { return JSON.stringify(String(v == null ? '' : v)).replace(/[&<
 var ACT_ERR = '';
 var D = null, GD = null, SD = null, CG = null, SL = null, ACT = null, FINVIEW = 'revenue', EXEC_VIEW = 'overview';
 var EXEC_TAB = 'overview';
-var OPSPERF = null, DLV = null, AR = null, PRS = null, ROLE = '', EXC = null, EXC_ERR = '';   /* EXC = /api/exec (Decision Cockpit: AI perf · flow · คอขวด · commercial · margin กลุ่ม · ลูกค้า · เซลล์ · AI เตือนแม่น · automation · decisions) */   /* ข้อมูลจริงจาก /api/ops-perf · deliveries · ar · prospects */
+var OPSPERF = null, DLV = null, AR = null, PRS = null, ROLE = '', EXC = null, EXC_ERR = '', REPS = [];   /* EXC = /api/exec (Decision Cockpit: AI perf · flow · คอขวด · commercial · margin กลุ่ม · ลูกค้า · เซลล์ · AI เตือนแม่น · automation · decisions) */   /* ข้อมูลจริงจาก /api/ops-perf · deliveries · ar · prospects */
 try { EXEC_TAB = sessionStorage.getItem('exec_tab') || 'overview'; } catch(e) {}
 
 PX.shell('exec',
@@ -200,23 +200,36 @@ function loadAttention() {
     EXEC_DECISIONS = (res && res.items) || [];
     var el = document.getElementById('exec-att-db');
     if (!el) return;
-    if (!EXEC_DECISIONS.length) {
-      el.innerHTML = '<div class="ex-att-empty">ไม่มีรายการที่ต้องตัดสินใจ</div>';
-      return;
-    }
-    el.innerHTML = EXEC_DECISIONS.map(function(x) {
+    var open = EXEC_DECISIONS.filter(function(x){ return x.status !== 'done'; }), done = EXEC_DECISIONS.filter(function(x){ return x.status === 'done'; });
+    if (!EXEC_DECISIONS.length) { el.innerHTML = '<div class="ex-att-empty">ยังไม่มีเรื่องที่มอบหมายไว้ — กด "มอบหมาย" ที่รายการด้านบนเพื่อส่งให้คนรับผิดชอบ</div>'; return; }
+    el.innerHTML = '<div class="ex-kpi-row-label" style="margin:10px 0 6px">มอบหมายแล้ว · รอเจ้าของงาน '+open.length+(done.length?' · ปิดแล้ว '+done.length:'')+'</div>'+open.map(function(x) {
       var sev = x.severity === 'high' ? 'red' : x.severity === 'medium' ? 'amber' : 'green';
       return '<div class="ex-att-db-row '+sev+'">'+
-        '<span class="ex-att-b"><b>'+esc(x.title)+'</b>'+(x.detail?'<span>'+esc(x.detail)+'</span>':'')+'</div>'+
-        (x.due_at?'<small>ครบกำหนด '+esc(x.due_at)+'</small>':'')+
-        (x.owner?'<small>'+esc(x.owner)+'</small>':'')+
-        '</div>';
-    }).join('');
+        '<span class="ex-att-b"><b>'+esc(x.title)+'</b>'+(x.detail?'<span>'+esc(x.detail)+'</span>':'')+(x.note?'<span>โน้ต: '+esc(x.note)+'</span>':'')+'</span>'+
+        '<small>👤 '+esc(x.owner_name||x.owner||'—')+'</small>'+
+        (x.due_at?'<small>ภายใน '+esc(x.due_at)+'</small>':'')+
+        '<small style="color:var(--tx-3)">มอบหมาย '+esc(String(x.at||'').slice(5,16).replace('T',' '))+'</small>'+
+        '<button type="button" class="btn" style="padding:3px 10px;font-size:11.5px" onclick="attDone('+jsq(x.id)+')">ปิดเรื่อง</button></div>';
+    }).join('')+(done.length?'<details style="margin-top:6px;font-size:12px;color:var(--tx-3)"><summary style="cursor:pointer">ปิดแล้ว '+done.length+' เรื่อง</summary>'+done.slice(0,10).map(function(x){ return '<div style="padding:3px 0">✓ '+esc(x.title)+' · '+esc(x.owner_name||'')+'</div>'; }).join('')+'</details>':'');
   }).catch(function() {
     var el = document.getElementById('exec-att-db');
     if (el) el.innerHTML = '<div class="ex-att-empty">โหลดข้อมูลไม่ได้ — ลองรีเฟรช</div>';
   });
 }
+/* ผู้บริหารรีวิว → มอบหมายคนรับผิดชอบ (Pricing / แอดมิน / เซลล์) + กำหนดวัน — ไม่ต้องลงมือบันทึก/แก้เอง */
+function assignModal(title, detail, severity, source) {
+  var owners = [['ops','พี่จุ๋ม (Pricing)'],['admin','แอดมิน / บัญชี']].concat((REPS||[]).map(function(r){ return ['sale|'+r.id, r.name+' (เซลล์)']; }));
+  var sel = 'style="width:100%;font-family:var(--ff);font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:10px"';
+  var d = new Date(); d.setDate(d.getDate()+3); var due = d.toISOString().slice(0,10);
+  PX.modal({ title: 'มอบหมาย · '+title, sub: detail||'', fields: [{k:'due_at',label:'ให้เสร็จภายใน',type:'date',value:due},{k:'note',label:'โน้ตถึงเจ้าของงาน (ถ้ามี)'}],
+    html: '<label class="fld"><span>คนรับผิดชอบ</span><select data-k="owner" '+sel+'>'+owners.map(function(o){ return '<option value="'+o[0]+'">'+esc(o[1])+'</option>'; }).join('')+'</select></label>',
+    okText: 'มอบหมาย', onOk: function(v, close) {
+      var selEl = document.querySelector('.mdl [data-k="owner"]'), owner = selEl ? selEl.value : 'ops', ownerName = selEl ? selEl.options[selEl.selectedIndex].text : 'Pricing';
+      return PX.post('/api/exec-attention/assign', { title: title, detail: detail||'', owner: owner, owner_name: ownerName, due_at: v.due_at||null, note: v.note||'', severity: severity||'medium', source: source||'exec' })
+        .then(function(){ close(); PX.toast('มอบหมาย "'+esc(title)+'" ให้ '+esc(ownerName)+' แล้ว'); loadAttention(); }).catch(function(e){ PX.toast(esc(e.message),'bad'); return false; });
+    } });
+}
+function attDone(id) { PX.post('/api/exec-attention/done', { id: id }).then(function(){ PX.toast('ปิดเรื่องแล้ว'); loadAttention(); }).catch(function(e){ PX.toast(esc(e.message),'bad'); }); }
 
 function pct(a,b){ return b ? Math.round(a/b*1000)/10 : 0; }
 function mm(n){ return n >= 1000000 ? (n/1000000).toFixed(2)+'M' : n >= 1000 ? Math.round(n/1000)+'K' : money(n); }
@@ -585,20 +598,21 @@ function resolutionActual(){
 }
 function attentionRows(modal){
   var pending = SD && SD.pending ? SD.pending : 0;
-  /* ระบบ-derived rows: ราคา/service/category มาจาก DB จริง */
-  var rows = [
-    serviceAttention(),
-    categoryAttention(),
-    arAttention(),
-    deliveryAttention(),
-    prospectAttention(),
-    {lv:pending?'amber':'green',ic:'🧾',t:pending ? ('ใบราคายังไม่ถึงลูกค้า '+pending+' เจ้า') : 'ใบราคาส่งครบแล้ว',s:pending?'ทีมขายยังมีใบที่ต้องส่งจากรอบล่าสุด':'ไม่มีใบราคาค้างส่งในรอบนี้',a:pending?'เปิดรายการค้าง':'ดูสถานะ',target:'exec-sales'}
-  ];
-  var html = rows.map(function(x){
-    return '<button type="button" class="ex-att '+x.lv+' clickable" data-exec-view="'+x.target.replace('exec-','')+'">'+'<span class="ex-att-ic">'+x.ic+'</span><span class="ex-att-b"><b>'+x.t+'</b><span>'+x.s+'</span></span><span class="ex-att-go">'+x.a+' →</span></button>';
+  /* แถวจากระบบ: ราคา/service/category/AR/ขนส่ง/prospect — ผู้บริหารเห็นเฉพาะที่ "เป็นปัญหา" (แดง/ส้ม) · ที่ปกติหรือยังไม่มีข้อมูลสรุปบรรทัดเดียว */
+  var rows = [ serviceAttention(), categoryAttention(), arAttention(), deliveryAttention(), prospectAttention(),
+    {lv:pending?'amber':'green',ic:'🧾',t:pending ? ('ใบราคายังไม่ถึงลูกค้า '+pending+' เจ้า') : 'ใบราคาส่งครบแล้ว',s:pending?'ทีมขายยังมีใบที่ต้องส่งจากรอบล่าสุด':'ทุกเจ้าได้รับราคารอบนี้แล้ว',a:'เปิดรายการค้าง',target:'exec-top'} ];
+  var TT={policy:'Pricing Policy',market:'Market Strategy',commercial:'Commercial',process:'Resource / Process'};
+  (EXC?EXC.decisions:[]).forEach(function(d){ rows.unshift({lv:d.type==='commercial'?'red':'amber',ic:{policy:'🎯',market:'📈',commercial:'🤝',process:'⚙️'}[d.type]||'•',t:TT[d.type]+' · '+d.title,s:d.why+' · ตัวเลือก: '+d.options.join(' / '),a:'ดูรายละเอียด',href:d.href,sev:d.type==='commercial'?'high':'medium'}); });
+  var problems = rows.filter(function(x){ return x.lv!=='green'; }), fine = rows.filter(function(x){ return x.lv==='green'; });
+  var html = problems.map(function(x){
+    var go = x.href ? '<a href="'+esc(x.href)+'" style="font-size:11.5px;color:var(--blue);white-space:nowrap">'+esc(x.a)+' →</a>' : (x.target ? '<button type="button" class="ex-att-go" style="font-size:11.5px" data-exec-view="'+x.target.replace('exec-','')+'">'+esc(x.a)+' →</button>' : '');
+    return '<div class="ex-att '+x.lv+'" style="cursor:default"><span class="ex-att-ic">'+x.ic+'</span><span class="ex-att-b"><b>'+x.t+'</b><span>'+x.s+'</span></span>'+
+      '<span style="display:flex;gap:8px;align-items:center;white-space:nowrap">'+go+'<button type="button" class="btn pri" style="padding:5px 12px;font-size:12px" onclick="assignModal('+jsq(x.t.replace(/<[^>]+>/g,''))+','+jsq(String(x.s).replace(/<[^>]+>/g,''))+','+jsq(x.sev||(x.lv==='red'?'high':'medium'))+','+jsq(x.href||x.target||'')+')">มอบหมาย →</button></span></div>';
   }).join('');
-  /* DB-backed decisions จาก executive_decisions */
-  html += '<div id="exec-att-db" class="ex-att-db"><span style="color:var(--tx-3);font-size:13px">กำลังโหลด Attention Queue...</span></div>';
+  if(!problems.length) html += '<div class="ex-att-empty">ไม่มีเรื่องต้องตัดสินใจตอนนี้</div>';
+  if(fine.length) html += '<div style="font-size:12px;color:var(--tx-3);padding:6px 2px">ปกติ / ยังไม่มีข้อมูล: '+fine.map(function(x){ return esc(x.t.replace(/<[^>]+>/g,'')); }).join(' · ')+'</div>';
+  /* เรื่องที่มอบหมายไปแล้ว (DB) */
+  html += '<div id="exec-att-db" class="ex-att-db"><span style="color:var(--tx-3);font-size:13px">กำลังโหลด…</span></div>';
   return html;
 }
 
@@ -1256,7 +1270,7 @@ function draw(){
   h += '<div class="ex-period">'+roundPill()+'</div>';
 
   /* ── ของเดิมทั้งหมดคงไว้ · ส่วน Decision Cockpit เพิ่ม "ด้านบน" ของแต่ละแท็บ (ไม่แทนที่) ── */
-  var p1 = '<div class="ex-decision-first"><div class="ex-hierarchy"><span>Decide now</span><b>สิ่งที่ต้องตัดสินใจหรือส่งต่อเจ้าของงานวันนี้</b></div><div class="ex-att-list">'+attentionRows(false)+'</div></div>';
+  var p1 = '<div class="ex-decision-first"><div class="ex-hierarchy"><span>Decide now</span><b>รีวิวแล้วมอบหมายคนรับผิดชอบ — ผู้บริหารไม่ต้องบันทึก/แก้เอง</b></div><div class="ex-att-list">'+attentionRows(false)+'</div></div>';
 
   var p2 = '<div class="ex-section"><div class="ex-hierarchy"><span>Business health</span><b>เงินวันนี้ → กำไร/อนาคต → คุณภาพการส่งมอบ</b></div>'+
     '<div class="ex-kpi-row-label">เงินวันนี้ · Sales → Invoice → Cash</div><div class="ex-kpis">'+
@@ -1279,9 +1293,11 @@ function draw(){
 
   /* Decision Cockpit (ลอจิคผู้บริหาร) — วางบนสุดของแต่ละแท็บ แล้วตามด้วยของเดิมครบ */
   var cOverview = aiPricingPanel()+'<div id="exAfterAI"></div>';   /* Overview = AI Pricing Performance → ผลลัพธ์รอบ → Pricing intelligence เดิม (ไม่มี flow/คอขวด/decisions/pricing actions — เจ้าของระบบตัดออก) */
+  /* ลำดับตามเจ้าของระบบ: Commercial → Sales performance → ลูกค้าที่ต้องลงมาช่วย → การเงิน/Prospect (เดิม) → Margin by group (รองสุดท้าย) → Decide now (มอบหมาย) */
   var cHealth = commercialPanel()+
-    '<div class="ex-section"><div class="ex-hierarchy"><span>Margin</span><b>margin จริงเทียบ Target ของแต่ละกลุ่มสินค้า</b></div>'+marginGroupPanel()+'</div>'+
-    '<div class="ex-section"><div class="ex-hierarchy"><span>Customer / Sales</span><b>ลูกค้าเจ้าไหนควรลงมาช่วยเอง · เซลล์คนไหนพอร์ตใหญ่แต่ปิดไม่ได้</b></div>'+customerPanel()+'<div style="height:12px"></div>'+salesPanel()+'</div>';
+    '<div class="ex-section"><div class="ex-hierarchy"><span>Sales performance</span><b>เซลล์คนไหนพอร์ตใหญ่แต่ปิดไม่ได้ — ขนาดพอร์ต + ความสามารถในการปิด</b></div>'+salesPanel()+'</div>'+
+    '<div class="ex-section"><div class="ex-hierarchy"><span>Customer</span><b>ลูกค้าเจ้าไหนควรลงมาช่วยเอง — เฉพาะ exception</b></div>'+customerPanel()+'</div>';
+  var cMargin = '<div class="ex-section"><div class="ex-hierarchy"><span>Margin</span><b>margin จริงเทียบ Target ของแต่ละกลุ่มสินค้า</b></div>'+marginGroupPanel()+'</div>';
   var cOps = '<div class="ex-section"><div class="ex-hierarchy"><span>Automation</span><b>ระบบทำงานปกติไหม · AI เตือนแม่นไหม — ถ้าปกติผู้บริหารไม่ต้องทำอะไร</b></div>'+automationPanel()+'<div style="height:12px"></div>'+intelPanel()+'</div>';
 
   var TABS=[
@@ -1294,7 +1310,7 @@ function draw(){
     return '<button type="button" role="tab" data-exec-tab="'+t[0]+'" class="'+(EXEC_TAB===t[0]?'on':'')+'" onclick="execTab('+jsq(t[0])+')"><b>'+t[1]+'</b><span>'+t[2]+'</span></button>';
   }).join('')+'</div>';
   h += '<div data-exec-pane="overview"'+(EXEC_TAB==='overview'?'':' hidden')+'>'+cOverview+p5+'</div>';
-  h += '<div data-exec-pane="health"'+(EXEC_TAB==='health'?'':' hidden')+'>'+cHealth+p2+p3+p1+'</div>';
+  h += '<div data-exec-pane="health"'+(EXEC_TAB==='health'?'':' hidden')+'>'+cHealth+p2+p3+cMargin+p1+'</div>';
   h += '<div data-exec-pane="ops"'+(EXEC_TAB==='ops'?'':' hidden')+'>'+cOps+p4+'</div>';
   h += '</div></div>';
 
@@ -1316,7 +1332,8 @@ Promise.all([
   PX.get('/api/service-logs').then(function(l){SL=l;}).catch(function(){SL=null;}),
   PX.get('/api/invoices').then(function(a){ACT=a;ACT_ERR='';}).catch(function(e){ACT=null;ACT_ERR=(e&&e.message)||'โหลดไม่ได้';}),
   PX.get('/api/me').then(function(me){ROLE=me&&me.role||'';}).catch(function(){}),
-  PX.get('/api/exec').then(function(x){EXC=x;}).catch(function(e){EXC=null;EXC_ERR=(e&&e.message)||'โหลดไม่ได้';})
+  PX.get('/api/exec').then(function(x){EXC=x;}).catch(function(e){EXC=null;EXC_ERR=(e&&e.message)||'โหลดไม่ได้';}),
+  PX.get('/api/reps').then(function(r){REPS=(r&&r.reps)||[];}).catch(function(){REPS=[];})
 ]).then(reloadOps).then(loadAttention).catch(PX.fail);
 
 Dash.mount('exec');   /* หน้าสรุปตามบทบาท (dash.js) — วางบนหน้าแรก วาดซ้ำเมื่อหน้าแม่วาดใหม่ */
