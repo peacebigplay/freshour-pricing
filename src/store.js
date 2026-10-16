@@ -537,8 +537,14 @@
     function productView(pid) {
       var P = product(pid); if (!P) return null;
       var bl = D.board.lines.filter(function (l) { return l.id === pid; })[0] || {};
+      var PR = D.price_rounds, prs = PR && PR.sku && PR.sku[pid], spx = spOf(pid) || {}, histSrc = 'ใบราคาที่ประกาศ', histMock = false;
       var hist = (S.dispatched.items || []).filter(function (i) { return i.product_id === pid; }).map(function (i) { return { price: i.w2, cost: i.cost }; });
-      hist.push({ price: P.w2, cost: P.cost });
+      if (prs && prs.length) {   /* มีประวัติรายรอบที่นำเข้า (ตอนนี้ = ชุดจำลอง 6 รอบ) → ใช้แทน และบอกที่มาให้หน้าจอติดป้าย */
+        var lbl = {}; (PR.rounds || []).forEach(function (r) { lbl[r.k] = r.label; });
+        hist = prs.slice().sort(function (a, b) { return a.k - b.k; }).map(function (r) { return { label: lbl[r.k] || String(r.k), price: r.w2, cost: r.cost, market: r.market }; });
+        histSrc = PR.title || PR.source; histMock = PR.source === 'mock';
+      }
+      hist.push({ label: (D.history[0] || {}).label || 'ปัจจุบัน', price: spx.sheet_price > 0 ? spx.sheet_price : P.w2, cost: P.cost, current: true });
       var r0 = D.desk.rows.filter(function (r) { return r.id === pid; })[0] || {}, v0x = r0.v21 || {}, pol = policyOf(P.grp);
       return { floorPct: floorPct(), haggle: CFG.haggle_baht,
         p: { grp: P.grp, name: P.name, vol: bl.vol || 0, cost: P.cost, w2: P.w2, margin: P.margin, floorPrice: priceAt(P.cost || 0, pol.min), retail: P.retail, s5: P.s5, s10: P.s10, saleFloor: P.saleFloor, unit: P.unit, add: (spOf(P.id) || {}).add_baht },
@@ -546,7 +552,7 @@
         costMaster: costMasterOf(pid), versions: S.price_versions.filter(function (x) { return x.product_id === pid; }).slice(0, 10),
         marks: (P.marks || []).map(function (m) { return { label: m.label, tier: m.tier, price: m.price || 0, state: m.state, age: m.age }; }),
         customers: D.guard.lines.filter(function (l) { return l.pid === pid; }).map(function (l) { return { name: l.cust, price: l.locked, margin: l.margin }; }),
-        hist: hist };
+        hist: hist, histSrc: histSrc, histMock: histMock };
     }
     function quoteFor(cid, tier) {
       var sh = sheetFor(cid); if (!sh) return err(404, 'ไม่พบลูกค้า');

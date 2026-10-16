@@ -20,6 +20,7 @@ function jsq(v) { return JSON.stringify(String(v == null ? '' : v)).replace(/[&<
 var GD = null, EXC = {}, SAVING = false, SEL = {};   /* EXC = เหตุผลข้อยกเว้นของแถวที่ยืนยันต่ำกว่าขั้นต่ำ */
 var D = null, CUST = '', CQ = '', Q = '', EDIT = {}, ALL = false, VIEW = 'home', G = 'ทั้งหมด', REQ = null, NEGO = null, EDITR = {}, EDIT5 = {}, EDIT10 = {}, UNPRICED = 'SUGGEST', STRATEGY = 'rec', SORT = 'crisis', CSORT = 'orders', CONF = {}, LASTSAVE = '', PAGE = 0, PER = 20, CUSTOMER_CACHE = {}, HANDED = {};
 var PREV_PERIOD = '03–09/09', CUR_PERIOD = '10–16/09';
+var HIST = null;   /* ประวัติทุนราย SKU ย้อนหลัง (/api/sku-history) — อ้างอิงอย่างเดียว ติดป้ายถ้าเป็นข้อมูลจำลอง */
 
 (function () {
   var q = new URLSearchParams(__NAV.search);
@@ -53,6 +54,12 @@ function staleRow(r) {
   return CUST ? !!(v.baseChanged || v.costChanged || v.baseApproved === false)
               : !!(v.central && v.central.state !== 'approved');
 }
+/* ชิป "ย้อนหลัง N รอบ" ใต้ทุนรอบก่อน: ช่วงทุน · แนวโน้ม · ทุนวันนี้หลุดช่วงไหม — ถ้าชุดประวัติเป็นข้อมูลจำลองจะมี * และ tooltip บอก */
+function histChip(r) {
+  var h = HIST && HIST.rows && HIST.rows[r.id]; if (!h) return '';
+  var mock = HIST.source === 'mock', arrow = h.dir === 'up' ? '▲' : h.dir === 'down' ? '▼' : '▬', col = h.outOfRange ? 'var(--red)' : h.dir === 'up' ? 'var(--amber)' : 'var(--tx-3)';
+  return '<em style="color:' + col + ';cursor:help" title="' + esc(h.text) + (mock ? ' · ' + esc(HIST.title) : '') + '">' + arrow + ' ' + h.n + ' รอบ ' + h.lo + (h.hi !== h.lo ? '–' + h.hi : '') + (h.outOfRange ? ' · หลุดช่วง' : '') + (mock ? '*' : '') + '</em>';
+}
 function load(msg) {
   var want = CUST;
   return PX.get(deskURL())
@@ -72,6 +79,7 @@ function load(msg) {
         PX.get('/api/guard').then(function (g) { GD = g; }, function () { GD = null; }),
         PX.get('/api/price-requests').then(function (r) { REQ = r; }, function () { REQ = null; }),
         PX.get('/api/negotiations').then(function (r) { NEGO = r; }, function () { NEGO = null; }),
+        (HIST ? null : PX.get('/api/sku-history').then(function (h) { HIST = h; }, function () { HIST = null; })),
         (!CUST ? AIPerf.load(true).then(null, function () {}) : null)
       ]);
     }, function (e) {
@@ -832,7 +840,7 @@ function desk() {
           '<div style="font-size:10.5px;color:var(--tx-3);font-weight:400">'+
           (r.vol?money(r.vol)+' กก./สัปดาห์':esc(r.grp))+'</div></td>' +
         '<td class="zc z1">'+z.z1+'</td>' +
-        '<td class="zc z2">'+(r.costPrev>0?'<b>'+r.costPrev+'</b><em>'+(r.costBasis==='customer'?'ทุนเจ้านี้':'บาท/กก.')+'</em>':'<span style="color:var(--tx-3);font-family:var(--fn)">·</span><em>ไม่มีข้อมูล</em>')+'</td>' +
+        '<td class="zc z2">'+(r.costPrev>0?'<b>'+r.costPrev+'</b><em>'+(r.costBasis==='customer'?'ทุนเจ้านี้':'บาท/กก.')+'</em>':'<span style="color:var(--tx-3);font-family:var(--fn)">·</span><em>ไม่มีข้อมูล</em>')+histChip(r)+'</td>' +
         '<td class="zc z2'+(r.costJump>0?' up':r.costJump<0?' cdown':'')+'"><b>'+r.cost+'</b><em style="color:'+
           (r.costJump>0?'var(--red)':r.costJump<0?'var(--green)':'var(--tx-3)')+'">'+
           (!(r.costPrev>0)?'ไม่มีข้อมูลรอบก่อน':r.costJump>0?'ขึ้น '+r.costJump+' ฿':r.costJump<0?'ลง '+Math.abs(r.costJump)+' ฿':'ทุนไม่ขยับ')+

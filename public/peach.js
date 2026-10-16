@@ -477,23 +477,31 @@ window.PX = (function () {
       if (j.hist.length > 1) {
         var ps = j.hist.map(function (x) { return x.price; });
         var cs = j.hist.map(function (x) { return x.cost || x.price; });
-        var lo = Math.min.apply(null, ps.concat(cs)) - 3;
-        var hi = Math.max.apply(null, ps.concat(cs)) + 3;
+        var ms = j.hist.map(function (x) { return x.market || null; }), hasM = ms.some(function (m) { return m > 0; });
+        var allv = ps.concat(cs).concat(ms.filter(function (m) { return m > 0; }));
+        var lo = Math.min.apply(null, allv) - 3;
+        var hi = Math.max.apply(null, allv) + 3;
         var W2 = 300, H2 = 70;
         var X = function (i) { return (i / (j.hist.length - 1) * W2).toFixed(1); };
         var Y = function (v) { return ((1 - (v - lo) / (hi - lo)) * H2).toFixed(1); };
         var ln = function (a) { return a.map(function (v, i) {
-          return (i ? 'L' : 'M') + X(i) + ' ' + Y(v); }).join(' '); };
-        h += '<h4>ราคาย้อนหลัง ' + j.hist.length + ' งวด</h4>' +
+          return v > 0 ? (i && a[i - 1] > 0 ? 'L' : 'M') + X(i) + ' ' + Y(v) : ''; }).join(' '); };
+        var c6 = cs.slice(0, -1), cAvg = c6.length ? c6.reduce(function (a, b) { return a + b; }, 0) / c6.length : null, cNow = cs[cs.length - 1];
+        var vs = cAvg ? Math.round((cNow - cAvg) / cAvg * 1000) / 10 : null;
+        h += '<h4>ทุน · ราคาย้อนหลัง ' + j.hist.length + ' รอบ' + (j.histMock ? ' <span class="pill2 a" title="' + esc(j.histSrc) + '">ข้อมูลจำลอง · ทดสอบ</span>' : '') + '</h4>' +
           '<svg class="dspark" viewBox="0 -6 ' + W2 + ' ' + (H2 + 12) + '">' +
+          (hasM ? '<path d="' + ln(ms) + '" fill="none" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="2 3"/>' : '') +
           '<path d="' + ln(cs) + '" fill="none" stroke="var(--tx-3)" stroke-width="1.5" ' +
             'stroke-dasharray="4 3"/>' +
           '<path d="' + ln(ps) + '" fill="none" stroke="var(--blue)" stroke-width="2.2"/>' +
           '<circle cx="' + X(j.hist.length - 1) + '" cy="' + Y(ps[ps.length - 1]) +
             '" r="4" fill="var(--red)"/></svg>' +
-          '<p class="dnote">เส้นทึบ = ราคาที่ออก · เส้นประ = ทุน · ' +
-          'ล่าสุด ' + ps[ps.length - 1] + ' ฿ · เคยสูงสุด ' + Math.max.apply(null, ps) +
-          ' · ต่ำสุด ' + Math.min.apply(null, ps) + '</p>';
+          '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--tx-3);font-family:var(--fn)"><span>' + esc(j.hist[0].label || '') + '</span><span>' + esc(j.hist[j.hist.length - 1].label || 'ปัจจุบัน') + '</span></div>' +
+          '<table class="dtbl" style="margin-top:6px"><thead><tr><th>รอบ</th><th>ทุน</th><th>ส่ง 2kg</th>' + (hasM ? '<th>ตลาดอ้างอิง' + (j.histMock ? ' (mock)' : '') + '</th>' : '') + '</tr></thead><tbody>' +
+          j.hist.map(function (x) { return '<tr' + (x.current ? ' style="font-weight:600"' : '') + '><td>' + esc(x.label || '') + (x.current ? ' <em>ปัจจุบัน</em>' : '') + '</td><td>' + (x.cost || '—') + '</td><td>' + (x.price || '—') + '</td>' + (hasM ? '<td style="color:var(--tx-3)">' + (x.market ? x.market : '—') + '</td>' : '') + '</tr>'; }).join('') + '</tbody></table>' +
+          '<p class="dnote">เส้นทึบ = ราคาส่ง 2kg ที่ประกาศ · เส้นประ = ทุน' + (hasM ? ' · เส้นจุดส้ม = ตลาดอ้างอิง' + (j.histMock ? ' (จำลอง ไม่ใช่ตลาดจริง)' : '') : '') +
+          (cAvg ? ' · ทุน ' + c6.length + ' รอบก่อนเฉลี่ย <b>' + (Math.round(cAvg * 10) / 10) + ' ฿</b> ช่วง ' + Math.min.apply(null, c6) + '–' + Math.max.apply(null, c6) + ' · ตอนนี้ <b>' + cNow + '</b> (' + (vs > 0 ? '+' : '') + vs + '%)' : '') +
+          (j.histMock ? '<br><span style="color:var(--amber)">⚠ ' + esc(j.histSrc) + ' — ใช้ดูการเก็บ/เทียบข้อมูลเก่าเท่านั้น ระบบไม่เอาชุดนี้ไปคิดราคาแนะนำ Floor หรือตลาดแข่งขัน</span>' : '') + '</p>';
       }
 
       h += '<div class="drw-ft">' +

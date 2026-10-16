@@ -91,7 +91,7 @@ window.Dash = (function () {
       /* ทุนเฉลี่ยรายรอบ */
       '<div class="k"><div class="kt"><span class="ic">📦</span>' + (dCost != null ? pill(dCost > 0 ? 'r' : dCost < 0 ? 'g' : 'n', (dCost > 0 ? '+' : '') + dCost + ' ฿ จากรอบก่อน') : '') + '</div><div class="lb">ทุนเฉลี่ยรายรอบ (฿/กก.)</div><div class="v sm">' + (last ? last.cost_avg : '—') + '</div>' +
         Charts.line({ w: 320, labels: hist.map(function (h) { return h.label; }), series: [{ name: 'ทุนเฉลี่ย', values: hist.map(function (h) { return h.cost_avg; }), color: Charts.CAT[0] }], h: 90, area: true }) +
-        '<div class="c">ทุนเก่ากว่า 7 วัน ' + st.costOld + ' · ไม่รู้ทุน ' + st.noCost + ' จาก ' + st.total + ' SKU · <a href="/costs" style="color:var(--blue)">รับทุน →</a></div></div>' +
+        '<div class="c">ทุนเก่ากว่า 7 วัน ' + st.costOld + ' · ไม่รู้ทุน ' + st.noCost + ' จาก ' + st.total + ' SKU · <a href="/costs" style="color:var(--blue)">รับทุน →</a>' + (hist.some(function (h) { return h.mock; }) ? '<br><span style="color:var(--amber)">* = รอบจากชุดข้อมูลจำลอง (ทดสอบ) ไม่ใช่ตัวเลขจริง</span>' : '') + '</div></div>' +
       /* margin ตามหมวดเป้า */
       '<div class="k"><div class="kt"><span class="ic">🎯</span>' + pill(cats.some(function (c) { return c.state === 'bad'; }) ? 'r' : 'g', cats.filter(function (c) { return c.state === 'bad'; }).length + ' หมวดต่ำกว่าเป้า') + '</div><div class="lb">margin จริง vs เป้ารายหมวด</div>' +
         Charts.bars({ w: 320, items: cats.map(function (c) { return { label: c.name.replace('ชิ้นส่วน', '').replace('สินค้า', ''), value: c.margin, sub: 'เป้า ' + c.target + '%', color: c.state === 'bad' ? '#DC2626' : c.state === 'warn' ? '#D97706' : Charts.CAT[0] }; }), h: 110, unit: '%', labelAll: true }) +
