@@ -1309,3 +1309,148 @@ body.publicquote{background:#F5F7FB;padding:0}.publicquote .app{display:block;ma
 .px-greet .g-todo a:hover{border-color:var(--blue);color:var(--blue)}
 .px-greet .g-todo .g-day{background:var(--blue);border-color:var(--blue);color:#fff}
 @media (max-width:860px){.px-greet .g-todo{margin-left:0}}
+
+/* ══════════════════════════════════════════════════════════════════
+   FRESHOUR · BENTO V2 SKIN (reskin ชั้นบนสุด — เปลี่ยนภาษาภาพอย่างเดียว ไม่แตะโครง/ข้อมูล/ปุ่ม)
+   ที่มา: Freshour_DesignSystem_Bento_V2.html · โทเคนจากสเปก: Primary #0462E0 · Dark #034FB8 · Light #EAF2FF · Navy #071D3A
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --blue:#0462E0; --blue-d:#034FB8; --blue-l:#EAF2FF; --blue-b:#CFE0FF; --blue-m:#DCEBFF;
+  --navy:#071D3A; --navy-2:#032D5D;
+  --red:#E43B4E;  --red-l:#FFE0E3;  --red-b:#FFC9CF;   --red-t:#BE263A;
+  --green:#0B9F61;--green-l:#D8F8E4;--green-b:#BDEFD1; --green-t:#087341;
+  --amber:#EB8C12;--amber-l:#FFEFD0;--amber-b:#FFE0A8; --amber-t:#9C5800;
+  --purple:#6742D5;--purple-l:#EADDFF;--purple-b:#D9C6FF;--purple-t:#5B3DB5;
+  --ink:#101A32; --tx:#182438; --tx-2:#5F7087; --tx-3:#8490A1;
+  --line:#E4EAF2; --line-2:#F1F4F8;
+  --bg:#EEEFF2; --app:#EEEFF2; --card:#FFFFFF;
+  --r:14px; --r2:20px; --r3:24px;
+  --sh:0 6px 22px rgba(22,47,74,.06);
+  --sh-c:0 6px 22px rgba(22,47,74,.045);
+  --band-1:#E43B4E; --band-2:#EB8C12; --band-3:#7BB13A; --band-4:#0B9F61; --band-5:#0462E0;
+  --violet:#6742D5; --plum:#6742D5;
+}
+/* ── ขั้นแรก: ตัดข้อความที่ไม่จำเป็น — ทุกหน้าเริ่มที่ greeting ไม่ต้องบอกว่าหน้านี้ทำอะไร ── */
+.top h1,.top>div>p{display:none}
+.top{margin-bottom:8px;align-items:center}
+.top>div:first-child{display:none}
+.px-greet{margin:0 0 18px;align-items:center}
+.px-greet .g-hi{font-size:24px;font-weight:700;color:var(--ink);letter-spacing:-.6px;line-height:1.3}
+.px-greet .g-hi span{font-size:13px;color:var(--tx-2);font-weight:500}
+.px-greet .g-when{font-size:13px}
+.ex-hierarchy b{display:none}
+.ex-hierarchy span{font-size:12px;letter-spacing:1.4px;color:#506685;font-weight:600;text-transform:uppercase}
+.card h3 .sub,.k .lb .sub{display:none}
+.card>h3+p.hint,.card>h3+.hint,.ap .aph span,.nah .sub{display:none}
+.ex-perf .hint:first-of-type{display:none}
+
+/* ── แคนวาส: เต็มจอแบบเรฟ ไม่มีกรอบลอย ── */
+body{background:var(--bg);padding:0;font-size:14px}
+.app{max-width:none;margin:0;background:transparent;border-radius:0;box-shadow:none;padding:0;gap:0;
+  grid-template-columns:244px minmax(0,1fr);min-height:100vh}
+.main{padding:22px 30px 48px;max-width:1900px}
+
+/* ── Sidebar: navy gradient · active = blue gradient ── */
+.side{background:linear-gradient(160deg,#061B3E,#032D5D 75%,#052651);border:0;border-radius:0;
+  padding:28px 15px 22px;top:0;min-height:100vh;max-height:100vh;box-shadow:9px 0 30px rgba(8,41,84,.08)}
+.brand b{color:#fff;font-size:20px;letter-spacing:-.6px}
+.brand span{color:#A8BFDF}
+.brand .mk{background:#fff;border-radius:12px;padding:3px;width:41px;height:41px}
+.brand .mk svg{width:34px;height:34px}
+.side .lb{color:#7897C1;font-size:11px;letter-spacing:1.35px;padding:0 15px;margin:14px 0 8px;text-transform:uppercase}
+.nav a{color:#D3E0F6;font-size:13px;padding:12px 15px;border-radius:12px;min-height:46px}
+.nav a i{opacity:1;font-size:17px}
+.nav a em{color:#A8BFDF}
+.nav a:hover{background:rgba(255,255,255,.09);color:#fff}
+.nav a.on{color:#fff;background:linear-gradient(100deg,#0561DC,#0878F5);box-shadow:0 8px 24px rgba(0,22,54,.33)}
+.nav a.on em{color:#D6E6FF}
+.nav a .bdg{background:#FCE6DA;color:#B83E17}
+.nav a.on .bdg{background:rgba(255,255,255,.22);color:#fff}
+.navs::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18)}
+.float{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:16px}
+.float span{color:#A8BFDF}
+.float .ic{background:rgba(255,255,255,.14)}
+.float button{background:linear-gradient(100deg,#0561DC,#0878F5)}
+.side .out,.side a.logout,.side .logout{color:#A8BFDF}
+.who{border-color:transparent;box-shadow:var(--sh-c)}
+.who .av{background:linear-gradient(135deg,#0469EF,#003FAE)}
+
+/* ── การ์ด Bento ── */
+.card{border-radius:20px;padding:22px 23px;border:1px solid rgba(255,255,255,.78);box-shadow:var(--sh)}
+.card h3{font-size:16px;font-weight:600;letter-spacing:-.25px}
+.k{border-radius:20px;padding:22px 23px;border:1px solid rgba(255,255,255,.78);box-shadow:var(--sh)}
+.k .lb{font-size:12px;color:var(--tx-2);font-weight:500}
+.k .v{font-size:clamp(34px,3vw,46px);font-weight:700;letter-spacing:-1.6px;line-height:1.15;margin-top:4px}
+.k .v small{font-size:15px;font-weight:500;opacity:.75}
+.k .c{font-size:12px;color:var(--tx-2);margin-top:8px}
+.k .ic{width:40px;height:40px;border-radius:12px;font-size:19px}
+.k.lead{background:linear-gradient(135deg,#0469EF,#003FAE);border-color:transparent;box-shadow:0 12px 30px rgba(4,98,224,.28)}
+.k.lead .lb,.k.lead .c{color:#D0E1FF}
+.k .pill{font-size:11px;padding:5px 10px;border-radius:999px}
+.k .pill.g{background:var(--green-l);color:var(--green-t)}
+.k .pill.r{background:var(--red-l);color:var(--red-t)}
+.k .pill.a{background:var(--amber-l);color:var(--amber-t)}
+/* โทนสีการ์ดตามความหมาย (คลาสเดิมของหน้า) */
+.ex-sum-card,.ex-kpi,.ex-ktile,.xc-strip .q{border-radius:20px}
+.ex-sum-card{padding:22px 23px;border:1px solid rgba(255,255,255,.8);box-shadow:var(--sh)}
+.ex-sum-card span{font-size:12px;color:var(--tx-2)}
+.ex-sum-card b{font-size:clamp(30px,2.6vw,42px);font-weight:700;letter-spacing:-1.4px;line-height:1.15}
+.ex-sum-card em{font-size:12px;color:var(--tx-2)}
+.ex-sum-card.lead{background:linear-gradient(135deg,#0469EF,#003FAE)!important;color:#fff;border-color:transparent;box-shadow:0 12px 30px rgba(4,98,224,.28)}
+.ex-sum-card.lead span,.ex-sum-card.lead em,.ex-sum-card.lead b{color:#fff}
+.ex-sum-card.lead span{color:#D0E1FF}.ex-sum-card.lead em{color:#D0E1FF}
+.ex-sum-card.good{background:linear-gradient(140deg,#D9F6E6,#F0FBF5)!important;border-color:#DDF2E5}.ex-sum-card.good b{color:#087E52}
+.ex-sum-card.warn{background:linear-gradient(140deg,#FFF0D0,#FFF9E9)!important;border-color:#FFF0D3}.ex-sum-card.warn b{color:#AE6907}
+.ex-sum-card.bad{background:linear-gradient(150deg,#FFE4E6,#FFF4F5)!important;border-color:#FFD9DD}.ex-sum-card.bad b{color:#BE263A}
+.ex-kpi.tone-green{background:linear-gradient(140deg,#D9F6E6,#F0FBF5)}
+.ex-kpi.tone-amber{background:linear-gradient(140deg,#FFF0D0,#FFF9E9)}
+.ex-kpi.tone-red{background:linear-gradient(150deg,#FFE4E6,#FFF4F5)}
+.ex-kpi.tone-none{background:#fff}
+.ex-kpi b{font-size:clamp(30px,2.6vw,40px);font-weight:700;letter-spacing:-1.4px}
+/* AI = ม่วง (insight / แนะนำ / ทำนาย) — บล็อก AI Pricing performance บนหน้าตั้งราคา */
+.ap{background:linear-gradient(130deg,#EBE1FF,#F6EEFF 85%);border:1px solid #E5D7FF;border-radius:20px}
+.ap .aph b{color:#5131B4;font-size:16px}
+.ap .k.lead{background:linear-gradient(135deg,#6B3FE0,#4B2BB3);box-shadow:0 12px 30px rgba(103,66,213,.28)}
+.ap .k .v{color:#3E2A8A}
+.aip{color:#5B3DB5}
+
+/* ── ปุ่ม · ป้าย · อินพุต ── */
+.btn{font-size:12.5px;font-weight:600;padding:11px 16px;border-radius:11px;border:1px solid var(--line);background:#fff;color:#40516A}
+.btn.pri{background:#0866ED;border-color:#0866ED;color:#fff;box-shadow:0 7px 16px rgba(7,92,229,.18)}
+.btn.pri:hover{background:#004FCA;border-color:#004FCA}
+.pill2{font-size:11px;font-weight:600;padding:5px 11px;border-radius:999px}
+.pill2.g{background:var(--green-l);color:var(--green-t)}
+.pill2.r{background:var(--red-l);color:var(--red-t)}
+.pill2.a{background:var(--amber-l);color:var(--amber-t)}
+.pill2.b{background:#DCECFF;color:#0358D2}
+.pill2.n{background:#E8EDF4;color:#485875}
+.pill.g{background:var(--green-l);color:var(--green-t)}.pill.r{background:var(--red-l);color:var(--red-t)}.pill.a{background:var(--amber-l);color:var(--amber-t)}.pill.n{background:#E8EDF4;color:#485875}
+input[type=text],input[type=number],input[type=date],input:not([type]),select,textarea{border-radius:10px}
+.mdl-bd{border-radius:20px;box-shadow:0 22px 70px rgba(0,0,0,.14)}
+.mdl-hd b{font-size:20px}
+
+/* ── ตาราง ── */
+table.g th{font-size:11px;color:#526581;background:#F3F6FB;font-weight:600;padding:13px 12px;letter-spacing:.02em}
+table.g td{padding:13px 12px;color:#31445E;font-size:13.5px;border-top-color:#EDF0F5}
+table.g td:first-child{color:#0B2140;font-weight:700}
+table.g tr:hover td{background:#EFF6FF}
+.ex-fin-table th{font-size:11px;color:#526581;background:#F3F6FB;font-weight:600;padding:12px}
+.ex-fin-table td{padding:13px 12px;font-size:13px}
+
+/* ── Login ── */
+.lgb{border-radius:14px}
+.lgb.on{box-shadow:0 8px 20px rgba(4,98,224,.12)}
+
+/* ── แท็บ (หน้าผู้บริหาร) ── */
+.ex-tabs button.on b{color:var(--blue)}
+.ex-section-title{color:#506685;font-size:12px;letter-spacing:1.4px}
+
+@media(max-width:1250px){.app{grid-template-columns:210px minmax(0,1fr)}.main{padding:18px 20px 40px}.card,.k{padding:19px}.k .v{font-size:38px}}
+@media(max-width:860px){.app{grid-template-columns:1fr}.side{position:relative;min-height:0;max-height:none;height:auto;border-radius:0 0 20px 20px}.main{padding:14px 14px 30px}}
+/* ── skin fixes รอบ 2: ป้ายผู้ใช้อยู่แถวเดียวกับ greeting · ตัดคำอธิบายใต้หัวข้อ · ป้ายเมนูยาวไม่ทับชื่อ ── */
+.top{margin:0 0 -46px;justify-content:flex-end;position:relative;z-index:2}
+.px-greet{padding-right:230px;min-height:46px}
+@media(max-width:860px){.top{margin:0 0 6px;justify-content:flex-start}.px-greet{padding-right:0}}
+h2+p.sub,h3+p.sub,.perf-hd span,.nah+.rnote,div.sub[style*="margin:0 0 8px"]{display:none}
+.nav a .txt{flex:1 1 auto;min-width:0}
+.nav a .bdg{font-size:10px;padding:1px 6px;max-width:96px;overflow:hidden;text-overflow:ellipsis;flex:0 0 auto}
