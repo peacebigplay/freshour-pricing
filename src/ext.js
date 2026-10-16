@@ -436,15 +436,17 @@
       var kind = body.kind || 'quote', text = body.text || '';
       if (kind === 'quote') {
         var q = X.quoteFor(cid, 'w2'); if (q.status !== 200) return q;
-        var link = sh.link ? sh.link.url : (X.quoteLink(role, { customer_id: cid, silent: true }, body.origin || '').body || {}).url;
-        text = q.body.text + (link ? '\n\nยืนยัน/ขอต่อรองทีละรายการได้ที่ ' + link : '');
+        var lk = X.quoteLink(role, { customer_id: cid, silent: true }, body.origin || ''); if (lk.status !== 200) return lk;
+        /* ไม่ส่งรายการราคาเป็นข้อความ/เอกสาร — ส่งลิงก์ให้ลูกค้าดู ยืนยัน หรือขอต่อรองทีละรายการในลิงก์ */
+        text = 'สวัสดีครับ ' + sh.customer.name + '\nใบราคา Freshour รอบ ' + sh.label + ' (' + q.body.count + ' รายการ) พร้อมแล้วครับ\nดูราคา · ยืนยัน · หรือขอต่อรองทีละรายการได้ที่ลิงก์นี้\n' + lk.body.url + '\n\nใช้ได้ถึง ' + lk.body.expires_at + ' · ไม่ต้องส่งเอกสารกลับ กดในลิงก์ได้เลยครับ';
       }
       if (kind === 'nudge' && !text) text = nudgeText(sh);
       /* ราคาต่อรองที่ Pricing ตัดสินแล้ว — ส่งเฉพาะรายการนั้นถึงลูกค้า (ไม่ต้องรอใบรอบใหม่ทั้งใบ) · ส่งสำเร็จแล้วค่อยปิดเรื่องต่อรอง */
       if (kind === 'revised') {
         var dec = D['price-requests'].rows.filter(function (r) { return r.customer_id === cid && !r.closed && r.status !== 'open' && r.status !== 'cancelled'; });
         if (!dec.length) return err(400, 'ไม่มีราคาต่อรองที่ Pricing ตัดสินแล้วรอส่งของ ' + sh.customer.name);
-        text = text || ('ราคาที่ตกลงใหม่ · ' + sh.customer.name + '\n' + dec.map(function (r) { return '• ' + r.product + ' ' + (r.final_price != null ? r.final_price : r.original_price || r.cprice) + ' ฿/กก.' + (r.status === 'ok' && r.final_price != null && r.final_price !== r.want ? ' (ขอ ' + r.want + ')' : r.status === 'rejected' || r.status === 'hold' ? ' (ยืนราคาเดิม)' : ''); }).join('\n') + '\n\nยืนยันกลับมาทางไลน์ได้เลยครับ');
+        var lk2 = sh.link ? { body: sh.link } : X.quoteLink(role, { customer_id: cid, silent: true }, body.origin || '');
+        text = text || ('ราคาที่ตกลงใหม่ · ' + sh.customer.name + '\n' + dec.map(function (r) { return '• ' + r.product + ' ' + (r.final_price != null ? r.final_price : r.original_price || r.cprice) + ' ฿/กก.' + (r.status === 'ok' && r.final_price != null && r.final_price !== r.want ? ' (ขอ ' + r.want + ')' : r.status === 'rejected' || r.status === 'hold' ? ' (ยืนราคาเดิม)' : ''); }).join('\n') + (lk2.body && lk2.body.url ? '\n\nกดยืนยันราคาใหม่ได้ที่ ' + lk2.body.url : '\n\nยืนยันกลับมาทางไลน์ได้เลยครับ'));
       }
       if (!lineIdOf(cid)) return err(400, 'ยังไม่ได้ผูก LINE ของ ' + sh.customer.name + ' — ใส่ LINE user id ที่กระดานส่งใบราคาก่อน', { needLine: true });
       var o = enqueue(role, cid, kind, text, { label: sh.label });
@@ -540,6 +542,58 @@
       due.forEach(function (r) { if (!r.line) return skipped.push(r.name); var x = followup(role, { customer_id: r.id, channel: 'line' }); (x.status === 200 ? sent : skipped).push(r.name); });
       return ok({ ok: true, sent: sent, skipped: skipped });
     }
+    /* ════════ ตรวจก่อนส่ง (Sales review): ใบที่ Pricing ตั้งให้เจ้านี้ ตรงกับ "ธรรมชาติ" ของลูกค้าไหม — SKU ที่เคยต่อรอง/ปฏิเสธ · ราคาขึ้นแรง · สูงกว่าที่เคยตกลง ════════ */
+    function quoteReview(cid) {
+      var sh = sheetFor(cid), c = X.custOf(cid); if (!sh || !c) return err(404, 'ไม่พบลูกค้า');
+      var reqs = D['price-requests'].rows.filter(function (r) { return r.customer_id === cid; }), deals = D.deals.filter(function (d) { return d.customer_id === cid; });
+      var rows = sh.rows.filter(function (r) { return r.inOffer; }).map(function (r) {
+        var my = reqs.filter(function (q) { return q.product_id === r.pid; }), asks = my.map(function (q) { return (q.original_price || q.cprice || r.offer) - q.want; }).filter(function (x) { return x > 0; });
+        var avgAsk = asks.length ? Math.round(asks.reduce(function (a, b) { return a + b; }, 0) / asks.length) : 0;
+        var lastAgreed = null; deals.forEach(function (d) { (d.lines || []).forEach(function (l) { if (l.pid === r.pid && l.agreed) lastAgreed = l.agreed; }); });
+        var declined = deals.some(function (d) { return (d.lines || []).some(function (l) { return l.pid === r.pid && !l.agreed && d.outcome === 'won'; }); });
+        var flags = [], risk = 0;
+        if (my.length) { flags.push('เคยต่อรอง ' + my.length + ' ครั้ง' + (avgAsk ? ' · มักขอลด ~' + avgAsk + ' ฿' : '')); risk += 2; }
+        if (r.prev && r.offer - r.prev > Math.max(2, r.prev * 0.03)) { flags.push('ขึ้นจากรอบก่อน +' + (r.offer - r.prev) + ' ฿'); risk += 1; }
+        if (lastAgreed && r.offer > lastAgreed) { flags.push('สูงกว่าที่เคยตกลง ' + lastAgreed + ' ฿'); risk += 2; }
+        if (declined) { flags.push('รอบก่อนลูกค้าไม่เอารายการนี้'); risk += 1; }
+        return { pid: r.pid, name: r.name, grp: r.grp, price: r.offer, prev: r.prev, diff: r.prev ? r.offer - r.prev : null, lastAgreed: lastAgreed, negoCount: my.length, avgAsk: avgAsk, flags: flags, risk: risk };
+      });
+      var risky = rows.filter(function (r) { return r.risk >= 2; });
+      return ok({ customer: c.name, label: sh.label, version: (sh.quote_version || 0) + 1, line: !!lineIdOf(cid), link: sh.link ? sh.link.url : null, rows: rows, total: rows.length, risky: risky.length,
+        note: risky.length ? 'มีแนวโน้มโดนต่อรอง ' + risky.length + ' รายการ — ส่งได้เลย ลูกค้ากดขอต่อรองในลิงก์ หรือขอให้ Pricing ทบทวนก่อน' : 'ไม่พบรายการที่ลูกค้าเจ้านี้มักต่อรอง — ส่งได้เลย' });
+    }
+    /* ════════ เอกสารขาย: ลูกค้ายืนยันในลิงก์ → เซลล์ปิด Won → ระบบสร้างคำขอให้แอดมิน/บัญชีออก Quotation → Invoice เอง (ไม่ต้องพิมพ์/ส่งไฟล์) ════════ */
+    D.doc_requests = D.doc_requests || [];
+    function docRequestFor(deal) {
+      var ex = D.doc_requests.filter(function (d) { return d.deal_id === deal.id; })[0];
+      var lines = (deal.lines || []).filter(function (l) { return l.agreed; }).map(function (l) { return { pid: l.pid, name: l.name, price: l.agreed, qty: l.qty || null }; });
+      if (ex) { ex.lines = lines; ex.value = deal.value; ex.value_basis = deal.value_basis; return ex; }
+      seq.doc = seq.doc || (D.doc_requests.length ? Math.max.apply(null, D.doc_requests.map(function (d) { return Number(String(d.id).replace(/\D/g, '')) || 0; })) : 0);
+      var dr = { id: 'doc' + nextId('doc'), at: stamp(), customer_id: deal.customer_id, customer: deal.customer, deal_id: deal.id, label: deal.label, sales_id: deal.sales_id || null, sales_name: (X.repOf(deal.sales_id) || {}).name || '', requested_by: deal.by, lines: lines, value: deal.value, value_basis: deal.value_basis, condition: deal.condition || '',
+        quotation: { status: 'requested', no: null, at: null, by: null }, invoice: { status: 'waiting', no: null, at: null, by: null }, status: 'quotation_requested' };
+      D.doc_requests.unshift(dr);
+      logEvent({ actor: 'system', action: 'doc-requested', entity: 'customer', entity_id: deal.customer_id, detail: deal.customer + ' · ขอออก Quotation (' + lines.length + ' รายการ' + (deal.value ? ' · ' + deal.value + ' ฿' : '') + ')' });
+      return dr;
+    }
+    function docIssue(role, id, body) {
+      var dr = D.doc_requests.filter(function (d) { return d.id === id; })[0]; if (!dr) return err(404, 'ไม่พบคำขอเอกสาร');
+      var kind = body.kind === 'invoice' ? 'invoice' : 'quotation', no = String(body.doc_no || '').trim(), date = String(body.date || today()).slice(0, 10);
+      if (!no) return err(400, 'ต้องใส่เลขที่เอกสาร');
+      if (kind === 'invoice' && dr.quotation.status !== 'issued') return err(400, 'ออก Quotation ก่อน แล้วค่อย Invoice');
+      if (kind === 'invoice') {
+        var ls = dr.lines.map(function (l) { return { product_id: l.pid, qty_kg: num(body.qty && body.qty[l.pid]) || l.qty || 0, price: l.price }; }).filter(function (l) { return l.qty_kg > 0; });
+        if (!ls.length) return err(400, 'ต้องมีปริมาณ (กก.) อย่างน้อย 1 รายการเพื่อออก invoice');
+        var r = X.recordInvoice(role, dr.customer_id, no, date, ls); if (r.error) return err(400, r.error);
+        dr.invoice = { status: 'issued', no: no, at: stamp(), by: role, amount: r.net_sales }; dr.status = 'invoiced';
+      } else { dr.quotation = { status: 'issued', no: no, at: stamp(), by: role }; dr.status = 'quotation_issued'; dr.invoice.status = 'requested'; }
+      logEvent({ actor: role, kind: 'human', action: kind === 'invoice' ? 'invoice-issued' : 'quotation-issued', entity: 'customer', entity_id: dr.customer_id, detail: dr.customer + ' · ' + (kind === 'invoice' ? 'Invoice' : 'Quotation') + ' ' + no });
+      return ok({ ok: true, id: dr.id, status: dr.status });
+    }
+    function docsView(scope) {
+      var rows = D.doc_requests.filter(function (d) { return X.inScope(scope, d.customer_id); });
+      return { rows: rows, pending: rows.filter(function (d) { return d.status !== 'invoiced'; }).length, quotationQueue: rows.filter(function (d) { return d.quotation.status === 'requested'; }).length, invoiceQueue: rows.filter(function (d) { return d.quotation.status === 'issued' && d.invoice.status !== 'issued'; }).length };
+    }
+    function docsOf(cid, label) { return D.doc_requests.filter(function (d) { return d.customer_id === cid && (!label || d.label === label); })[0] || null; }
     /* ════════ SALES LOGIC — คิวงานขาย (action-oriented) ════════
        ลูกค้าทุกเจ้าของเซลล์อยู่ใน "สถานะเดียว" ที่บอกว่าใครต้องทำอะไรต่อ · แยก "งานของเซลล์" ออกจาก "รอคนอื่น" (Pricing/ลูกค้า) · SLA ตอบกลับ 48 ชม. → ตาม #1 (ระบบ) → อีก 48 ชม. ตาม #2 + งานเซลล์ → 7 วันต้องตัดสินใจ (ตามต่อ/ปิด Lost ไม่ตอบ) */
     var SLA = { responseH: 48, remindH: 48, decideDays: 7, maxReminders: 2 };
@@ -585,10 +639,10 @@
           lines: { total: tot, accepted: c.accepted || 0, declined: c.declined || 0, negotiating: c.waiting || 0, answered: answered }, round: round,
           nego: decidedReq.concat(openReq).slice(0, 3).map(function (r) { return { product: r.product, offered: r.original_price || r.cprice, want: r.want, final: r.final_price, status: r.status, round: r.round || 1 }; }),
           lastActivity: ev ? { at: ev.at, text: (ACT_TEXT[ev.action] || ev.action) + (ev.detail ? ' · ' + String(ev.detail).slice(0, 60) : ''), kind: ev.kind } : null,
-          outcome: deal ? { outcome: deal.outcome, value: deal.value, valueBasis: deal.value_basis || 'estimate', reason: deal.reason, reasonCode: deal.reason_code || null, at: deal.at, finalLines: deal.agreedN, rounds: deal.negotiation_rounds || 0 } : null, link: sh && sh.link ? sh.link.url : null };
+          outcome: deal ? { outcome: deal.outcome, value: deal.value, valueBasis: deal.value_basis || 'estimate', reason: deal.reason, reasonCode: deal.reason_code || null, at: deal.at, finalLines: deal.agreedN, rounds: deal.negotiation_rounds || 0, docs: (function () { var d = docsOf(cid, deal.label); return d ? { status: d.status, quotation: d.quotation.status === 'issued' ? d.quotation.no : null, invoice: d.invoice.status === 'issued' ? d.invoice.no : null } : null; })() } : null, link: sh && sh.link ? sh.link.url : null };
       }).sort(function (a, b) { return a.priority - b.priority || (b.silentH || 0) - (a.silentH || 0) || a.name.localeCompare(b.name, 'th'); });
     }
-    var ACT_TEXT = { 'line-send': 'ส่ง LINE สำเร็จ', 'line/send': 'สั่งส่ง LINE', 'quote-sent': 'ส่งใบราคาถึงลูกค้า', 'revised-quote-sent': 'ส่งราคาต่อรองใหม่ถึงลูกค้า', 'quote-response': 'ลูกค้าตอบ', 'public-respond': 'ลูกค้าตอบผ่านลิงก์', 'line-inbound': 'ลูกค้าทักทาง LINE', followups: 'ตามลูกค้า', followup: 'ตามลูกค้า', 'deal-close': 'ปิดดีล', 'price-request': 'ส่งคำขอต่อรอง', 'price-decide': 'Pricing ตัดสินราคาต่อรอง', 'quote-open': 'ลูกค้าเปิดใบ', 'customers': 'แก้ข้อมูลลูกค้า', 'line-queue': 'เข้าคิว LINE', handoff: 'Pricing ส่งใบมา', 'save-price-sheet': 'Pricing บันทึกราคา' };
+    var ACT_TEXT = { 'line-send': 'ส่ง LINE สำเร็จ', 'line/send': 'สั่งส่ง LINE', 'quote-sent': 'ส่งใบราคาถึงลูกค้า', 'revised-quote-sent': 'ส่งราคาต่อรองใหม่ถึงลูกค้า', 'quote-open': 'ลูกค้าเปิดใบราคา', 'quote-accepted': 'ลูกค้ายืนยันราคา', 'quote-declined': 'ลูกค้าไม่เอารายการ', 'negotiation-requested': 'ลูกค้าขอต่อรองในลิงก์', 'doc-requested': 'ขอออก Quotation', 'quotation-issued': 'ออก Quotation แล้ว', 'invoice-issued': 'ออก Invoice แล้ว', 'quote-response': 'ลูกค้าตอบ', 'public-respond': 'ลูกค้าตอบผ่านลิงก์', 'line-inbound': 'ลูกค้าทักทาง LINE', followups: 'ตามลูกค้า', followup: 'ตามลูกค้า', 'deal-close': 'ปิดดีล', 'price-request': 'ส่งคำขอต่อรอง', 'price-decide': 'Pricing ตัดสินราคาต่อรอง', 'quote-open': 'ลูกค้าเปิดใบ', 'customers': 'แก้ข้อมูลลูกค้า', 'line-queue': 'เข้าคิว LINE', handoff: 'Pricing ส่งใบมา', 'save-price-sheet': 'Pricing บันทึกราคา' };
     function salesPerf(rows) {
       var won = rows.filter(function (r) { return r.state === 'won' || r.state === 'invoiced'; }), lost = rows.filter(function (r) { return r.state === 'lost'; });
       var sent = rows.filter(function (r) { return r.sentAt; }), readyOrSent = rows.filter(function (r) { return r.handedAt; });
@@ -649,6 +703,7 @@
         customer_reported: body.competitor_price ? { competitor: body.lost_to || '', price: num(body.competitor_price), note: 'ลูกค้าบอกเอง — ไม่ใช่ราคาตลาดทางการ' } : null, condition: body.condition || '', quote_version: sh.quote_version || 0, negotiation_rounds: rounds, value_basis: outcome === 'won' ? (hasQty ? 'actual' : 'estimate') : null, lines: lines, n: lines.length, agreedN: won.length,
         value: value, gp: gp, margin: value ? r1(gp / value * 100) : null, centralValue: central, discount: central && value ? r1((central - value) / central * 100) : null };
       if (prev) D.deals[D.deals.indexOf(prev)] = deal; else D.deals.unshift(deal);
+      if (outcome === 'won') docRequestFor(deal);   /* ส่งต่อแอดมิน/บัญชีออก Quotation → Invoice โดยเซลล์ไม่ต้องพิมพ์เอกสาร */
       sh.deal.outcome = outcome; sh.deal.closedAt = deal.at;
       if (outcome === 'lost') { sh.rows.forEach(function (r) { if (r.inOffer && !r.response) r.response = 'decline'; }); }
       rebuildSheet(sh);
@@ -863,6 +918,8 @@
         case '/api/board': if (q.view === 'sales') { need(1); return board(role, X.repScope(role, req.rep, q)); } return undefined;
         case '/api/sales-board': need(1); return board(role);
         case '/api/followups': need(1); return followups(role, X.repScope(role, req.rep, q));
+        case '/api/quote-review': need(1); return quoteReview(q.customer);
+        case '/api/doc-requests': need(1); return ok(docsView(X.repScope(role, req.rep, q)));
         case '/api/sales-queue': need(1); return ok({ today: today(), round: D.sends.label, sla: SLA, rows: salesQueue(X.repScope(role, req.rep, q)), states: SQ_STATE, lostReasons: LOST_REASONS });
         case '/api/deals': need(1); return dealsView(role, X.repScope(role, req.rep, q));
         case '/api/outbox': need(1); return ok({ rows: D.outbox.slice(0, 100).map(function (o) { var x = clone(o); if (LVL[role] < 2) x.text = x.text.slice(0, 80); return x; }), queued: D.outbox.filter(function (o) { return o.status === 'queued'; }).length });
@@ -889,6 +946,7 @@
         case '/api/line/send-all': need(1); body.origin = req.origin; return lineSendAll(role, body);
         case '/api/line/retry': need(2); return retryOutbox(role, body);
         case '/api/followups': need(1); return followup(role, body);
+        case '/api/doc-requests/issue': need(2); return docIssue(role, body.id, body);
         case '/api/followups/auto': need(1); return followupAuto(role, X.repScope(role, req.rep));
         case '/api/followups/tick': need(4); return ok(followupTick());
         case '/api/deal-close': need(1); return dealClose(role, body);

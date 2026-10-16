@@ -130,3 +130,53 @@ test('SALES LOGIC: ส่งแล้วต่อเมื่อ LINE สำเ�
   assert.ok(d.work.every(r => r.isSalesTask) && d.perf.lost >= 1 && d.closed.length >= 1);
   assert.ok(!/"cost"|"margin"|"gp"|"floor"/.test(JSON.stringify(d.work.concat(d.board))), 'คิวงานไม่มีทุน/margin/floor');
 });
+
+test('ส่งใบราคาเป็นลิงก์ ไม่ใช่เอกสาร: เซลล์ตรวจก่อนส่ง → LINE ส่งลิงก์ (ไม่มีราคาในข้อความ) → ลูกค้ารับ/ต่อรองในลิงก์ → Pricing ตอบในใบเดียวกัน → ยืนยันครบ → Won → ระบบขอ Quotation/Invoice ให้แอดมินเอง', async () => {
+  const docs3 = loadDocs(); const st = createStore(docs3, {});
+  const c3 = (role, method, url, body, rep) => st.handle({ role, rep, method, url, body, origin: 'http://t' });
+  /* Pricing เตรียมใบของลูกค้า s1 หนึ่งเจ้า */
+  let dk = okj(c3('ops', 'GET', '/api/desk'));
+  okj(c3('ops', 'POST', '/api/save-price-sheet', { customer_id: null, goal: 'target', rows: dk.rows.filter(r => r.cost > 0 && r.v21 && r.v21.goals).map(r => ({ product_id: r.id, price: Math.max(r.w2, r.v21.guard || 0), goal: 'target', exception: '' })) }));
+  let pick = null, crow = [];
+  for (const cand of okj(c3('sale', 'GET', '/api/sales-queue', null, 's1')).rows.filter(r => r.state === 'waiting_pricing')) { const dd = okj(c3('ops', 'GET', '/api/desk?customer=' + cand.id)); const cr = dd.rows.filter(r => r.cust && r.cust.source === 'สัญญา' && r.v21.goals); if (cr.length >= 2) { pick = cand; crow = cr; break; } }
+  okj(c3('ops', 'POST', '/api/save-price-sheet', { customer_id: pick.id, goal: 'target', rows: crow.map(r => ({ product_id: r.id, price: Math.max(r.cust.price, r.v21.guard || 0), goal: 'target', exception: '' })) }));
+  okj(c3('ops', 'POST', '/api/handoff', { customer_id: pick.id }));
+  /* เซลล์ตรวจก่อนส่ง: เห็นราคา/รอบก่อน/ธรรมชาติลูกค้า ไม่มีทุน */
+  const rv = okj(c3('sale', 'GET', '/api/quote-review?customer=' + pick.id, null, 's1'));
+  assert.equal(rv.rows.length, crow.length); assert.ok(rv.rows.every(r => 'flags' in r && 'risk' in r)); assert.ok(!/cost|margin|floor/.test(JSON.stringify(rv)));
+  assert.equal(c3('sale', 'GET', '/api/quote-review?customer=' + pick.id, null, 's2').status, 403, 'เซลล์คนอื่นตรวจไม่ได้');
+  /* ส่ง LINE = ลิงก์อย่างเดียว ไม่มีรายการราคาในข้อความ */
+  okj(c3('sale', 'POST', '/api/customers/' + pick.id, { line_user_id: 'U-link' }, 's1'));
+  okj(c3('sale', 'POST', '/api/line/send', { customer_id: pick.id, kind: 'quote' }, 's1'));
+  const ob = okj(c3('ops', 'GET', '/api/outbox')).rows[0]; assert.ok(/\/q\//.test(ob.text), 'มีลิงก์'); assert.ok(!/฿\/กก\./.test(ob.text), 'ไม่มีราคารายบรรทัดในข้อความ');
+  await st.ext.drainOutbox(() => Promise.resolve({ sent: true }));
+  const token = ob.text.match(/\/q\/([A-Za-z0-9]+)/)[1];
+  /* ลูกค้าเปิดลิงก์ → event quote-open · เห็นเฉพาะ customer-safe */
+  const pq = st.publicQuote(token); assert.equal(pq.rows.length, crow.length); assert.ok(pq.version >= 1 && pq.summary && pq.validUntil); assert.ok(!/cost|margin|guard|floor/.test(JSON.stringify(pq)));
+  assert.ok(okj(c3('ops', 'GET', '/api/events?customer=' + pick.id)).rows.some(e => e.action === 'quote-open' && e.kind === 'customer'));
+  /* ลูกค้าขอต่อรอง 1 รายการในลิงก์ → คำขอวิ่งเข้า Pricing · Pricing อนุมัติ → ลิงก์แสดง "ราคาใหม่หลังต่อรอง" → ลูกค้ารับ */
+  const r0 = pq.rows[0];
+  okj(c3('anon', 'POST', '/api/public-quotes/' + token + '/respond', { product_id: r0.pid, kind: 'nego', want: r0.price - 3, reason: 'เจ้าอื่นถูกกว่า' }));
+  assert.equal(st.publicQuote(token).rows[0].pending, true);
+  const rq = okj(c3('ops', 'GET', '/api/price-requests')).rows.find(r => r.customer_id === pick.id && r.status === 'open'); assert.ok(rq && rq.round === 1);
+  okj(c3('ops', 'POST', '/api/price-decide', { id: rq.id, approve: true, final_price: r0.price - 2, note: 'ok' }));
+  const pq2 = st.publicQuote(token); assert.equal(pq2.rows[0].revised, true); assert.equal(pq2.rows[0].price, r0.price - 2);
+  okj(c3('anon', 'POST', '/api/public-quotes/' + token + '/respond', { product_id: r0.pid, kind: 'accept' }));
+  /* รับที่เหลือทั้งใบ → ตอบครบ → คิวเซลล์ = ตอบรับ รอปิดดีล (P1) */
+  okj(c3('anon', 'POST', '/api/public-quotes/' + token + '/respond', { kind: 'accept', all: true }));
+  const pq3 = st.publicQuote(token); assert.equal(pq3.summary.complete, true); assert.equal(pq3.summary.accepted, crow.length);
+  const row = okj(c3('sale', 'GET', '/api/sales-queue', null, 's1')).rows.find(r => r.id === pick.id); assert.equal(row.state, 'accepted'); assert.equal(row.priority, 1);
+  const ev = okj(c3('ops', 'GET', '/api/events?customer=' + pick.id)).rows.map(e => e.action);
+  ['quote-sent', 'quote-open', 'negotiation-requested', 'quote-accepted'].forEach(a => assert.ok(ev.includes(a), 'timeline มี ' + a + ': ' + ev.join(',')));
+  /* เซลล์ปิด Won ใส่ปริมาณ → ระบบสร้างคำขอเอกสารให้แอดมินเอง → ออก Quotation → Invoice (เข้า AR) */
+  okj(c3('sale', 'POST', '/api/deal-close', { customer_id: pick.id, outcome: 'won', lines: crow.map(r => ({ pid: r.id, qty: 10 })) }, 's1'));
+  let dq = okj(c3('ops', 'GET', '/api/doc-requests')); const dr = dq.rows.find(d => d.customer_id === pick.id); assert.ok(dr && dr.quotation.status === 'requested' && dr.lines.length === crow.length && dr.value > 0);
+  assert.equal(okj(c3('sale', 'GET', '/api/doc-requests', null, 's2')).rows.length, 0, 'เซลล์อื่นไม่เห็นเอกสารของคนอื่น');
+  assert.equal(c3('ops', 'POST', '/api/doc-requests/issue', { id: dr.id, kind: 'invoice', doc_no: 'INV-1' }).status, 400, 'ต้องออก Quotation ก่อน');
+  okj(c3('ops', 'POST', '/api/doc-requests/issue', { id: dr.id, kind: 'quotation', doc_no: 'QT-2569-0001' }));
+  okj(c3('ops', 'POST', '/api/doc-requests/issue', { id: dr.id, kind: 'invoice', doc_no: 'INV-2569-0001' }));
+  dq = okj(c3('ops', 'GET', '/api/doc-requests')); assert.equal(dq.rows.find(d => d.id === dr.id).status, 'invoiced');
+  assert.ok(okj(c3('ops', 'GET', '/api/invoices')).invoices.some(i => i.id === 'INV-2569-0001'), 'invoice เข้าระบบบัญชี');
+  const closed = okj(c3('sale', 'GET', '/api/dashboard', null, 's1')).closed.find(r => r.id === pick.id); assert.equal(closed.outcome.docs.invoice, 'INV-2569-0001');
+  assert.equal(c3('sale', 'POST', '/api/doc-requests/issue', { id: dr.id, kind: 'quotation', doc_no: 'x' }, 's1').status, 403, 'เซลล์ออกเอกสารเองไม่ได้');
+});

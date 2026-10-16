@@ -42,6 +42,12 @@
   "title": "Margin Guard"
  },
  {
+  "id": "docs",
+  "who": "แอดมิน",
+  "role": "ops",
+  "title": "เอกสารขาย"
+ },
+ {
   "id": "process",
   "who": "พี่จุ๋ม",
   "role": "ops",

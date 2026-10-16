@@ -24,7 +24,8 @@ window.PX = (function () {
     { id: 'pricing', href: '/pricing', ic: '🧮', t: 'ตั้งราคา', s: 'พุธ · ใบละเจ้า', badge: 'work' },
     { id: 'cust', href: '/customers', ic: '👥', t: 'ลูกค้า',       s: 'สัญญา + Margin Guard', badge: 'low' },
     { id: 'sale', href: '/sales', ic: '📊', t: 'Sales',        s: 'ประกาศราคา' },
-    { id: 'cost', href: '/costs', ic: '📦', t: 'รับทุน & ตลาด', s: 'ทุน · แนวโน้ม · แหล่งข้อมูล' }
+    { id: 'cost', href: '/costs', ic: '📦', t: 'รับทุน & ตลาด', s: 'ทุน · แนวโน้ม · แหล่งข้อมูล' },
+    { id: 'docs', href: '/docs', ic: '🧾', t: 'เอกสารขาย', s: 'Quotation → Invoice' }
   ];
   /* TOOLS = ของที่ไม่ได้ใช้ทุกวัน · บนมือถือยุบเป็นปุ่มเดียวเปิดเป็นแผงแทน
      เดิม 11 ปุ่มเรียงในแถบล่าง กดพลาดตลอด */
@@ -51,9 +52,9 @@ window.PX = (function () {
   /* บทบาทไหนเห็นเมนูอะไร — ต้องตรงกับสิทธิ์จริงที่ API บังคับ
      ให้เห็นเมนูที่กดแล้วเจอ "ไม่มีสิทธิ์" คือหลอกให้เสียเวลา */
   var CAN = { sale: ['sale'],
-              ops:   ['pricing','cust','sale','cost','flow','memory','logic','guard','wire','trend','log'],
-              boss:  ['exec','brain','pricing','cust','sale','cost','flow','memory','logic','guard','wire','trend','log'],
-              admin: ['exec','brain','pricing','cust','sale','cost','flow','memory','logic','guard','wire','trend','log'] };
+              ops:   ['pricing','cust','sale','cost','docs','flow','memory','logic','guard','wire','trend','log'],
+              boss:  ['exec','brain','pricing','cust','sale','cost','docs','flow','memory','logic','guard','wire','trend','log'],
+              admin: ['exec','brain','pricing','cust','sale','cost','docs','flow','memory','logic','guard','wire','trend','log'] };
 
   function applyRole(role) {
     var ok = CAN[role] || CAN.ops;

@@ -1,0 +1,57 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>เอกสารขาย · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+<style>
+.dq{display:grid;gap:10px}.dq .it{display:grid;grid-template-columns:1.3fr 1fr 1fr auto;gap:10px;align-items:center;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.dq .it b{display:block}.dq .it small{display:block;color:var(--tx-3);font-size:11px}.dq .it .ln{font-size:12px;color:var(--tx-2)}.dq .it.q{border-left:4px solid var(--amber)}.dq .it.i{border-left:4px solid var(--blue)}.dq .it.d{border-left:4px solid var(--green);opacity:.85}
+.dq .act{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:800px){.dq .it{grid-template-columns:1fr 1fr}.dq .act{grid-column:1/-1;justify-content:flex-start}}
+</style>
+</head><body>
+<script src="/peach.js"></script>
+<script>
+/* เอกสารขาย — แอดมิน/บัญชี: ลูกค้ายืนยันราคาในลิงก์ → เซลล์ปิด Won → ระบบส่งคำขอมาที่นี่เอง
+   แอดมินออก Quotation → Invoice แล้วใส่เลขที่ (ระบบบันทึกเข้า AR ให้) · ไม่มีใครต้องพิมพ์ราคาใหม่หรือส่งไฟล์ไปมา */
+var esc = PX.esc, money = PX.money, ago = PX.ago, DOCS = null, F = 'open';
+PX.shell('docs', '<div class="float"><div class="ic">🧾</div><b>เอกสารรอออก</b><span id="floatSub">กำลังอ่าน…</span><button onclick="load()">โหลดใหม่</button></div>');
+function jsq(v) { return JSON.stringify(String(v == null ? '' : v)).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function draw() {
+  var main = document.getElementById('main'), D = DOCS, rows = (D.rows || []).filter(function (d) { return F === 'all' || (F === 'open' ? d.status !== 'invoiced' : F === 'q' ? d.quotation.status === 'requested' : F === 'i' ? (d.quotation.status === 'issued' && d.invoice.status !== 'issued') : d.status === 'invoiced'); });
+  var h = PX.head('เอกสารขาย · Quotation → Invoice', 'คำขอมาจากดีลที่ลูกค้ายืนยันราคาในลิงก์แล้ว เซลล์ปิด Won → ระบบส่งมาให้ออกเอกสารตามลำดับ · ใส่เลขที่แล้วระบบลง log + AR ให้เอง', ['บช', 'แอดมิน / บัญชี', 'ออกเอกสารจากดีลที่ปิดแล้ว']);
+  h += '<div class="kpi" style="margin-bottom:14px">' +
+    '<div class="k lead tap" onclick="setF(\'q\')"><div class="kt"><span class="ic">📝</span><span class="pill">ขั้นที่ 1</span></div><div class="lb">รอออก Quotation</div><div class="v">' + D.quotationQueue + '</div><div class="c">ลูกค้ายืนยันราคาแล้ว · เซลล์ปิด Won แล้ว</div></div>' +
+    '<div class="k tap" onclick="setF(\'i\')"><div class="kt"><span class="ic">🧾</span><span class="pill b">ขั้นที่ 2</span></div><div class="lb">รอออก Invoice</div><div class="v">' + D.invoiceQueue + '</div><div class="c">Quotation ออกแล้ว · ใส่ปริมาณจริงแล้วออก Invoice</div></div>' +
+    '<div class="k tap" onclick="setF(\'done\')"><div class="kt"><span class="ic">✅</span><span class="pill g">จบแล้ว</span></div><div class="lb">ออก Invoice แล้ว</div><div class="v">' + (D.rows || []).filter(function (d) { return d.status === 'invoiced'; }).length + '</div><div class="c">เข้าบัญชีลูกหนี้ (AR) อัตโนมัติ</div></div>' +
+    '<div class="k"><div class="kt"><span class="ic">🤖</span><span class="pill">งานที่หายไป</span></div><div class="lb">ไม่ต้องทำอีก</div><div class="v" style="font-size:16px;line-height:1.4">พิมพ์ราคา · ส่งไฟล์ · ทวงคำตอบ</div><div class="c">ราคามาจากที่ Pricing ยืนยัน ลูกค้ากดยืนยันเองในลิงก์</div></div></div>';
+  h += '<div class="card"><h3>คิวเอกสาร <span class="sub">' + rows.length + ' รายการ</span></h3><div class="fun" style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px">' + [['open', 'ยังไม่จบ'], ['q', 'รอ Quotation'], ['i', 'รอ Invoice'], ['done', 'จบแล้ว'], ['all', 'ทั้งหมด']].map(function (f) { return '<button class="btn' + (F === f[0] ? ' pri' : '') + '" style="padding:4px 11px;font-size:12px" onclick="setF(' + jsq(f[0]) + ')">' + f[1] + '</button>'; }).join('') + '</div>' +
+    '<div class="dq">' + (rows.length ? rows.map(function (d) {
+      var st = d.status === 'invoiced' ? 'd' : d.quotation.status === 'issued' ? 'i' : 'q';
+      return '<div class="it ' + st + '"><div><b>' + esc(d.customer) + '</b><small>รอบ ' + esc(d.label) + ' · ขอเมื่อ ' + ago(d.at) + (d.sales_name || d.sales_id ? ' · ' + esc(d.sales_name || d.sales_id) : '') + '</small></div>' +
+        '<div class="ln">' + d.lines.length + ' รายการ' + (d.value ? ' · ' + money(d.value) + ' ฿' + (d.value_basis === 'estimate' ? ' (ประมาณ)' : '') : ' · ยังไม่มีปริมาณ') + (d.condition ? '<br>เงื่อนไข: ' + esc(d.condition) : '') + '</div>' +
+        '<div class="ln">Quotation: ' + (d.quotation.status === 'issued' ? '<b style="color:var(--green)">' + esc(d.quotation.no) + '</b>' : '<span style="color:var(--amber)">รอออก</span>') + '<br>Invoice: ' + (d.invoice.status === 'issued' ? '<b style="color:var(--green)">' + esc(d.invoice.no) + '</b> · ' + money(d.invoice.amount || 0) + ' ฿' : d.quotation.status === 'issued' ? '<span style="color:var(--blue)">รอออก</span>' : '<span style="color:var(--tx-3)">หลัง Quotation</span>') + '</div>' +
+        '<div class="act">' + (d.quotation.status !== 'issued' ? '<button class="btn pri" onclick="issue(' + jsq(d.id) + ',\'quotation\')">ออก Quotation</button>' : d.invoice.status !== 'issued' ? '<button class="btn pri" onclick="issue(' + jsq(d.id) + ',\'invoice\')">ออก Invoice</button>' : '') + '<button class="btn" onclick="lines(' + jsq(d.id) + ')">รายการ</button></div></div>';
+    }).join('') : '<p class="hint">ไม่มีรายการในกลุ่มนี้ — คำขอจะเข้ามาเองเมื่อเซลล์ปิดดีล Won</p>') + '</div></div>';
+  main.innerHTML = h;
+  var fs = document.getElementById('floatSub'); if (fs) fs.textContent = 'Quotation ' + D.quotationQueue + ' · Invoice ' + D.invoiceQueue;
+}
+function setF(f) { F = f; draw(); }
+function doc(id) { return (DOCS.rows || []).filter(function (d) { return d.id === id; })[0]; }
+function lines(id) { var d = doc(id); PX.modal({ title: d.customer + ' · รายการที่ลูกค้ายืนยัน', sub: 'รอบ ' + d.label + ' · ราคาที่ตกลง (จากลิงก์ใบราคา)', ok: false, html: '<div class="sc"><table class="g" style="min-width:0"><thead><tr><th style="text-align:left">สินค้า</th><th>ราคา ฿/กก.</th><th>ปริมาณ กก.</th></tr></thead><tbody>' + d.lines.map(function (l) { return '<tr><td style="text-align:left">' + esc(l.name) + '</td><td>' + l.price + '</td><td>' + (l.qty || '—') + '</td></tr>'; }).join('') + '</tbody></table></div>' }); }
+function issue(id, kind) {
+  var d = doc(id);
+  PX.modal({ title: (kind === 'invoice' ? 'ออก Invoice' : 'ออก Quotation') + ' · ' + d.customer, sub: kind === 'invoice' ? 'ใส่เลขที่ invoice และปริมาณจริง (กก.) ต่อรายการ — ระบบบันทึกเข้า AR ให้' : 'ใส่เลขที่ใบเสนอราคาจากระบบบัญชี · ราคาใช้ตามที่ลูกค้ายืนยันในลิงก์',
+    fields: [{ k: 'doc_no', label: 'เลขที่เอกสาร', ph: kind === 'invoice' ? 'INV-2569-0001' : 'QT-2569-0001' }, { k: 'date', label: 'วันที่ (ว่าง = วันนี้)', ph: '2026-10-16' }],
+    html: kind === 'invoice' ? '<div class="sc" style="max-height:220px;overflow:auto;margin-bottom:8px"><table class="g" style="min-width:0"><tbody>' + d.lines.map(function (l) { return '<tr><td style="text-align:left;font-size:12px">' + esc(l.name) + '<br><small style="color:var(--tx-3)">' + l.price + ' ฿/กก.</small></td><td style="width:120px"><input data-q="' + esc(l.pid) + '" type="number" min="0" step="0.5" value="' + (l.qty || '') + '" placeholder="กก." style="width:110px;font-family:var(--fn);padding:6px 8px;border:1px solid var(--line);border-radius:8px"></td></tr>'; }).join('') + '</tbody></table></div>' : '',
+    okText: 'บันทึกว่าออกแล้ว', onOk: function (v, close) {
+      var qty = {}; document.querySelectorAll('[data-q]').forEach(function (i) { if (Number(i.value) > 0) qty[i.dataset.q] = Number(i.value); });
+      return PX.post('/api/doc-requests/issue', { id: id, kind: kind, doc_no: v.doc_no, date: v.date || undefined, qty: qty }).then(function () { close(); PX.toast((kind === 'invoice' ? 'Invoice ' : 'Quotation ') + esc(v.doc_no) + ' บันทึกแล้ว'); return load(); }).catch(function (e) { PX.toast('ไม่สำเร็จ — ' + esc(e.message), 'bad'); return false; });
+    } });
+}
+function load() { return PX.get('/api/doc-requests').then(function (j) { DOCS = j; draw(); }).catch(PX.fail); }
+load();
+</script>
+</body></html>

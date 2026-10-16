@@ -122,7 +122,7 @@ window.Dash = (function () {
   function hrs(h) { return h == null ? '' : h < 48 ? h + ' ชม.' : Math.round(h / 24) + ' วัน'; }
   function actBtn(r) {
     var a = r.action; if (!a) return '';
-    var k = a.key, fn = k === 'send' || k === 'resend' ? 'Dash.sendLine(' + jsq(r.id) + ')' : k === 'send_revised' ? 'Dash.sendLine(' + jsq(r.id) + ',\'revised\')' : k === 'close_won' ? 'Dash.close(' + jsq(r.id) + ',' + jsq(r.name) + ')' : k === 'decide' ? 'Dash.decide(' + jsq(r.id) + ',' + jsq(r.name) + ')' : 'Dash.follow(' + jsq(r.id) + ',' + jsq(r.name) + ')';
+    var k = a.key, fn = k === 'send' || k === 'resend' ? 'Dash.review(' + jsq(r.id) + ')' : k === 'send_revised' ? 'Dash.sendLine(' + jsq(r.id) + ',\'revised\')' : k === 'close_won' ? 'Dash.close(' + jsq(r.id) + ',' + jsq(r.name) + ')' : k === 'decide' ? 'Dash.decide(' + jsq(r.id) + ',' + jsq(r.name) + ')' : 'Dash.follow(' + jsq(r.id) + ',' + jsq(r.name) + ')';
     return '<button class="pri" onclick="' + fn + '">' + esc(a.label) + '</button>';
   }
   function whyRow(r) {
@@ -180,8 +180,8 @@ window.Dash = (function () {
         '<td style="text-align:left;font-size:11.5px">' + (r.action ? '<b style="color:var(--blue)">' + esc(r.action.label) + '</b>' : r.waitingOn === 'pricing' ? 'รอ Pricing' : 'รอลูกค้า') + ' <button class="btn" style="padding:2px 8px;font-size:11px;margin-left:4px" onclick="openSheet(' + jsq(r.id) + ')">เปิดใบ</button></td></tr>'; }).join('') : '<tr><td colspan="6" class="hint">ไม่มีเจ้าที่เปิดอยู่</td></tr>') + '</tbody></table></div>';
     /* Row 5 — Recently Closed */
     h += '<h3 style="font-size:13.5px;margin:14px 0 6px">Recently Closed <span style="font-weight:400;color:var(--tx-3)">· Won ' + P.won + ' · Lost ' + P.lost + '</span></h3>' +
-      (closed.length ? '<div class="sc"><table class="g" style="min-width:600px"><thead><tr><th style="text-align:left">ลูกค้า</th><th>ผล</th><th>มูลค่า</th><th>รายการที่ตกลง</th><th>รอบต่อรอง</th><th style="text-align:left">เหตุผล / เงื่อนไข</th><th></th></tr></thead><tbody>' +
-        closed.map(function (r) { var o = r.outcome; return '<tr><td style="text-align:left"><b>' + esc(r.name) + '</b><br><small style="color:var(--tx-3)">' + ago(o.at) + '</small></td><td>' + pill(o.outcome === 'won' ? 'g' : 'r', o.outcome === 'won' ? 'WON' : 'LOST') + '</td><td>' + (o.outcome === 'won' ? (o.valueBasis === 'actual' ? baht(o.value) : '<span style="color:var(--amber)">ยังไม่ใส่ปริมาณ</span>') : (r.value != null ? baht(r.value) : '—')) + '</td><td>' + (o.finalLines || 0) + '/' + (r.lines ? r.lines.total : 0) + '</td><td>' + (o.rounds || 0) + '</td><td style="text-align:left;font-size:11.5px">' + esc(o.reason || '—') + '</td><td><button class="btn" style="padding:2px 8px;font-size:11px" onclick="Dash.timeline(' + jsq(r.id) + ',' + jsq(r.name) + ')">ไทม์ไลน์</button></td></tr>'; }).join('') + '</tbody></table></div>'
+      (closed.length ? '<div class="sc"><table class="g" style="min-width:600px"><thead><tr><th style="text-align:left">ลูกค้า</th><th>ผล</th><th>มูลค่า</th><th>รายการที่ตกลง</th><th>รอบต่อรอง</th><th style="text-align:left">เอกสาร / เหตุผล</th><th></th></tr></thead><tbody>' +
+        closed.map(function (r) { var o = r.outcome; return '<tr><td style="text-align:left"><b>' + esc(r.name) + '</b><br><small style="color:var(--tx-3)">' + ago(o.at) + '</small></td><td>' + pill(o.outcome === 'won' ? 'g' : 'r', o.outcome === 'won' ? 'WON' : 'LOST') + '</td><td>' + (o.outcome === 'won' ? (o.valueBasis === 'actual' ? baht(o.value) : '<span style="color:var(--amber)">ยังไม่ใส่ปริมาณ</span>') : (r.value != null ? baht(r.value) : '—')) + '</td><td>' + (o.finalLines || 0) + '/' + (r.lines ? r.lines.total : 0) + '</td><td>' + (o.rounds || 0) + '</td><td style="text-align:left;font-size:11.5px">' + (o.outcome === 'won' ? (o.docs ? (o.docs.invoice ? pill('g', 'Invoice ' + o.docs.invoice) : o.docs.quotation ? pill('b', 'Quotation ' + o.docs.quotation) + ' ' + pill('n', 'รอ Invoice') : pill('a', 'แอดมินกำลังออก Quotation')) : pill('n', 'ส่งแอดมินแล้ว')) + (o.reason ? ' ' + esc(o.reason) : '') : esc(o.reason || '—')) + '</td><td><button class="btn" style="padding:2px 8px;font-size:11px" onclick="Dash.timeline(' + jsq(r.id) + ',' + jsq(r.name) + ')">ไทม์ไลน์</button></td></tr>'; }).join('') + '</tbody></table></div>'
         : '<p class="hint">ยังไม่มีดีลที่ปิดในรอบนี้ — ทุกใบที่ส่งแล้วต้องจบที่ Won หรือ Lost</p>');
     h += '<div style="margin-top:10px">' + sysRow(d.health) + alerts(d.alerts) + '</div></section>';
     return h;
@@ -247,6 +247,17 @@ window.Dash = (function () {
         } });
     }).catch(function (e) { PX.toast(esc(e.message), 'bad'); });
   }
+  /* ตรวจก่อนส่ง: ใบที่ Pricing ตั้งให้เจ้านี้ เทียบกับธรรมชาติของลูกค้า (SKU ที่เคยต่อรอง/ขึ้นแรง/สูงกว่าที่เคยตกลง) → โอเคแล้วค่อยส่งลิงก์ทาง LINE */
+  function review(cid) {
+    PX.get('/api/quote-review?customer=' + encodeURIComponent(cid)).then(function (q) {
+      var rows = q.rows.slice().sort(function (a, b) { return b.risk - a.risk; });
+      PX.modal({ title: 'ตรวจก่อนส่ง · ' + q.customer, sub: 'ใบราคา V' + q.version + ' · รอบ ' + q.label + ' · ' + q.total + ' รายการ · ' + q.note, okText: q.line ? '📨 ส่งลิงก์ทาง LINE' : 'ผูก LINE ก่อนส่ง',
+        html: '<div class="sc" style="max-height:50vh;overflow:auto"><table class="g" style="min-width:0"><thead><tr><th style="text-align:left">สินค้า</th><th>รอบก่อน</th><th>ราคาใหม่</th><th style="text-align:left">ธรรมชาติลูกค้าเจ้านี้</th></tr></thead><tbody>' +
+          rows.map(function (r) { return '<tr' + (r.risk >= 2 ? ' style="background:var(--amber-l)"' : '') + '><td style="text-align:left"><b>' + esc(r.name) + '</b></td><td>' + (r.prev || '—') + '</td><td><b>' + r.price + '</b>' + (r.diff ? ' <small class="' + (r.diff > 0 ? 'neg' : '') + '">(' + (r.diff > 0 ? '+' : '') + r.diff + ')</small>' : '') + '</td><td style="text-align:left;font-size:11.5px">' + (r.flags.length ? r.flags.map(function (f) { return '<span class="pill2 ' + (r.risk >= 2 ? 'a' : 'n') + '" style="margin:1px 2px 1px 0">' + esc(f) + '</span>'; }).join('') : '<span style="color:var(--tx-3)">ไม่เคยต่อรอง</span>') + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+          '<p class="hint" style="margin-top:8px">ลูกค้าจะได้ <b>ลิงก์</b> (ไม่ใช่ไฟล์) เปิดใน LINE แล้วกด รับราคา / ขอต่อรอง / ไม่เอา ทีละรายการ · คำขอต่อรองวิ่งเข้า Pricing เอง · ถ้าคิดว่าราคาไหนไม่น่าผ่าน <button class="lnk3" onclick="openSheet(' + jsq(cid) + ')">เปิดใบขอให้ Pricing ทบทวนก่อน</button>' + (q.link ? ' · <a href="' + esc(q.link) + '" target="_blank" rel="noopener">ดูแบบที่ลูกค้าเห็น</a>' : '') + '</p>',
+        onOk: function (v, close) { if (!q.line) { close(); bindLine(cid, q.customer); return false; } close(); return sendLine(cid); } });
+    }).catch(function (e) { PX.toast('เปิดไม่ได้ — ' + esc(e.message), 'bad'); });
+  }
   /* เงียบเกิน 7 วัน: ตามต่อ (บันทึกการตาม) หรือ ปิด Lost เหตุผล "ไม่ตอบ" */
   function decide(cid, name) {
     PX.modal({ title: 'ตัดสินใจ · ' + name, sub: 'ส่งราคาไปแล้วลูกค้าไม่ตอบเกินกำหนด ระบบตามให้แล้ว — เลือกว่าจะตามต่อเอง หรือปิดเป็น Lost (ไม่ตอบ) จะได้ไม่ค้างในระบบ', okText: 'ปิด Lost — ไม่ตอบ',
@@ -297,5 +308,5 @@ window.Dash = (function () {
     obs.observe(main, { childList: true, subtree: false });
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') load(true).then(paint).catch(function () {}); });
   }
-  return { mount: mount, refresh: refresh, rep: rep, decide: decide, timeline: timeline, filter: filter, toggleAll: toggleAll, sendLine: sendLine, sendAll: sendAll, bindLine: bindLine, follow: follow, close: close, flag: flag, ack: ack };
+  return { mount: mount, refresh: refresh, rep: rep, review: review, decide: decide, timeline: timeline, filter: filter, toggleAll: toggleAll, sendLine: sendLine, sendAll: sendAll, bindLine: bindLine, follow: follow, close: close, flag: flag, ack: ack };
 })();
