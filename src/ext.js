@@ -649,7 +649,25 @@
       var tr = computeTrend(false), plan = surveyPlan(), wkSubs = D.surveys.filter(function (s) { return s.week === plan.week; });
       var survRows = wkSubs.reduce(function (a, s) { return a + s.n; }, 0), survUnm = wkSubs.reduce(function (a, s) { return a + s.unmatched.length; }, 0);
       var alerts30 = D.events.filter(function (e) { return e.action === 'alert' && e.at >= d30; }).length;
+      /* ชุดเทียบ 30 วันก่อนหน้า + อนุกรมสำหรับกราฟเล็กในการ์ด (ระบบช่วยได้แค่ไหน) */
+      var dAgo = function (n) { var d = new Date(td + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); }, d60 = dAgo(60), d14 = dAgo(14);
+      var entPrev = (D.cost_entries || []).filter(function (e) { return e.at >= d60 && e.at < d30; }), byP = { file: 0, manual: 0, bulk: 0, flag: 0, line: 0 }; entPrev.forEach(function (e) { byP[ch(e)]++; });
+      var autoPrevPct = entPrev.length ? Math.round((byP.file + byP.flag + byP.line) / entPrev.length * 100) : null;
+      var batches = D.cost_batches.slice(0, 8).reverse().map(function (b) { return { id: b.id, at: String(b.at || '').slice(5, 10), auto: b.auto || 0, review: b.review || 0, unchanged: b.unchanged || 0, rows: b.rows || 0, by: b.by, source: b.source }; });
+      var mix = { exact: 0, alias: 0, fuzzy: 0, possible: 0, unmatched: 0 };
+      D.cost_batches.forEach(function (b) { mix.exact += (b.exact || 0) - (b.alias || 0); mix.alias += b.alias || 0; mix.fuzzy += b.fuzzy || 0; mix.possible += (b.byKind || {}).possible || 0; mix.unmatched += (b.byKind || {}).unmatched || 0; });
+      var daily = {}; for (var di = 13; di >= 0; di--) daily[dAgo(di)] = 0; D.market_obs.forEach(function (o) { if (o.observed_at in daily) daily[o.observed_at]++; });
+      var obsDaily = Object.keys(daily).map(function (k) { return { d: k.slice(5), n: daily[k] }; });
+      var freshPrev = {}; D.market_obs.forEach(function (o) { if (o.observed_at >= d14 && o.observed_at < d7) freshPrev[o.product_id] = 1; });
+      var byM = {}; D.predictions.forEach(function (p) { if (!p.resolved || p.hit == null) return; var k = String(p.due_at).slice(0, 7); byM[k] = byM[k] || { n: 0, hit: 0 }; byM[k].n++; if (p.hit) byM[k].hit++; });
+      var scoreSeries = Object.keys(byM).sort().slice(-8).map(function (k) { return { m: k.slice(2).replace('-', '/'), n: byM[k].n, pct: Math.round(byM[k].hit / byM[k].n * 100) }; });
+      var mkStale = D.pricelist.rows.filter(function (r) { return (r.marks || []).some(function (m) { return m.price > 0; }) && !(r.marks || []).some(function (m) { return m.price > 0 && (m.age == null || m.age <= 30); }); }).length;
+      var mkUsable = D.pricelist.rows.filter(function (r) { return (r.marks || []).some(function (m) { return m.price > 0 && m.age != null && m.age >= 7 && m.age <= 30; }) && !(r.marks || []).some(function (m) { return m.price > 0 && m.age != null && m.age < 7; }); }).length;
       return { today: td,
+        prev: { autoPct: autoPrevPct, fresh7: Object.keys(freshPrev).length, entries: entPrev.length },
+        queueByKind: (function () { var k = {}; D.cost_flags.forEach(function (f) { if (f.status === 'pending' || f.status === 'hold') k[f.kind] = (k[f.kind] || 0) + 1; }); return k; })(), kindText: KIND_TEXT,
+        policy: { version: S.policy.version }, policyGroups: S.policy.groups,
+        series: { batches: batches, mix: mix, obsDaily: obsDaily, score: scoreSeries, freshness: { fresh: Object.keys(fresh).length, usable: mkUsable, stale: mkStale, blind: D.pricelist.rows.length - Object.keys(known).length } },
         cost: { entries30: ent.length, byChannel: by, autoPct: ent.length ? Math.round(auto / ent.length * 100) : null, imports: imps.length, lastImport: imps[0] || null,
           match: { exact: exact, fuzzy: fuzzy, unmatched: unm, pct: exact + fuzzy + unm ? Math.round((exact + fuzzy) / (exact + fuzzy + unm) * 100) : null },
           flags: { total: flags.length, pending: flags.filter(function (f) { return f.status === 'pending' || f.status === 'hold'; }).length, decided: decided.length, caught: caught, precision: decided.length ? Math.round(caught / decided.length * 100) : null, aliases: Object.keys(D.sku_aliases).length, batches: D.cost_batches.length, autoRows: D.cost_batches.reduce(function (a, b) { return a + (b.auto || 0); }, 0), reviewRows: D.cost_batches.reduce(function (a, b) { return a + (b.review || 0); }, 0) },
