@@ -42,7 +42,9 @@ const t0 = Date.now();
 const LINE_TOKEN = process.env.LINE_CHANNEL_TOKEN || '';
 const LINE_ADMIN = process.env.LINE_ADMIN_USER_ID || '';
 const MARKET_FEED_URL = process.env.MARKET_FEED_URL || '';
-const store = createStore(loadDocs(), { pins: parsePins(), lineConfigured: !!LINE_TOKEN });
+const SAMPLE_MARKET = process.env.FH_SAMPLE_MARKET === '1';   /* ราคาตลาดตัวอย่าง (ไม่ใช่ของจริง) — เปิดเฉพาะตอนทดสอบ UI */
+const DATA_NOTE = 'สินค้า/ทุน/ราคาจากใบราคาขาย+ทุน AL 01-07/10/69 · ลูกค้า/สัญญา/ยอดขายจากระบบเดิม (ก.ย. 69) · ราคาตลาด: ' + (MARKET_FEED_URL ? 'connector ' + MARKET_FEED_URL : SAMPLE_MARKET ? 'ตัวอย่างสมมติ (ไม่ใช่ของจริง)' : 'ยังไม่ต่อ connector — ใช้สำรวจหน้าร้าน');
+const store = createStore(loadDocs(), { pins: parsePins(), lineConfigured: !!LINE_TOKEN, dataNote: DATA_NOTE, sampleMarket: SAMPLE_MARKET });
 let replayed = 0;
 if (JOURNAL && fs.existsSync(JOURNAL)) {
   for (const line of fs.readFileSync(JOURNAL, 'utf8').split('\n')) {
@@ -61,7 +63,8 @@ async function lineTransport(to, text) {
 }
 async function loadMarketFeed() {
   if (MARKET_FEED_URL) { const r = await fetch(MARKET_FEED_URL); if (!r.ok) throw new Error('feed ' + r.status); const j = await r.json(); return j.rows || j; }
-  return JSON.parse(fs.readFileSync(path.join(DATA, 'market-feed-sample.json'), 'utf8')).rows;
+  if (SAMPLE_MARKET) return JSON.parse(fs.readFileSync(path.join(DATA, 'market-feed-sample.json'), 'utf8')).rows;
+  return null;
 }
 async function runMarketSync(reason) {
   try {
@@ -128,7 +131,7 @@ async function tick() {
     const n = await store.ext.drainOutbox(lineTransport);
     if (n) journal({ method: 'POST', url: '/api/_drain', body: {}, role: 'system', at: new Date().toISOString(), system: true });
     const j = store.docs.jobs['market-sync'], age = j.last_run ? (Date.now() - Date.parse(j.last_run + '+07:00')) / 36e5 : 99;
-    if (age > 24) await runMarketSync('ครบรอบ 24 ชม.');
+    if (age > 24) { if (MARKET_FEED_URL || SAMPLE_MARKET) await runMarketSync('ครบรอบ 24 ชม.'); else { j.status = 'off'; j.detail = 'ยังไม่ต่อ connector ราคาตลาด (ตั้ง MARKET_FEED_URL) — ใช้สำรวจหน้าร้านแทน'; } }
     scanInbox();
     await notifyAlerts();
   } finally { draining = false; }

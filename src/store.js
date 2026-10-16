@@ -462,7 +462,7 @@
     function meOf(role) {
       if (!role || role === 'anon') return { role: null, needPin: needPin };
       var base = D['me:' + (role === 'admin' ? 'boss' : role)] || { tabs: [], dispatch: false, seeCost: false };
-      return Object.assign({}, base, { role: role, needPin: needPin });
+      return Object.assign({}, base, { role: role, needPin: needPin, dataNote: opts.dataNote || '', sampleMarket: !!opts.sampleMarket });
     }
     function login(body) {
       var role = String(body.role || ''), pin = body.pin == null ? '' : String(body.pin);

@@ -241,7 +241,8 @@ window.PX = (function () {
     var todo = (TODO[role] || TODO.boss)[wd];
     return '<div><div class="g-hi">' + hi + ', ' + esc(ROLE_NAME[ME.role] || '') + '<span>' + (wd === 0 || wd === 6 ? 'พักผ่อนบ้างนะ' : 'วันนี้มีอะไรต้องทำบ้าง') + '</span></div>' +
       '<div class="g-when">วัน' + DAYS[wd] + 'ที่ <b>' + d.getDate() + ' ' + MON[d.getMonth()] + ' ' + (d.getFullYear() + 543) + '</b> · <b class="g-clock">' + z(h) + ':' + z(d.getMinutes()) + '</b> น.</div></div>' +
-      '<div class="g-todo"><span class="g-day">วันนี้</span><a href="' + esc(link) + '">' + esc(todo) + ' →</a></div>';
+      '<div class="g-todo"><span class="g-day">วันนี้</span><a href="' + esc(link) + '">' + esc(todo) + ' →</a></div>' +
+      (ME.dataNote ? '<div class="g-data" style="grid-column:1/-1;font-size:11px;color:var(--tx-3);margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)">' + (ME.sampleMarket ? '<b style="color:var(--red)">⚠ โหมดทดสอบ</b> · ' : '<b style="color:var(--green)">● ข้อมูลจริง</b> · ') + esc(ME.dataNote) + '</div>' : '');
   }
   /* ── บันทึกเวลาใช้งานจริง (activity log) ─────────────────────────
      นับเฉพาะตอนแท็บเปิดอยู่ + มีการขยับ (คลิก/พิมพ์/เลื่อน) ภายใน 60 วิล่าสุด — เปิดค้างไว้เฉยๆ ไม่นับ

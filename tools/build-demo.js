@@ -42,7 +42,7 @@ body{display:flex;flex-direction:column;background:var(--soft);color:var(--ink);
 </style></head><body>
 <div class="bar">
   <div class="row1">
-    <div class="brand"><b>FRESHOUR</b><span>ต้นแบบใช้งานได้ · ข้อมูลตั้งต้นจากระบบจริง ณ 15 ต.ค. 2569 · สร้าง ${TH}</span></div>
+    <div class="brand"><b>FRESHOUR</b><span>ต้นแบบใช้งานได้ · สินค้า/ทุน/ราคา = ใบราคา AL 01-07/10/69 จริง · ราคาตลาด${process.env.FH_SAMPLE_MARKET === '1' ? 'ตัวอย่าง (ไม่จริง)' : 'ยังไม่มี'} · สร้าง ${TH}</span></div>
     <div class="note"><span class="who" id="who">ยังไม่เข้าระบบ</span><span>กดบันทึกแล้วเปลี่ยนจริง (เก็บในเครื่องนี้)</span><button onclick="RESET()">ล้างข้อมูลทดสอบ</button><em>มีทุน/margin จริง ห้ามส่งให้เซลล์หรือคนนอก</em></div>
   </div>
   <div class="nav" id="nav"></div>
@@ -57,7 +57,7 @@ var PAGES=${JSON.stringify(PAGES)};
 var DOCS_B64=${JSON.stringify(DOCS)};
 var PAGE_SRC=${JSON.stringify(PAGE_SRC)};
 var ASSET_SRC=${JSON.stringify(ASSETS)};
-var FEED_B64=${JSON.stringify(gz(FEED))};
+var FEED_B64=${JSON.stringify(gz(FEED))};var SAMPLE=${process.env.FH_SAMPLE_MARKET === '1' ? 'true' : 'false'};
 (function(){
   var fr=document.getElementById('fr'),nav=document.getElementById('nav'),LS='fh-demo-journal',RS='fh-demo-role';
   var ROLE=sessionStorage.getItem(RS)||null,STORE=null,CUR=null,HIST=[],cache={};
@@ -129,9 +129,10 @@ var FEED_B64=${JSON.stringify(gz(FEED))};
   /* เตรียมข้อมูล: แตกทุกก้อน → store → เล่นซ้ำสิ่งที่เคยบันทึกในเครื่องนี้ */
   var keys=Object.keys(DOCS_B64),docs={};
   Promise.all(keys.map(function(k){return unzip(DOCS_B64[k]).then(function(t){docs[k]=JSON.parse(t);});})).then(function(){
-    STORE=FHStore.createStore(docs,{});
+    STORE=FHStore.createStore(docs,{dataNote:'สินค้า/ทุน/ราคาจากใบราคาขาย+ทุน AL 01-07/10/69 · ลูกค้า/สัญญา/ยอดขายจากระบบเดิม (ก.ย. 69) · ราคาตลาด: '+(SAMPLE?'ตัวอย่างสมมติ (ไม่ใช่ของจริง)':'ยังไม่มี — ของจริงต้องต่อ connector หรือสำรวจหน้าร้าน'),sampleMarket:SAMPLE});
     /* งานที่ระบบทำเอง (เวอร์ชันในเบราว์เซอร์): ดึงราคาตลาดจาก feed ตัวอย่างตอนเปิด · ส่ง LINE แบบจำลองทุก 15 วิ */
-    unzip(FEED_B64).then(function(t){var rows=JSON.parse(t).rows;window.__FEED={rows:rows};STORE.handle({method:'POST',url:'/api/market-sync/run',body:{observations:rows},role:'system'});});
+    window.__loadSampleMarket=function(){return unzip(FEED_B64).then(function(t){var rows=JSON.parse(t).rows;window.__FEED={rows:rows};return STORE.handle({method:'POST',url:'/api/market-sync/run',body:{observations:rows},role:'system'});});};
+    if(SAMPLE)window.__loadSampleMarket();
     setInterval(function(){STORE.ext.drainOutbox(null).then(function(n){if(n)toast('ส่ง LINE (จำลอง) '+n+' ข้อความ');});},15000);
     var j=[];try{j=JSON.parse(localStorage.getItem(LS)||'[]');}catch(x){}
     j.forEach(function(e){try{STORE.handle(e);}catch(x){}});
