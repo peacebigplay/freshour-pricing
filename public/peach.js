@@ -255,10 +255,9 @@ window.PX = (function () {
     var link = TODO_LINK[ME.role] || TODO_LINK[role] || '/';
     if (Array.isArray(link)) link = link[wd];
     var todo = (TODO[role] || TODO.boss)[wd];
-    return '<div><div class="g-hi">' + hi + ', ' + esc(ME.rep && ME.rep.name ? ME.rep.name : ROLE_NAME[ME.role] || '') + '<span>' + (wd === 0 || wd === 6 ? 'พักผ่อนบ้างนะ' : 'วันนี้มีอะไรต้องทำบ้าง') + '</span></div>' +
-      '<div class="g-when">วัน' + DAYS[wd] + 'ที่ <b>' + d.getDate() + ' ' + MON[d.getMonth()] + ' ' + (d.getFullYear() + 543) + '</b> · <b class="g-clock">' + z(h) + ':' + z(d.getMinutes()) + '</b> น.</div></div>' +
-      '<div class="g-todo"><span class="g-day">วันนี้</span><a href="' + esc(link) + '">' + esc(todo) + ' →</a></div>' +
-      (ME.dataNote ? '<div class="g-data" style="grid-column:1/-1;font-size:11px;color:var(--tx-3);margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)">' + (ME.sampleMarket ? '<b style="color:var(--red)">⚠ โหมดทดสอบ</b> · ' : '<b style="color:var(--green)">● ข้อมูลจริง</b> · ') + esc(ME.dataNote) + '</div>' : '');
+    /* ทักทายอย่างเดียว — ไม่บอกว่าวันนี้ต้องทำอะไร (คิวงานของแต่ละหน้าบอกเองแล้ว) */
+    return '<div class="g-hi">' + hi + ', ' + esc(ME.rep && ME.rep.name ? ME.rep.name : ROLE_NAME[ME.role] || '') + '</div>' +
+      '<div class="g-when">วัน' + DAYS[wd] + 'ที่ <b>' + d.getDate() + ' ' + MON[d.getMonth()] + ' ' + (d.getFullYear() + 543) + '</b> · <b class="g-clock">' + z(h) + ':' + z(d.getMinutes()) + '</b> น.</div>';
   }
   /* ── บันทึกเวลาใช้งานจริง (activity log) ─────────────────────────
      นับเฉพาะตอนแท็บเปิดอยู่ + มีการขยับ (คลิก/พิมพ์/เลื่อน) ภายใน 60 วิล่าสุด — เปิดค้างไว้เฉยๆ ไม่นับ
@@ -571,7 +570,7 @@ window.PX = (function () {
     if (d < 86400 * 7) return Math.floor(d / 86400) + ' วันก่อน';
     return String(iso).slice(0, 10).split('-').reverse().join('/');
   }
-  return { logo: function () { return LOGO; }, esc: esc, money: money, shell: shell, ago: ago, badge: badge, why: why, pageNums: pageNums,
+  return { logo: function () { return LOGO; }, me: function () { return ME; }, esc: esc, money: money, shell: shell, ago: ago, badge: badge, why: why, pageNums: pageNums,
            ISSUE_TYPES: ISSUE_TYPES, issueNeedsCarrier: issueNeedsCarrier,
            bindTips: bindTips, get: get, fail: fail, head: head, back: back, COL: COL,
            deliveryForm: deliveryForm, deliveryFinish: deliveryFinish, prospectForm: prospectForm,

@@ -29,26 +29,12 @@ const html = `<!doctype html>
 :root{--ink:#0F172A;--mute:#64748B;--line:#E6EAF2;--soft:#F5F6FA;--act:#0052F3;--bar:#fff}
 *{box-sizing:border-box}html,body{height:100%;margin:0}
 body{display:flex;flex-direction:column;background:var(--soft);color:var(--ink);font-family:'Prompt','Sukhumvit Set','Thonburi',sans-serif;font-size:14px}
-.bar{background:var(--bar);border-bottom:1px solid var(--line);padding:8px 14px;display:flex;flex-direction:column;gap:6px}
-.row1{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
-.brand b{letter-spacing:.08em;color:var(--act)}.brand span{color:var(--mute);margin-left:6px}
-.note{font-size:12px;color:var(--mute);display:flex;gap:10px;align-items:center;flex-wrap:wrap}.note em{font-style:normal;color:var(--act);font-weight:600}
-.note button{font:inherit;font-size:12px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:2px 10px;cursor:pointer}
-.nav{display:flex;gap:14px;flex-wrap:wrap;align-items:center}.grp{display:flex;gap:4px;align-items:center;flex-wrap:wrap}.grp>span{font-size:11.5px;color:var(--mute);margin-right:2px}
-.nav button{font:inherit;font-size:13px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 11px;cursor:pointer;color:var(--ink)}
-.nav button[aria-current="page"]{background:var(--act);color:#fff;border-color:var(--act)}
-.who{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--soft);border:1px solid var(--line)}
+.reset{position:fixed;right:10px;bottom:10px;z-index:20;font:inherit;font-size:11px;color:var(--mute);background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer;opacity:.55}.reset:hover{opacity:1}
 .stage{flex:1;position:relative;min-height:0}iframe{border:0;width:100%;height:100%;background:#fff;display:block}
 .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;z-index:9}
 .toast.on{opacity:1}.load{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mute);background:#fff}
 </style></head><body>
-<div class="bar">
-  <div class="row1">
-    <div class="brand"><b>FRESHOUR</b><span>ต้นแบบใช้งานได้ · สินค้า/ทุน/ราคา = ใบราคา AL 01-07/10/69 จริง · ราคาตลาด${process.env.FH_SAMPLE_MARKET === '1' ? 'ตัวอย่าง (ไม่จริง)' : 'ยังไม่มี'} · สร้าง ${TH}</span></div>
-    <div class="note"><span class="who" id="who">ยังไม่เข้าระบบ</span><span>กดบันทึกแล้วเปลี่ยนจริง (เก็บในเครื่องนี้)</span><button onclick="RESET()">ล้างข้อมูลทดสอบ</button><em>มีทุน/margin จริง ห้ามส่งให้เซลล์หรือคนนอก</em></div>
-  </div>
-  <div class="nav" id="nav"></div>
-</div>
+<button class="reset" type="button" onclick="RESET()" title="ล้างข้อมูลทดสอบที่บันทึกไว้ในเครื่องนี้ กลับชุดตั้งต้น">⟲ ล้างข้อมูลทดสอบ</button>
 <div class="stage"><div class="load" id="load">กำลังเตรียมข้อมูล…</div><iframe id="fr" title="หน้าเว็บ"></iframe></div>
 <div class="toast" id="toast"></div>
 <script>${rd('src/ext.js')}</script>
@@ -61,7 +47,7 @@ var PAGE_SRC=${JSON.stringify(PAGE_SRC)};
 var ASSET_SRC=${JSON.stringify(ASSETS)};
 var DATA_VERSION=${JSON.stringify(DATA_VERSION)};var FEED_B64=${JSON.stringify(gz(FEED))};var SAMPLE=${process.env.FH_SAMPLE_MARKET === '1' ? 'true' : 'false'};
 (function(){
-  var fr=document.getElementById('fr'),nav=document.getElementById('nav'),LS='fh-demo-journal:'+DATA_VERSION,RS='fh-demo-role',OLD_LS=Object.keys(localStorage).filter(function(k){return k==='fh-demo-journal'||(k.indexOf('fh-demo-journal:')===0&&k!==LS);});
+  var fr=document.getElementById('fr'),LS='fh-demo-journal:'+DATA_VERSION,RS='fh-demo-role',OLD_LS=Object.keys(localStorage).filter(function(k){return k==='fh-demo-journal'||(k.indexOf('fh-demo-journal:')===0&&k!==LS);});
   var ROLE=sessionStorage.getItem(RS)||null,STORE=null,CUR=null,HIST=[],cache={};
   /* ROLE อาจเป็น "sale|s1" (เซลล์ + รหัสคนขาย) — บทบาทจริงคือส่วนหน้า | */
   function roleOnly(r){return String(r||'').split('|')[0]||null;}function repOf(r){return String(r||'').split('|')[1]||null;}
@@ -70,7 +56,7 @@ var DATA_VERSION=${JSON.stringify(DATA_VERSION)};var FEED_B64=${JSON.stringify(g
   function toast(t){var el=document.getElementById('toast');el.textContent=t;el.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(function(){el.classList.remove('on');},2600);}
   function journal(e){try{var j=JSON.parse(localStorage.getItem(LS)||'[]');j.push(e);localStorage.setItem(LS,JSON.stringify(j));}catch(x){}}
   window.RESET=function(){if(!confirm('ล้างทุกอย่างที่บันทึกไว้ในเครื่องนี้ กลับเป็นชุดตั้งต้น?'))return;localStorage.removeItem(LS);sessionStorage.removeItem(RS);location.reload();};
-  function who(){var rp=repOf(ROLE),nm=rp&&STORE?((STORE.docs.state.sales_reps||[]).filter(function(x){return x.id===rp;})[0]||{}).name:'';document.getElementById('who').textContent=ROLE?('เข้าระบบเป็น '+(FHStore.ROLE_NAME[roleOnly(ROLE)]||ROLE)+(nm?' · '+nm:'')):'ยังไม่เข้าระบบ';}
+  function who(){}
   /* ตัวแทน fetch/location ในหน้า — ยิงมาที่ store ในกรอบนอกผ่าน postMessage (ส่ง body ด้วย) */
   function shim(page,search){
     return '<script>(function(){var PATH='+JSON.stringify('/'+page)+',SEARCH='+JSON.stringify(search||'')+',n=0,pend={};'+
@@ -88,7 +74,6 @@ var DATA_VERSION=${JSON.stringify(DATA_VERSION)};var FEED_B64=${JSON.stringify(g
     if(!page){toast('ไม่มีหน้านี้');return;}
     if(push!==false&&CUR)HIST.push(CUR);
     CUR={id:id,search:search||''};
-    [].forEach.call(nav.querySelectorAll('button'),function(b){b.setAttribute('aria-current',b.dataset.id===id?'page':'false');});
     document.getElementById('load').style.display='flex';
     var names=Object.keys(ASSET_SRC);
     Promise.all([cached('p:'+id,PAGE_SRC[id])].concat(names.map(function(n){return cached('a:'+n,ASSET_SRC[n]);}))).then(function(v){
@@ -123,13 +108,6 @@ var DATA_VERSION=${JSON.stringify(DATA_VERSION)};var FEED_B64=${JSON.stringify(g
     else if(q.method!=='GET'&&r.status<300&&!/\\/(parse|connectors\\/test|log)$/.test(entry.url))journal({method:entry.method,url:entry.url,body:body,role:entry.role,at:new Date().toISOString()});
     if(q.id)src.postMessage({fxr:{id:q.id,s:r.status,t:JSON.stringify(r.body)}},'*');
   });
-  /* แถบเลือกหน้า แยกตามคนที่ใช้ — กดแล้วสลับบทบาทให้ตรงหน้าโดยอัตโนมัติ (สะดวกตอนทดสอบ) */
-  var groups={};PAGES.forEach(function(p){(groups[p.who]=groups[p.who]||[]).push(p);});
-  nav.innerHTML=Object.keys(groups).map(function(w){return '<div class="grp"><span>'+w+'</span>'+groups[w].map(function(p){return '<button type="button" data-id="'+p.id+'" data-role="'+(p.role||'')+'">'+p.title+'</button>';}).join('')+'</div>';}).join('');
-  nav.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;var need=b.dataset.role;
-    if(b.dataset.id==='login'){ROLE=null;sessionStorage.removeItem(RS);who();}
-    else if(need&&roleOnly(ROLE)!==need&&!(need==='boss'&&roleOnly(ROLE)==='admin')&&!(FHStore.LVL[roleOnly(ROLE)]>=FHStore.LVL[need])){ROLE=need==='sale'?'sale|'+(((STORE.docs.state.sales_reps||[])[0]||{}).id||''):need;sessionStorage.setItem(RS,ROLE);who();toast('สลับเป็น '+FHStore.ROLE_NAME[need]+' ให้แล้ว');}
-    open(b.dataset.id,'');});
   /* เตรียมข้อมูล: แตกทุกก้อน → store → เล่นซ้ำสิ่งที่เคยบันทึกในเครื่องนี้ */
   var keys=Object.keys(DOCS_B64),docs={};
   Promise.all(keys.map(function(k){return unzip(DOCS_B64[k]).then(function(t){docs[k]=JSON.parse(t);});})).then(function(){

@@ -1297,10 +1297,9 @@ body.publicquote{background:#F5F7FB;padding:0}.publicquote .app{display:block;ma
 .px-back:hover{border-color:var(--blue-b);color:var(--blue)}
 .px-back i{font-style:normal;font-size:14px;line-height:1}
 
-.px-greet{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:-4px 0 18px;padding:12px 16px;
-  border-radius:16px;background:linear-gradient(100deg,var(--blue-l),var(--card) 70%);border:1px solid var(--blue-b)}
+.px-greet{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:-10px 0 16px;padding:0 2px}
 .px-greet:empty{display:none}
-.px-greet .g-hi{font-size:16px;font-weight:700;color:var(--ink)}
+.px-greet .g-hi{font-size:14px;font-weight:600;color:var(--tx-2)}
 .px-greet .g-hi span{font-weight:500;color:var(--tx-2);font-size:12.5px;margin-left:6px}
 .px-greet .g-when{font-size:12px;color:var(--tx-2);font-variant-numeric:tabular-nums}
 .px-greet .g-when b{color:var(--ink)}
