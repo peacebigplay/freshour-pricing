@@ -859,8 +859,8 @@
       if (row.request && row.request.status === 'open') return err(400, 'มีคำขอของรายการนี้รอ Pricing อยู่แล้ว');
       var cur = row.offer != null ? row.offer : row.board;
       if (want >= cur) return err(400, 'ราคาที่ขอ ' + want + ' ฿ ไม่ต่ำกว่าราคาที่เสนอ ' + cur + ' ฿ — ยืนยันราคาปัจจุบันได้เลย');
-      var id = ++seq.req, at = stamp();
-      var rq = { id: id, customer_id: cid, product_id: pid, label: sh.label, want: want, floor_at: row.floor || cur, reason: body.reason || '', by_role: role, at: at, status: 'open', decided_by: null, decided_at: null, decided_note: null,
+      var id = ++seq.req, at = stamp(), round = D['price-requests'].rows.filter(function (r) { return r.customer_id === cid && r.product_id === pid && r.label === sh.label; }).length + 1;   /* รอบต่อรองของ SKU นี้ในรอบราคานี้ */
+      var rq = { id: id, customer_id: cid, product_id: pid, label: sh.label, round: round, sales_id: CUR_REP, want: want, floor_at: row.floor || cur, reason: body.reason || '', by_role: role, at: at, status: 'open', decided_by: null, decided_at: null, decided_note: null,
         final_price: null, supplier_cost_target: null, original_price: cur, source: 'sale', exception: '', rev: 1, cust: c.name, product: P.name, cprice: cur };
       rq.last_at = at; rq.stage = 'new';
       D['price-requests'].rows.unshift(rq); D['price-requests'].open++;
@@ -1164,7 +1164,8 @@
       tokens[token] = cid;
       var exp = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
       sh.link = { token: token, url: (origin || '') + '/q/' + token, expires_at: exp, opened_at: sh.link && sh.link.opened_at || null, label: sh.label };
-      if (!c.sentAt) { c.sentAt = stamp(); c.sentBy = role; c.channel = 'link'; sh.sent = true; }
+      /* สร้างลิงก์เพื่อให้เซลล์ส่งเอง = ถือว่าส่งแล้วทางลิงก์ · แต่ถ้าสร้างเพื่อแนบใน LINE (silent) สถานะ "ส่งแล้ว" รอ LINE สำเร็จจริงก่อน */
+      if (!body.silent && !c.sentAt) { c.sentAt = stamp(); c.sentBy = role; c.channel = 'link'; sh.sent = true; }
       c.linked = true; rebuildSheet(sh);
       return ok({ url: sh.link.url, token: token, expires_at: exp, label: sh.label, opened_at: sh.link.opened_at });
     }

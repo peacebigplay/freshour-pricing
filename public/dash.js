@@ -115,32 +115,82 @@ window.Dash = (function () {
   }
 
   /* ── เซลล์: กระดานใบราคา ── */
+  /* ── แดชบอร์ดเซลล์ตาม SALES LOGIC: Performance → Pipeline → My Work Today → Response Board → Recently Closed · เฉพาะลูกค้าของคนนี้ ── */
+  var SQC = { waiting_pricing: 'n', ready: 'b', send_failed: 'r', sent: 'a', waiting_customer: 'a', partial: 'a', followup_due: 'r', decide: 'r', waiting_revision: 'n', revised_ready: 'r', accepted: 'g', won: 'g', lost: 'r', invoiced: 'g' };
+  var PIPE = [['waiting_pricing', 'ยังไม่ใช่งานเซลล์'], ['ready', 'เซลล์ต้องส่ง'], ['waiting_customer', 'ส่งแล้ว'], ['followup_due', 'ต้องทำวันนี้'], ['waiting_revision', 'Pricing กำลังทำ'], ['revised_ready', 'ส่งราคาใหม่'], ['won', 'ปิดได้'], ['lost', 'เสียดีล']];
+  function baht(n) { return n == null ? '—' : n >= 1e6 ? '฿' + (n / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M' : n >= 1e3 ? '฿' + Math.round(n / 1e3) + 'K' : '฿' + n; }
+  function hrs(h) { return h == null ? '' : h < 48 ? h + ' ชม.' : Math.round(h / 24) + ' วัน'; }
+  function actBtn(r) {
+    var a = r.action; if (!a) return '';
+    var k = a.key, fn = k === 'send' || k === 'resend' ? 'Dash.sendLine(' + jsq(r.id) + ')' : k === 'send_revised' ? 'Dash.sendLine(' + jsq(r.id) + ',\'revised\')' : k === 'close_won' ? 'Dash.close(' + jsq(r.id) + ',' + jsq(r.name) + ')' : k === 'decide' ? 'Dash.decide(' + jsq(r.id) + ',' + jsq(r.name) + ')' : 'Dash.follow(' + jsq(r.id) + ',' + jsq(r.name) + ')';
+    return '<button class="pri" onclick="' + fn + '">' + esc(a.label) + '</button>';
+  }
+  function whyRow(r) {
+    var L = r.lines || {};
+    switch (r.state) {
+      case 'revised_ready': return 'Pricing ตัดสินราคาต่อรองแล้ว' + (r.nego[0] ? ' · ' + esc(r.nego[0].product) + ' ' + (r.nego[0].offered || '') + ' → ' + (r.nego[0].final || '') + ' ฿' : '') + ' · รอบ ' + r.round + ' — ลูกค้ารออยู่';
+      case 'send_failed': return 'LINE ส่งไม่สำเร็จ: ' + esc(r.lineError || '') + ' — ลูกค้ายังไม่ได้ราคา';
+      case 'accepted': return 'ลูกค้าตอบรับครบ ' + L.accepted + '/' + L.total + ' รายการ — ยังไม่บันทึก Won';
+      case 'decide': return 'ส่งไป ' + hrs(r.sentH) + ' ยังไม่ตอบ · ระบบตามแล้ว ' + r.reminders + ' ครั้ง — ตามต่อหรือปิด Lost (ไม่ตอบ)';
+      case 'followup_due': return 'เงียบ ' + hrs(r.silentH) + (r.opened ? ' · เปิดใบแล้วแต่ยังไม่ตอบ' : ' · ยังไม่เปิดใบ') + (r.reminders ? ' · ระบบตามแล้ว #' + r.reminders : '') + ' — SLA ' + (DATA.sla ? DATA.sla.responseH : 48) + ' ชม.';
+      case 'ready': return 'Pricing ส่งใบมา ' + ago(r.handedAt) + (r.line ? ' · พร้อมส่ง LINE' : ' · ยังไม่ผูก LINE — ส่งลิงก์/โทร');
+      case 'waiting_revision': return 'ส่งคำขอต่อรองแล้ว · รอ Pricing ตอบ (รอบ ' + r.round + ')';
+      case 'waiting_pricing': return 'Pricing ยังไม่ส่งราคามา — ไม่ใช่งานค้างของเซลล์';
+      case 'partial': return 'ตอบแล้ว ' + L.answered + '/' + L.total + (L.negotiating ? ' · ต่อรอง ' + L.negotiating : '') + ' · รอที่เหลือ';
+      case 'waiting_customer': return 'เปิดใบ ' + ago(r.opened) + ' · ยังไม่ตอบ · ส่งไป ' + hrs(r.sentH) + ' (ยังไม่ถึง SLA)';
+      case 'sent': return 'ส่งไป ' + hrs(r.sentH) + ' · ยังไม่เปิดใบ' + (r.channel ? ' · ' + (CHAN[r.channel] || r.channel) : '');
+      default: return r.outcome ? (r.outcome.outcome === 'won' ? 'ปิดได้ ' + (r.outcome.valueBasis === 'actual' ? baht(r.outcome.value) : 'ยังไม่ใส่ปริมาณ') : 'เสีย · ' + esc(r.outcome.reason || '')) : '';
+    }
+  }
   function saleHtml(d) {
-    /* แดชบอร์ดของเซลล์ = งานขายของคนนี้เท่านั้น: ลูกค้าอยู่ขั้นไหน · วันนี้ค้างอะไร · 7 วันทำอะไรไปแล้ว · ช่องทางถึงลูกค้า
-       เรียงตามงานที่ต้องทำก่อน · หน้าแรกโชว์ 8 เจ้าแรก (กด "ดูทั้งหมด" ได้) */
-    var PRI = { due: 0, waiting: 1, ready: 2, partial: 3, sent: 4, agreed: 5, won: 6, invoiced: 7, lost: 8, draft: 9 };
-    var rows = d.customers.filter(function (c) { return FILTER === 'all' || c.stage === FILTER || (FILTER === 'due' && c.followupDue); })
-      .sort(function (a, b) { return (a.followupDue ? 0 : PRI[a.stage]) - (b.followupDue ? 0 : PRI[b.stage]) || (b.silentDays - a.silentDays) || a.name.localeCompare(b.name); });
-    var total = rows.length; if (!SHOW_ALL && rows.length > 8) rows = rows.slice(0, 8);
-    var T = d.todo || {}, D7 = d.done7 || {}, n = d.customers.length, by = {}; d.customers.forEach(function (c) { by[c.stage] = (by[c.stage] || 0) + 1; });
-    var mine = d.rep ? d.rep.name : (d.viewer && d.viewer !== 'sale' ? 'ทุกคน' : 'ทีมขาย'), lineOn = n - (d.lineMissing || 0), ob = d.outbox || {};
+    var P = d.perf || {}, pipe = d.pipeline || {}, work = d.work || [], waiting = d.waiting || [], closed = d.closed || [];
+    var mine = d.rep ? d.rep.name : (d.viewer && d.viewer !== 'sale' ? 'ทุกคน' : 'ทีมขาย');
     var repChips = d.reps ? '<div class="fun" style="margin:0 0 10px"><button class="' + (!REP ? 'on' : '') + '" onclick="Dash.rep(\'\')">ทุกคน <b>' + d.reps.reduce(function (a, r) { return a + r.customers; }, 0) + '</b></button>' +
-      d.reps.map(function (r) { return '<button class="' + (REP === r.id ? 'on' : '') + '" onclick="Dash.rep(' + jsq(r.id) + ')" title="ค้างตาม ' + r.due + ' · รอส่ง ' + r.ready + ' · ปิดได้ ' + r.won + '">' + esc(r.name) + ' <b>' + r.customers + '</b>' + (r.due ? ' <span style="color:var(--red)">●' + r.due + '</span>' : '') + '</button>'; }).join('') +
+      d.reps.map(function (r) { return '<button class="' + (REP === r.id ? 'on' : '') + '" onclick="Dash.rep(' + jsq(r.id) + ')" title="งานค้าง ' + r.work + ' · Won ' + r.won + ' · Lost ' + r.lost + '">' + esc(r.name) + ' <b>' + r.customers + '</b>' + (r.work ? ' <span style="color:var(--red)">●' + r.work + '</span>' : '') + '</button>'; }).join('') +
       (d.provisional ? '<span style="font-size:11px;color:var(--amber);align-self:center">มอบหมายลูกค้าไว้ชั่วคราว — ยืนยันตัวจริงที่ POST /api/reps</span>' : '') + '</div>' : '';
-    return '<section class="fhd card" id="fhDash"><h2>งานขายของ' + esc(mine) + ' · รอบ ' + esc(d.round) + '</h2><p class="sub">เห็นเฉพาะลูกค้าที่ตัวเองถือ · ส่งราคาถึงลูกค้าทาง LINE → ดูว่าใครตอบ → ตามเจ้าที่เงียบเกิน ' + d.followDays + ' วัน → ปิดดีลบันทึกราคาที่ตกลง · วันนี้ ' + esc(d.today) + '</p>' + repChips +
+    var pipeCount = function (k) { return k === 'waiting_customer' ? (pipe.sent || 0) + (pipe.waiting_customer || 0) + (pipe.partial || 0) + (pipe.accepted || 0) : k === 'followup_due' ? (pipe.followup_due || 0) + (pipe.decide || 0) : k === 'won' ? (pipe.won || 0) + (pipe.invoiced || 0) : k === 'ready' ? (pipe.ready || 0) + (pipe.send_failed || 0) : (pipe[k] || 0); };
+    var h = '<section class="fhd card" id="fhDash"><h2>My Sales Performance · ' + esc(mine) + ' <span style="font-weight:400;color:var(--tx-3);font-size:12px">รอบ ' + esc(d.round) + '</span></h2><p class="sub">เฉพาะลูกค้าที่ตัวเองถือ · ระบบบอกว่า "เจ้าไหนต้องทำอะไรต่อ" ไม่ใช่รายชื่อลูกค้า · SLA ตอบกลับ ' + (d.sla ? d.sla.responseH : 48) + ' ชม. · วันนี้ ' + esc(d.today) + '</p>' + repChips +
+      /* Row 1 — Performance */
       '<div class="grid">' +
-      '<div class="k lead tap" onclick="Dash.filter(\'all\')"><div class="kt"><span class="ic">👥</span>' + pill('', 'รอบ ' + d.round) + '</div><div class="lb">ลูกค้าของฉัน</div><div class="v">' + n + '<small> เจ้า</small></div>' +
-        '<div class="c">ส่งแล้วรอตอบ ' + (by.sent || 0) + ' · ตอบครบ ' + (by.agreed || 0) + ' · ปิดได้ ' + ((by.won || 0) + (by.invoiced || 0)) + ' · เสีย ' + (by.lost || 0) + ' · รอ Pricing ' + (by.draft || 0) + '</div></div>' +
-      '<div class="k tap" onclick="Dash.filter(\'due\')"><div class="kt"><span class="ic">📌</span>' + pill(T.total ? 'r' : 'g', T.total ? 'ค้าง ' + T.total : 'ไม่มีค้าง') + '</div><div class="lb">งานค้างวันนี้</div><div class="v">' + (T.total || 0) + '</div>' +
-        '<div class="c">ส่งใบให้ลูกค้า <b>' + (T.send || 0) + '</b> · ตามเจ้าที่เงียบ <b>' + (T.follow || 0) + '</b> · แจ้งราคาใหม่ที่ Pricing ตัดสินแล้ว <b>' + (T.inform || 0) + '</b> · ปิดดีลที่ตอบครบ <b>' + (T.close || 0) + '</b>' + (T.waitingPricing ? ' · รอ Pricing ตอบ ' + T.waitingPricing : '') + '</div></div>' +
-      '<div class="k"><div class="kt"><span class="ic">✅</span>' + pill('g', '7 วันล่าสุด') + '</div><div class="lb">ทำไปแล้ว</div><div class="v">' + ((D7.sent || 0) + (D7.follow || 0) + (D7.closed || 0)) + '<small> งาน</small></div>' +
-        '<div class="c">ส่งใบราคา ' + (D7.sent || 0) + ' · ตามลูกค้า ' + (D7.follow || 0) + ' · ปิดดีล ' + (D7.closed || 0) + ' · ลูกค้าตอบกลับ ' + (D7.replied || 0) + ' · ส่งคำขอต่อรอง ' + (D7.requests || 0) + '</div></div>' +
-      '<div class="k tap" onclick="Dash.filter(\'ready\')"><div class="kt"><span class="ic">📨</span>' + pill(d.lineOA ? 'g' : 'a', d.lineOA ? 'LINE OA ต่อแล้ว' : 'LINE OA ยังไม่ต่อ · จำลอง') + '</div><div class="lb">ช่องทางถึงลูกค้า</div><div class="v sm" style="font-size:22px">ผูก LINE ' + lineOn + '<small>/' + n + '</small></div>' +
-        '<div class="c">พร้อมส่ง LINE ' + (d.lineReady || 0) + ' · รอส่ง ' + (ob.queued || 0) + ' · ส่งไม่สำเร็จ <b style="color:' + (ob.failed ? 'var(--red)' : 'inherit') + '">' + (ob.failed || 0) + '</b>' + (d.lineMissing ? ' · ยังไม่ผูก ' + d.lineMissing + ' เจ้า (ส่งลิงก์/โทรแทน)' : '') + '</div></div>' +
-      '</div>' + funnel(d.stages) +
-      '<div class="list" style="margin-top:8px">' + (rows.length ? rows.map(function (c) { return saleRow(c, !!d.reps && !REP); }).join('') : '<p class="hint">ไม่มีเจ้าในขั้นนี้</p>') + '</div>' +
-      (total > rows.length || SHOW_ALL ? '<div style="margin-top:8px"><button class="btn" onclick="Dash.toggleAll()">' + (SHOW_ALL ? 'ย่อเหลือ 8 เจ้า' : 'ดูทั้งหมด ' + total + ' เจ้า →') + '</button></div>' : '') +
-      '<div style="margin-top:10px">' + sysRow(d.health) + alerts(d.alerts) + '</div></section>';
+      '<div class="k lead"><div class="kt"><span class="ic">💼</span>' + pill('', 'My Portfolio') + '</div><div class="lb">ลูกค้า ' + P.customers + ' เจ้า · Active ' + P.active + '</div><div class="v">' + (P.valueKnown ? baht(P.portfolioValue) : '—') + '<small>/เดือน</small></div>' +
+        '<div class="c">' + (P.valueKnown ? 'มูลค่าจาก ' + P.valueKnown + ' เจ้า' : 'ยังไม่มีมูลค่ารายเจ้า') + (P.valueUnknown ? ' · ยังไม่ระบุ ' + P.valueUnknown + ' เจ้า (ออปส์ใส่ value_month)' : '') + '</div></div>' +
+      '<div class="k"><div class="kt"><span class="ic">📨</span>' + pill(P.quoteSentPct >= 80 ? 'g' : 'a', 'Quote Sent ' + P.quoteSentPct + '%') + '</div><div class="lb">ส่งราคาแล้ว</div><div class="v">' + P.quoteSent + '<small>/' + P.customers + ' เจ้า</small></div>' +
+        '<div class="c">Delivery ' + (P.deliveryPct == null ? '—' : P.deliveryPct + '%') + ' (ส่ง ÷ ที่ Pricing ส่งมา) · Response ' + (P.responsePct == null ? '—' : P.responsePct + '%') + ' (' + P.responded + ' เจ้าตอบ)</div></div>' +
+      '<div class="k"><div class="kt"><span class="ic">🤝</span>' + pill('g', 'Won ' + P.won) + '</div><div class="lb">ปิดได้ · มูลค่า</div><div class="v">' + (P.wonValueKnown ? baht(P.wonValue) : P.won) + (P.wonValueKnown ? '' : '<small> เจ้า</small>') + '</div>' +
+        '<div class="c">Lost ' + P.lost + ' เจ้า' + (P.lostValue ? ' · ' + baht(P.lostValue) : '') + ' · เปิดอยู่ ' + P.open + (P.won && !P.wonValueKnown ? ' · ใส่ปริมาณตอนปิดดีลเพื่อคิดมูลค่า' : '') + '</div></div>' +
+      '<div class="k"><div class="kt"><span class="ic">🎯</span>' + pill(P.winRate == null ? 'n' : P.winRate >= 60 ? 'g' : 'a', 'Win Rate') + '</div><div class="lb">Won ÷ (Won + Lost)</div><div class="v">' + (P.winRate == null ? '—' : P.winRate + '<small>%</small>') + '</div>' +
+        '<div class="c">Value win rate ' + (P.valueWinRate == null ? '— (ต้องมีมูลค่า)' : P.valueWinRate + '%') + ' · Follow-up ใน SLA ' + (P.followupSlaPct == null ? '—' : P.followupSlaPct + '%') + (P.followupOverdue ? ' · เกิน SLA ' + P.followupOverdue : '') + '</div></div>' +
+      '</div>' +
+      /* Row 2 — Pipeline */
+      '<div class="fun" style="margin:12px 0 4px">' + PIPE.map(function (p) { var k = p[0], n = pipeCount(k); return '<button class="' + (FILTER === k ? 'on' : '') + '" onclick="Dash.filter(' + jsq(k) + ')" title="' + esc(p[1]) + '"><span class="pill2 ' + SQC[k] + '" style="margin:0 4px 0 0;padding:1px 6px">' + esc((d.states || {})[k] || k) + '</span><b>' + n + '</b></button>'; }).join('') + (pipe.send_failed ? '<button class="' + (FILTER === 'send_failed' ? 'on' : '') + '" onclick="Dash.filter(\'send_failed\')" style="border-color:var(--red)"><span class="pill2 r" style="margin:0 4px 0 0;padding:1px 6px">⚠ ส่งไม่สำเร็จ</span><b>' + pipe.send_failed + '</b></button>' : '') + '</div>' +
+      '<div class="sub" style="margin:0 0 8px">รอ Pricing / รอ Pricing ตอบ = ไม่ใช่งานค้างของเซลล์ · ส่งแล้ว = รอลูกค้าภายใน SLA · ต้องตาม / ราคาใหม่ / ตอบรับ = งานของเซลล์</div>';
+    /* Row 3 — My Work Today */
+    var rows = FILTER === 'all' ? work : (d.board || []).filter(function (r) { return r.state === FILTER || (FILTER === 'waiting_customer' && ['sent', 'waiting_customer', 'partial', 'accepted'].indexOf(r.state) >= 0) || (FILTER === 'followup_due' && (r.state === 'followup_due' || r.state === 'decide')) || (FILTER === 'won' && (r.state === 'won' || r.state === 'invoiced')) || (FILTER === 'ready' && (r.state === 'ready' || r.state === 'send_failed')); });
+    var total = rows.length; if (!SHOW_ALL && rows.length > 8) rows = rows.slice(0, 8);
+    h += '<h3 style="font-size:13.5px;margin:10px 0 6px">' + (FILTER === 'all' ? 'My Work Today — ต้องทำ <b style="color:' + (work.length ? 'var(--red)' : 'var(--green)') + '">' + work.length + '</b> งาน <span style="font-weight:400;color:var(--tx-3)">· กำลังรอคนอื่น ' + waiting.length + ' (ไม่นับเป็นงานค้าง)</span>' : esc((d.states || {})[FILTER] || FILTER) + ' <span style="font-weight:400;color:var(--tx-3)">' + total + ' เจ้า · <a href="#" onclick="Dash.filter(\'all\');return false" style="color:var(--blue)">กลับไป My Work</a></span>') + '</h3>' +
+      '<div class="list">' + (rows.length ? rows.map(function (r, i) { return workRow(r, FILTER === 'all' ? i + 1 : null, !!d.reps && !REP); }).join('') : '<p class="hint">' + (FILTER === 'all' ? '✓ ไม่มีงานค้างของเซลล์ — ที่เหลือกำลังรอ Pricing/ลูกค้า' : 'ไม่มีเจ้าในสถานะนี้') + '</p>') + '</div>' +
+      (total > rows.length || SHOW_ALL ? '<div style="margin-top:8px"><button class="btn" onclick="Dash.toggleAll()">' + (SHOW_ALL ? 'ย่อเหลือ 8 เจ้า' : 'ดูทั้งหมด ' + total + ' เจ้า →') + '</button></div>' : '');
+    /* Row 4 — Customer Response Board */
+    var board = (d.board || []).filter(function (r) { return r.priority < 9; });
+    h += '<h3 style="font-size:13.5px;margin:14px 0 6px">Customer Response Board <span style="font-weight:400;color:var(--tx-3)">· ทุกเจ้าที่ยังเปิดอยู่ ' + board.length + ' · เรียงตามความเร่งด่วน</span></h3>' +
+      '<div class="sc"><table class="g" style="min-width:720px"><thead><tr><th style="text-align:left">ลูกค้า</th><th>มูลค่า/เดือน</th><th style="text-align:left">สถานะ</th><th style="text-align:left">ความเคลื่อนไหวล่าสุด</th><th style="text-align:left">ตอบ</th><th style="text-align:left">ทำต่อ</th></tr></thead><tbody>' +
+      (board.length ? board.slice(0, SHOW_ALL ? 200 : 12).map(function (r) { var L = r.lines || {}; return '<tr><td style="text-align:left"><b>' + esc(r.name) + '</b>' + (d.reps && !REP && r.ownerName ? ' <span class="pill2 n">' + esc(r.ownerName) + '</span>' : '') + '</td><td>' + (r.value != null ? baht(r.value) : '—') + '</td>' +
+        '<td style="text-align:left">' + pill(SQC[r.state] || 'n', r.label) + (r.round > 1 ? ' <small>รอบ ' + r.round + '</small>' : '') + '</td><td style="text-align:left;font-size:11.5px;color:var(--tx-2)">' + (r.lastActivity ? esc(r.lastActivity.text) + ' <span style="color:var(--tx-3)">' + ago(r.lastActivity.at) + '</span>' : (r.sentAt ? 'ส่ง ' + ago(r.sentAt) : r.handedAt ? 'Pricing ส่งมา ' + ago(r.handedAt) : '—')) + '</td>' +
+        '<td style="text-align:left;font-size:11.5px">' + (r.sentAt ? L.answered + '/' + L.total + (L.negotiating ? ' · ต่อรอง ' + L.negotiating : '') + (r.opened ? '' : ' · <span style="color:var(--amber)">ยังไม่เปิด</span>') : '—') + '</td>' +
+        '<td style="text-align:left;font-size:11.5px">' + (r.action ? '<b style="color:var(--blue)">' + esc(r.action.label) + '</b>' : r.waitingOn === 'pricing' ? 'รอ Pricing' : 'รอลูกค้า') + ' <button class="btn" style="padding:2px 8px;font-size:11px;margin-left:4px" onclick="openSheet(' + jsq(r.id) + ')">เปิดใบ</button></td></tr>'; }).join('') : '<tr><td colspan="6" class="hint">ไม่มีเจ้าที่เปิดอยู่</td></tr>') + '</tbody></table></div>';
+    /* Row 5 — Recently Closed */
+    h += '<h3 style="font-size:13.5px;margin:14px 0 6px">Recently Closed <span style="font-weight:400;color:var(--tx-3)">· Won ' + P.won + ' · Lost ' + P.lost + '</span></h3>' +
+      (closed.length ? '<div class="sc"><table class="g" style="min-width:600px"><thead><tr><th style="text-align:left">ลูกค้า</th><th>ผล</th><th>มูลค่า</th><th>รายการที่ตกลง</th><th>รอบต่อรอง</th><th style="text-align:left">เหตุผล / เงื่อนไข</th><th></th></tr></thead><tbody>' +
+        closed.map(function (r) { var o = r.outcome; return '<tr><td style="text-align:left"><b>' + esc(r.name) + '</b><br><small style="color:var(--tx-3)">' + ago(o.at) + '</small></td><td>' + pill(o.outcome === 'won' ? 'g' : 'r', o.outcome === 'won' ? 'WON' : 'LOST') + '</td><td>' + (o.outcome === 'won' ? (o.valueBasis === 'actual' ? baht(o.value) : '<span style="color:var(--amber)">ยังไม่ใส่ปริมาณ</span>') : (r.value != null ? baht(r.value) : '—')) + '</td><td>' + (o.finalLines || 0) + '/' + (r.lines ? r.lines.total : 0) + '</td><td>' + (o.rounds || 0) + '</td><td style="text-align:left;font-size:11.5px">' + esc(o.reason || '—') + '</td><td><button class="btn" style="padding:2px 8px;font-size:11px" onclick="Dash.timeline(' + jsq(r.id) + ',' + jsq(r.name) + ')">ไทม์ไลน์</button></td></tr>'; }).join('') + '</tbody></table></div>'
+        : '<p class="hint">ยังไม่มีดีลที่ปิดในรอบนี้ — ทุกใบที่ส่งแล้วต้องจบที่ Won หรือ Lost</p>');
+    h += '<div style="margin-top:10px">' + sysRow(d.health) + alerts(d.alerts) + '</div></section>';
+    return h;
+  }
+  function workRow(r, pri, showOwner) {
+    var L = r.lines || {};
+    return '<div class="row ' + (r.priority <= 2 ? 'due' : '') + '"><div>' + (pri ? '<span class="pill2 ' + (r.priority === 1 ? 'r' : r.priority === 2 ? 'a' : 'b') + '" style="margin-right:6px">P' + r.priority + '</span>' : '') + '<b style="display:inline">' + esc(r.name) + '</b>' + (showOwner && r.ownerName ? ' <span class="pill2 n">' + esc(r.ownerName) + '</span>' : '') + '<small>' + pill(SQC[r.state] || 'n', r.label) + (r.value != null ? ' ' + baht(r.value) + '/เดือน' : '') + '</small></div>' +
+      '<div style="grid-column:span 2"><b style="font-weight:500;font-size:12.5px">' + whyRow(r) + '</b><small>' + (r.lastActivity ? esc(r.lastActivity.text) + ' · ' + ago(r.lastActivity.at) : r.sentAt ? 'ส่ง ' + ago(r.sentAt) : '') + (r.sentAt ? ' · Quote V' + r.quoteVersion : '') + '</small></div>' +
+      '<div class="act">' + actBtn(r) + (!r.line && r.state !== 'waiting_pricing' ? '<button onclick="Dash.bindLine(' + jsq(r.id) + ',' + jsq(r.name) + ')">ผูก LINE</button>' : '') + '<button onclick="Dash.timeline(' + jsq(r.id) + ',' + jsq(r.name) + ')">ไทม์ไลน์</button><button onclick="openSheet(' + jsq(r.id) + ')">เปิดใบ →</button></div></div>';
   }
   function saleRow(c, showOwner) {
     var tot = c.offerLines || c.lines || 0, ans = (c.accepted || 0) + (c.declined || 0);
@@ -162,7 +212,7 @@ window.Dash = (function () {
   /* ── การกระทำ ── */
   function refresh(msg) { return load(true).then(function () { paint(); if (msg) PX.toast(msg); }); }
   function act(p) { if (BUSY) return; BUSY = true; return p.catch(function (e) { PX.toast('ไม่สำเร็จ — ' + esc(e.message), 'bad'); if (e.body && e.body.needLine) { var m = /ของ (.+?) —/.exec(e.message); } }).then(function () { BUSY = false; }); }
-  function sendLine(cid) { return act(PX.post('/api/line/send', { customer_id: cid, kind: 'quote' }).then(function (r) { return refresh(r.status === 'queued' ? 'เข้าคิวส่ง LINE แล้ว — ระบบส่งภายใน 20 วินาที' : 'ส่งแล้ว'); }).catch(function (e) { if (e.body && e.body.needLine) { PX.toast(esc(e.message), 'bad'); var c = (DATA.customers || []).filter(function (x) { return x.id === cid; })[0]; bindLine(cid, c ? c.name : cid); return; } throw e; })); }
+  function sendLine(cid, kind) { return act(PX.post('/api/line/send', { customer_id: cid, kind: kind || 'quote' }).then(function (r) { return refresh(r.status === 'queued' ? 'เข้าคิวส่ง LINE แล้ว — ระบบส่งภายใน 20 วินาที' : 'ส่งแล้ว'); }).catch(function (e) { if (e.body && e.body.needLine) { PX.toast(esc(e.message), 'bad'); var c = (DATA.customers || []).filter(function (x) { return x.id === cid; })[0]; bindLine(cid, c ? c.name : cid); return; } throw e; })); }
   function sendAll() { PX.modal({ title: 'ส่ง LINE ทุกเจ้าที่พร้อม', sub: 'เฉพาะเจ้าที่ Pricing ส่งใบมาแล้ว และผูก LINE แล้ว · ข้อความ = ใบราคา + ลิงก์ยืนยัน', okText: 'ส่งเลย', onOk: function (v, close) { return PX.post('/api/line/send-all', { kind: 'quote' }).then(function (r) { close(); return refresh('เข้าคิวส่ง ' + r.sent + ' เจ้า' + (r.skipped.length ? ' · ข้าม ' + r.skipped.length + ' (' + r.skipped.slice(0, 3).map(function (s) { return s.name + ': ' + s.why; }).join(' · ') + ')' : '')); }); } }); }
   function bindLine(cid, name) {
     PX.modal({ title: 'ผูก LINE · ' + name, sub: 'ใส่ LINE user id ของลูกค้า (ได้จาก webhook ตอนลูกค้าทักมา หรือจาก LINE OA) · ใช้ส่งใบราคาและตามงานอัตโนมัติ',
@@ -179,11 +229,38 @@ window.Dash = (function () {
   }
   function close(cid, name) {
     var sel = 'style="width:100%;font-family:var(--ff);font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:10px"';
-    PX.modal({ title: 'ปิดดีล · ' + name, sub: 'บันทึกผลสุดท้ายของรอบนี้ — ได้ = ใช้ราคาที่ลูกค้ายืนยัน · เสีย = ต้องบอกเหตุผล (ผู้บริหารดูว่าเสียเพราะราคาหรือบริการ)',
-      html: '<label class="fld"><span>ผล</span><select data-k="outcome" ' + sel + '><option value="won">ได้ลูกค้า — ตกลงราคาแล้ว</option><option value="lost">เสียไป</option></select></label>' +
-        '<label class="fld"><span>เหตุผล (ถ้าเสีย)</span><select data-k="reason" ' + sel + '><option value="">—</option><option>เจ้าอื่นถูกกว่า</option><option>ราคาขึ้นมากเกินไป</option><option>คุณภาพ / บริการ</option><option>ส่งช้า</option><option>เลิกสั่ง / ปิดร้าน</option><option>ติดต่อไม่ได้</option></select></label>',
-      fields: [{ k: 'lost_to', label: 'เสียให้ใคร (ถ้ารู้)', ph: 'เช่น Betagro / ตลาดสด' }, { k: 'note', label: 'โน้ตเพิ่มเติม' }], okText: 'บันทึกผล',
-      onOk: function (v, close) { var reason = v.reason || v.note; return PX.post('/api/deal-close', { customer_id: cid, outcome: v.outcome, reason: v.outcome === 'lost' ? (reason || '') : v.note, lost_to: v.lost_to }).then(function (r) { close(); return refresh(r.outcome === 'won' ? 'ปิดดีล ' + esc(name) + ' ได้ ' + r.agreedN + ' รายการ' : 'บันทึกว่าเสีย ' + esc(name) + ' แล้ว'); }); } });
+    var RS = (DATA && DATA.lostReasons) || { price: 'ราคาสูงไป', competitor: 'ไปเจ้าอื่น', credit: 'เงื่อนไขเครดิต', delivery: 'เงื่อนไขจัดส่ง', no_demand: 'ไม่มีความต้องการ', no_response: 'ไม่ตอบ', postponed: 'เลื่อนไปก่อน', other: 'อื่นๆ' };
+    PX.get('/api/sheet?customer=' + encodeURIComponent(cid)).then(function (sh) {
+      var offer = (sh.rows || []).filter(function (r) { return r.inOffer; });
+      PX.modal({ title: 'ปิดดีล · ' + name, sub: 'Won = บันทึกราคาสุดท้าย + ปริมาณ (มูลค่าจริง) · Lost = ต้องเลือกเหตุผลแบบมีโครงสร้าง · ทุกใบที่ส่งแล้วต้องจบที่ Won หรือ Lost',
+        html: '<label class="fld"><span>ผล</span><select data-k="outcome" ' + sel + '><option value="won">WON — ลูกค้ายืนยันซื้อ</option><option value="lost">LOST — ไม่ซื้อ</option></select></label>' +
+          '<label class="fld"><span>เหตุผลที่เสีย (บังคับเมื่อ Lost)</span><select data-k="reason_code" ' + sel + '><option value="">—</option>' + Object.keys(RS).map(function (k) { return '<option value="' + k + '">' + esc(RS[k]) + '</option>'; }).join('') + '</select></label>' +
+          (offer.length ? '<div style="margin:6px 0 2px;font-size:12px;font-weight:600">ราคาสุดท้าย × ปริมาณ/สัปดาห์ (กก.) — ใส่เฉพาะที่ขายได้</div><div class="sc" style="max-height:220px;overflow:auto"><table class="g" style="min-width:0"><tbody>' +
+            offer.map(function (r) { var px = r.accepted != null ? r.accepted : r.offer; return '<tr><td style="text-align:left;font-size:12px">' + esc(r.name) + '<br><small style="color:var(--tx-3)">' + (r.response === 'accept' ? 'ลูกค้ารับ ' : r.response === 'decline' ? 'ลูกค้าไม่เอา ' : '') + px + ' ฿</small></td><td style="width:110px"><input data-qty="' + esc(r.pid) + '" type="number" min="0" step="0.5" placeholder="กก." style="width:100px;font-family:var(--fn);padding:6px 8px;border:1px solid var(--line);border-radius:8px"' + (r.response === 'decline' ? ' disabled' : '') + '></td></tr>'; }).join('') + '</tbody></table></div>' : ''),
+        fields: [{ k: 'lost_to', label: 'เสียให้ใคร / ลูกค้าบอกราคาคู่แข่งเท่าไร (ถ้ารู้ — เก็บแยกจากราคาตลาดทางการ)', ph: 'เช่น Betagro 168' }, { k: 'condition', label: 'เงื่อนไข (เครดิต/ส่ง/อื่นๆ)' }, { k: 'note', label: 'โน้ต' }], okText: 'บันทึกผล',
+        onOk: function (v, close) {
+          if (v.outcome === 'lost' && !v.reason_code) { PX.toast('เลือกเหตุผลที่เสียก่อน', 'bad'); return false; }
+          var lines = []; document.querySelectorAll('[data-qty]').forEach(function (i) { if (Number(i.value) > 0) lines.push({ pid: i.dataset.qty, qty: Number(i.value) }); });
+          var cp = (String(v.lost_to || '').match(/(\d{2,4})\s*$/) || [])[1];
+          return PX.post('/api/deal-close', { customer_id: cid, outcome: v.outcome, reason_code: v.outcome === 'lost' ? v.reason_code : undefined, note: v.note, lost_to: v.lost_to, competitor_price: cp ? Number(cp) : undefined, condition: v.condition, lines: lines })
+            .then(function (r) { close(); return refresh(r.outcome === 'won' ? 'ปิดดีล ' + esc(name) + ' WON' + (lines.length ? ' · มูลค่า ' + baht(r.value) + '/สัปดาห์' : ' (ยังไม่ใส่ปริมาณ)') : 'บันทึก ' + esc(name) + ' เป็น LOST'); });
+        } });
+    }).catch(function (e) { PX.toast(esc(e.message), 'bad'); });
+  }
+  /* เงียบเกิน 7 วัน: ตามต่อ (บันทึกการตาม) หรือ ปิด Lost เหตุผล "ไม่ตอบ" */
+  function decide(cid, name) {
+    PX.modal({ title: 'ตัดสินใจ · ' + name, sub: 'ส่งราคาไปแล้วลูกค้าไม่ตอบเกินกำหนด ระบบตามให้แล้ว — เลือกว่าจะตามต่อเอง หรือปิดเป็น Lost (ไม่ตอบ) จะได้ไม่ค้างในระบบ', okText: 'ปิด Lost — ไม่ตอบ',
+      fields: [{ k: 'note', label: 'โน้ต (ถ้ามี)' }],
+      html: '<p class="hint" style="margin-bottom:8px">อยากตามต่อ? กด "ยกเลิก" แล้วกด "ตามลูกค้า" แทน — ระบบจะนับ SLA ใหม่</p>',
+      onOk: function (v, close) { return PX.post('/api/deal-close', { customer_id: cid, outcome: 'lost', reason_code: 'no_response', note: v.note || '' }).then(function () { close(); return refresh('ปิด ' + esc(name) + ' เป็น Lost (ไม่ตอบ)'); }); } });
+  }
+  /* ไทม์ไลน์ลูกค้า: ทุกเหตุการณ์ของเจ้านี้เรียงเวลา (คน · ระบบ · ลูกค้า) */
+  function timeline(cid, name) {
+    PX.get('/api/events?customer=' + encodeURIComponent(cid)).then(function (j) {
+      var WHO = { boss: 'Pricing (หัวหน้า)', ops: 'Pricing', sale: 'Sales', admin: 'Admin', system: 'SYSTEM', customer: 'CUSTOMER' };
+      PX.modal({ title: 'ไทม์ไลน์ · ' + name, sub: (j.rows || []).length + ' เหตุการณ์ · รูปแบบเดียวกันทั้งคน ระบบ และลูกค้า', ok: false,
+        html: '<div style="max-height:60vh;overflow:auto">' + ((j.rows || []).length ? j.rows.map(function (e) { return '<div style="display:grid;grid-template-columns:118px 90px 1fr;gap:8px;padding:6px 0;border-bottom:1px dashed var(--line);font-size:12px"><span style="color:var(--tx-3);font-family:var(--fn)">' + esc(String(e.at).replace('T', ' ').slice(0, 16)) + '</span><b style="color:' + (e.kind === 'system' ? 'var(--violet)' : e.kind === 'customer' ? 'var(--teal)' : 'var(--blue)') + '">' + esc(WHO[e.actor] || e.actor) + '</b><span><b>' + esc(e.action) + '</b>' + (e.status !== 'ok' ? ' <span class="pill2 ' + (e.status === 'fail' ? 'r' : 'a') + '">' + esc(e.status) + '</span>' : '') + (e.detail ? '<br><span style="color:var(--tx-2)">' + esc(e.detail) + '</span>' : '') + '</span></div>'; }).join('') : '<p class="hint">ยังไม่มีเหตุการณ์</p>') + '</div>' });
+    }).catch(function (e) { PX.toast(esc(e.message), 'bad'); });
   }
   function flag(id, approve) { var f = (DATA.flags || []).filter(function (x) { return x.id === id; })[0] || {}; if (!approve) return act(PX.post('/api/cost-flags/decide', { id: id, approve: false }).then(function () { return refresh('ไม่ใช้ทุน ' + esc(f.name)); }));
     PX.modal({ title: 'ใช้ทุนนี้ · ' + f.name, sub: (f.reasons || []).join(' · '), fields: [{ k: 'cost', label: 'ทุนที่จะใช้ (แก้ได้)', type: 'num', value: f.cost }], okText: 'ใช้ค่านี้', onOk: function (v, close) { return PX.post('/api/cost-flags/decide', { id: id, approve: true, cost: Number(v.cost) }).then(function () { close(); return refresh('บันทึกทุน ' + esc(f.name) + ' = ' + v.cost + ' ฿'); }); } }); }
@@ -220,5 +297,5 @@ window.Dash = (function () {
     obs.observe(main, { childList: true, subtree: false });
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') load(true).then(paint).catch(function () {}); });
   }
-  return { mount: mount, refresh: refresh, rep: rep, filter: filter, toggleAll: toggleAll, sendLine: sendLine, sendAll: sendAll, bindLine: bindLine, follow: follow, close: close, flag: flag, ack: ack };
+  return { mount: mount, refresh: refresh, rep: rep, decide: decide, timeline: timeline, filter: filter, toggleAll: toggleAll, sendLine: sendLine, sendAll: sendAll, bindLine: bindLine, follow: follow, close: close, flag: flag, ack: ack };
 })();

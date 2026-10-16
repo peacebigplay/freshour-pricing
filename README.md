@@ -152,6 +152,16 @@ AL / วาง / LINE / กล่องรับ → Cost Import Batch (COST-ddm
 - **ตามจนจบ**: งานระบบรายวัน `followup-check` — เจ้าที่เงียบเกิน 2 วัน มี LINE = ส่งข้อความตามให้เอง · ไม่มี = ขึ้น alert + งานค้างของเซลล์ · ปิดดีลบันทึกราคาที่ตกลงรายบรรทัด (`/api/deal-close` won/lost + เหตุผล)
 - **Log รูปแบบเดียว**: ทุกเหตุการณ์ = `{at, actor, rep, kind(คน/ระบบ/ลูกค้า), action, entity, entity_id, detail, status, step}` ทั้งที่คนกดและงานระบบ · เซลล์เห็นเฉพาะของตัวเอง · ระบบล้ม → alert + LINE admin + **แถบแดงบนทุกหน้า** ของ ops/boss/admin จนกว่าจะกดรับทราบ
 
+## รอบ 11 · SALES LOGIC — หน้าเซลล์เป็นคิวงาน ไม่ใช่รายชื่อลูกค้า
+
+- **สถานะเดียวต่อเจ้า** (`salesQueue` · `/api/sales-queue`): รอ Pricing → พร้อมส่ง → (ส่งไม่สำเร็จ) → ส่งแล้วยังไม่เปิด / รอลูกค้าตอบ / ตอบบางส่วน → ต้องตาม (SLA 48 ชม.) → ต้องตัดสินใจ (7 วัน) · ต่อรอง: รอ Pricing ตอบ → ราคาใหม่พร้อมส่ง → รอลูกค้า (รอบ N) · ลูกค้าตอบรับ รอปิดดีล → Won / Lost / Invoiced
+- **Priority**: P1 ราคาใหม่พร้อมส่ง · ส่งไม่สำเร็จ · ตอบรับรอปิด → P2 ต้องตาม / ต้องตัดสินใจ → P3 พร้อมส่ง → P4 รอลูกค้าใน SLA → P5 รอ Pricing · แดชบอร์ดแยก **My Work** (งานเซลล์) ออกจาก **Waiting** (รอคนอื่น) ไม่เอามารวมเป็น "ค้าง"
+- **แดชบอร์ด 5 แถว**: Performance (Portfolio · Quote Sent % · Delivery/Response · Won value · Win rate · Value win rate · Follow-up SLA) → Pipeline → My Work Today (ปุ่มทำงานในแถว) → Customer Response Board (มูลค่า · สถานะ · ความเคลื่อนไหวล่าสุด · ทำต่อ) → Recently Closed · มูลค่ารายเจ้า = `customer.value_month` (ออปส์ใส่ · ยังไม่มีจะโชว์ — ไม่ปั้นตัวเลข)
+- **ส่งแล้ว = ส่งสำเร็จจริง**: กด "ส่ง LINE" = เข้าคิว · สถานะเปลี่ยนเป็นส่งแล้วเมื่อ LINE ตอบสำเร็จ (`markSent` → Quote V+1 · event `quote-sent`) · ล้ม retry 1/5/15 นาที → `send_failed` ขึ้น P1 + alert · ไม่มีทางที่เซลล์คิดว่าถึงลูกค้าทั้งที่ยังไม่ถึง
+- **Silent customer**: 48 ชม. → ระบบส่ง LINE ตาม #1 · อีก 48 ชม. → #2 + งานเซลล์ · 7 วัน → "ตัดสินใจ: ตามต่อ หรือ ปิด Lost (ไม่ตอบ)" — ไม่ตามไปเรื่อยๆ ไม่มีจบ
+- **Won/Lost**: Won บันทึกราคาสุดท้าย × ปริมาณรายบรรทัด (`lines[{pid,qty}]` → มูลค่าจริง · ไม่ใส่ = ประมาณและบอกไว้) + เงื่อนไข + รอบต่อรอง + quote version · Lost บังคับ `reason_code` (price / competitor / credit / delivery / no_demand / no_response / postponed / other) + ราคาคู่แข่งที่ลูกค้าบอก เก็บแยกเป็น `customer_reported` ไม่ปนราคาตลาดทางการ
+- **Timeline รายเจ้า** (`/api/events?customer=`) — คน/ระบบ/ลูกค้า เรียงเวลาเดียวกัน · เซลล์เห็นเฉพาะเจ้าของตัวเอง
+
 ## โครงสร้าง
 
 ```

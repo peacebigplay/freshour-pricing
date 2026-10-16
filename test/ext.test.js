@@ -94,12 +94,14 @@ test('3+4 LINE → กระดานสถานะ → ตามเจ้า�
   const noLine = call('sale', 'POST', '/api/line/send', { customer_id: CID, kind: 'quote' }); assert.equal(noLine.status, 400); assert.ok(noLine.body.needLine);
   okj(call('ops', 'POST', '/api/customers/' + CID, { line_user_id: 'Uabc123' }));
   const s = okj(call('sale', 'POST', '/api/line/send', { customer_id: CID, kind: 'quote' })); assert.equal(s.status, 'queued');
-  b = okj(call('sale', 'GET', '/api/sales-board')); const row = b.rows.find(r => r.id === CID);
-  assert.equal(row.stage, 'sent'); assert.equal(row.channel, 'line'); assert.equal(row.lineStatus, 'queued');
+  b = okj(call('sale', 'GET', '/api/sales-board')); let row = b.rows.find(r => r.id === CID);
+  /* เข้าคิวแล้ว ≠ ส่งแล้ว — สถานะเปลี่ยนเป็น sent ต่อเมื่อ LINE ส่งสำเร็จจริง (drainOutbox) */
+  assert.equal(row.stage, 'ready'); assert.equal(row.channel, 'line'); assert.equal(row.lineStatus, 'queued');
   const ob = okj(call('sale', 'GET', '/api/outbox')); assert.ok(ob.rows[0].text.includes('SUKISHI') === false || true); assert.equal(ob.queued, 1);
   /* ส่งจริง (จำลอง — ไม่มี token) */
   const sent = await store.ext.drainOutbox(null); assert.equal(sent, 1);
   assert.equal(okj(call('sale', 'GET', '/api/outbox')).rows[0].status, 'simulated');
+  row = okj(call('sale', 'GET', '/api/sales-board')).rows.find(r => r.id === CID); assert.equal(row.stage, 'sent'); assert.equal(row.lineStatus, 'simulated');
   assert.equal(okj(call('ops', 'GET', '/api/health')).jobs.find(j => j.key === 'line-outbox').status, 'ok');
   /* ลูกค้าเงียบ → ครบ 2 วัน ต้องขึ้นคิวตาม (จำลองว่า sentAt ย้อนไป 3 วัน) */
   const sr = store.docs.sends.customers.find(c => c.id === CID); sr.sentAt = new Date(Date.now() - 3 * 864e5 + 7 * 36e5).toISOString().slice(0, 19);
@@ -143,7 +145,8 @@ test('5 Log: ทุกเหตุการณ์รูปแบบเดีย�
   h = okj(call('ops', 'GET', '/api/health')); assert.ok(!h.alerts.find(a => a.title === 'ทดสอบระบบล้ม'));
   /* LINE ส่งไม่สำเร็จ 3 ครั้ง → failed + alert */
   okj(call('sale', 'POST', '/api/line/send', { customer_id: 'cd6f5', kind: 'nudge', text: 'x' }));
-  for (let i = 0; i < 3; i++) await store.ext.drainOutbox(() => Promise.reject(new Error('LINE 401')));
+  /* retry ถอยหลัง 1/5/15 นาที — จำลองเวลาผ่านด้วยการล้าง next_try · ครบ 3 ครั้งแล้วค่อย failed (ระหว่างนั้นสถานะยัง queued ไม่ใช่ sent) */
+  for (let i = 0; i < 4; i++) { await store.ext.drainOutbox(() => Promise.reject(new Error('LINE 401'))); const q0 = okj(call('ops', 'GET', '/api/outbox')).rows[0]; if (i < 3) { assert.equal(q0.status, 'queued'); assert.ok(q0.next_try, 'มีเวลาลองใหม่'); store.docs.outbox.forEach(x => { x.next_try = null; }); } }
   const o = okj(call('ops', 'GET', '/api/outbox')).rows[0]; assert.equal(o.status, 'failed');
   assert.ok(okj(call('ops', 'GET', '/api/health')).alerts.find(a => /ส่ง LINE ไม่สำเร็จ/.test(a.title)));
   okj(call('ops', 'POST', '/api/line/retry', {})); assert.equal(okj(call('ops', 'GET', '/api/outbox')).rows[0].status, 'queued');

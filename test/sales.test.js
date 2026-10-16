@@ -45,8 +45,16 @@ test('แดชบอร์ดเซลล์ = งานขายของค�
   const d = okj(call('sale', 'GET', '/api/dashboard', null, 's1'));
   assert.equal(d.role, 'sale'); assert.equal(d.rep.id, 's1');
   assert.ok(d.customers.every(c => c.owner === 's1'));
-  ['send', 'follow', 'inform', 'close', 'total'].forEach(k => assert.equal(typeof d.todo[k], 'number'));
+  /* SALES LOGIC: Performance · Pipeline (สถานะเดียวต่อเจ้า) · My Work (เฉพาะงานของเซลล์) แยกจาก Waiting (รอ Pricing/ลูกค้า) · Board · Closed */
+  ['customers', 'quoteSent', 'quoteSentPct', 'won', 'lost', 'portfolioValue', 'valueUnknown'].forEach(k => assert.equal(typeof d.perf[k], 'number', 'perf.' + k));
+  assert.ok(d.perf.winRate == null || (d.perf.winRate >= 0 && d.perf.winRate <= 100));
+  const sum = Object.keys(d.pipeline).reduce((a, k) => a + d.pipeline[k], 0); assert.equal(sum, d.customers.length, 'ทุกเจ้าอยู่สถานะเดียว');
+  assert.ok(d.work.every(r => r.isSalesTask && r.action) && d.waiting.every(r => !r.isSalesTask), 'งานเซลล์ต้องมี action · รอคนอื่นไม่ใช่งานเซลล์');
+  assert.ok(d.work.every((r, i, arr) => i === 0 || arr[i - 1].priority <= r.priority), 'คิวเรียงตาม priority');
+  assert.ok(!d.waiting.some(r => r.state === 'ready'), 'พร้อมส่ง = งานเซลล์ ไม่ใช่รอ');
+  assert.ok(d.customers.filter(r => r.state === 'waiting_pricing').every(r => !r.isSalesTask), 'รอ Pricing ไม่นับเป็นงานค้างของเซลล์');
   ['sent', 'follow', 'closed', 'replied'].forEach(k => assert.equal(typeof d.done7[k], 'number'));
+  assert.ok(d.sla && d.sla.responseH === 48 && d.lostReasons.no_response);
   assert.ok(!/"cost"|"margin"|"gp"/.test(JSON.stringify(d)), 'ไม่มีทุน/กำไรใน payload ของเซลล์');
   const b = okj(call('boss', 'GET', '/api/dashboard?view=sales'));
   assert.equal(b.role, 'sale'); assert.ok(b.reps.length >= 2 && b.customers.length > d.customers.length, 'หัวหน้าเห็นรวมทุกคน + สรุปรายคน');
@@ -73,4 +81,52 @@ test('ตามเจ้าที่เงียบ: งานระบบรา
   const job = okj(call('ops', 'GET', '/api/health')).jobs.find(j => j.key === 'followup-check');
   assert.equal(job.status, 'ok');
   assert.ok(okj(call('ops', 'GET', '/api/events?kind=system')).rows.some(e => e.action === 'followup-check'));
+});
+
+test('SALES LOGIC: ส่งแล้วต่อเมื่อ LINE สำเร็จจริง · ส่งไม่สำเร็จ = งาน P1 · ราคาต่อรองที่ Pricing ตัดสินแล้ว = P1 · เงียบเกิน SLA → ตาม → เกิน 7 วันต้องตัดสินใจ · Lost ต้องมีเหตุผลแบบโครงสร้าง', async () => {
+  const docs2 = loadDocs(); const st2 = createStore(docs2, {});
+  const c2 = (role, method, url, body, rep) => st2.handle({ role, rep, method, url, body, origin: 'http://t' });
+  const q = () => okj(c2('sale', 'GET', '/api/sales-queue', null, 's1')).rows;
+  /* Pricing: ยืนยันราคากลาง → บันทึกใบรายเจ้าของลูกค้า s1 หนึ่งเจ้า → ส่ง Sales = เข้าคิว "พร้อมส่ง" ของเซลล์ 1 (ก่อนหน้านั้นเป็น "รอ Pricing" ไม่ใช่งานเซลล์) */
+  let dk = okj(c2('ops', 'GET', '/api/desk'));
+  okj(c2('ops', 'POST', '/api/save-price-sheet', { customer_id: null, goal: 'target', rows: dk.rows.filter(r => r.cost > 0 && r.v21 && r.v21.goals).map(r => ({ product_id: r.id, price: Math.max(r.w2, r.v21.guard || 0), goal: 'target', exception: '' })) }));
+  let pick = null, d2 = null, crow = [];
+  for (const cand of q().filter(r => r.state === 'waiting_pricing')) { const dd = okj(c2('ops', 'GET', '/api/desk?customer=' + cand.id)); const cr = dd.rows.filter(r => r.cust && r.cust.source === 'สัญญา' && r.v21.goals); if (cr.length) { pick = cand; d2 = dd; crow = cr; break; } }
+  assert.ok(pick && !pick.isSalesTask, 'มีลูกค้าสัญญาที่รอ Pricing');
+  okj(c2('ops', 'POST', '/api/save-price-sheet', { customer_id: pick.id, goal: 'target', rows: crow.map(r => ({ product_id: r.id, price: Math.max(r.cust.price, r.v21.guard || 0), goal: 'target', exception: '' })) }));
+  okj(c2('ops', 'POST', '/api/handoff', { customer_id: pick.id }));
+  const ready = q().find(r => r.id === pick.id); assert.equal(ready.state, 'ready'); assert.equal(ready.priority, 3); assert.equal(ready.action.key, 'send');
+  /* ผูก LINE แล้วสั่งส่ง → ยังไม่ใช่ "ส่งแล้ว" จนกว่าจะส่งสำเร็จ */
+  okj(c2('sale', 'POST', '/api/customers/' + ready.id, { line_user_id: 'U-test-1' }, 's1'));
+  okj(c2('sale', 'POST', '/api/line/send', { customer_id: ready.id, kind: 'quote' }, 's1'));
+  assert.equal(q().find(r => r.id === ready.id).state, 'ready', 'เข้าคิวแล้วแต่ยังไม่ถึงลูกค้า');
+  await st2.ext.drainOutbox(() => Promise.reject(new Error('LINE OA timeout')));
+  let row = q().find(r => r.id === ready.id); assert.equal(row.state, 'ready'); assert.equal(row.lineStatus, 'queued');
+  /* ล้มครบ 3 รอบ (ถอยหลัง 1/5/15 นาที) → send_failed = P1 งานเซลล์ + alert */
+  for (let i = 0; i < 3; i++) { st2.docs.outbox.forEach(o => { o.next_try = null; }); await st2.ext.drainOutbox(() => Promise.reject(new Error('LINE OA timeout'))); }
+  row = q().find(r => r.id === ready.id); assert.equal(row.state, 'send_failed'); assert.equal(row.priority, 1); assert.equal(row.action.key, 'resend');
+  assert.ok(okj(c2('ops', 'GET', '/api/health')).alerts.some(a => /ส่ง LINE ไม่สำเร็จ/.test(a.title)));
+  /* retry สำเร็จ → sent (Quote V1) + event quote-sent */
+  okj(c2('ops', 'POST', '/api/line/retry', {})); await st2.ext.drainOutbox(() => Promise.resolve({ sent: true }));
+  row = q().find(r => r.id === ready.id); assert.equal(row.state, 'sent'); assert.equal(row.quoteVersion, 1);
+  assert.ok(okj(c2('ops', 'GET', '/api/events?customer=' + ready.id)).rows.some(e => e.action === 'quote-sent'));
+  /* ลูกค้าเปิดใบ → รอลูกค้า (เห็นต่างจากยังไม่เปิด) · เงียบเกิน 48 ชม. → ต้องตาม · เกิน 7 วัน → ต้องตัดสินใจ */
+  const sr = st2.docs.sends.customers.find(c => c.id === ready.id); sr.opened = sr.sentAt;
+  assert.equal(q().find(r => r.id === ready.id).state, 'waiting_customer');
+  const back = h => new Date(Date.now() - h * 36e5).toISOString().slice(0, 19); sr.sentAt = back(52); sr.opened = back(50);
+  row = q().find(r => r.id === ready.id); assert.equal(row.state, 'followup_due'); assert.equal(row.priority, 2);
+  const tick = st2.ext.followupTick(); assert.ok(tick.sent.some(n => n.indexOf(sr.name) === 0), 'ระบบส่ง LINE ตาม #1 ให้เอง');
+  row = q().find(r => r.id === ready.id); assert.equal(row.reminders, 1); assert.ok(row.state !== 'followup_due', 'ตามแล้วกลับไปรอ');
+  sr.sentAt = back(24 * 8); st2.docs.followups.forEach(f => { if (f.customer_id === ready.id) f.at = back(24 * 6); });
+  row = q().find(r => r.id === ready.id); assert.equal(row.state, 'decide'); assert.equal(row.action.key, 'decide');
+  /* Lost ต้องมีเหตุผลแบบโครงสร้าง · ปิดแล้วหลุดจากงานค้าง */
+  assert.equal(c2('sale', 'POST', '/api/deal-close', { customer_id: ready.id, outcome: 'lost' }, 's1').status, 400);
+  okj(c2('sale', 'POST', '/api/deal-close', { customer_id: ready.id, outcome: 'lost', reason_code: 'no_response' }, 's1'));
+  row = q().find(r => r.id === ready.id); assert.equal(row.state, 'lost'); assert.equal(row.outcome.reasonCode, 'no_response'); assert.ok(!row.isSalesTask);
+  /* ราคาต่อรองที่ Pricing ตัดสินแล้ว = P1 ส่งราคาใหม่ · มี round */
+  const nego = q().find(r => r.state === 'revised_ready');
+  if (nego) { assert.equal(nego.priority, 1); assert.equal(nego.action.key, 'send_revised'); assert.ok(nego.round >= 1); }
+  const d = okj(c2('sale', 'GET', '/api/dashboard', null, 's1'));
+  assert.ok(d.work.every(r => r.isSalesTask) && d.perf.lost >= 1 && d.closed.length >= 1);
+  assert.ok(!/"cost"|"margin"|"gp"|"floor"/.test(JSON.stringify(d.work.concat(d.board))), 'คิวงานไม่มีทุน/margin/floor');
 });
