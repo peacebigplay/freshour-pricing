@@ -206,25 +206,17 @@ AL / วาง / LINE / กล่องรับ → Cost Import Batch (COST-ddm
 - ไม่ทำ (ตามที่ตกลง): ถามราคาคู่แข่งจากลูกค้าในลิงก์ต่อรอง / ให้เซลล์ขอใบราคาจากลูกค้า — เซลล์ไม่มีปุ่มนี้
 - เทสต์ `test/market-lean.test.js` 3 ข้อ
 
-## รอบ 17 · หน้าผู้บริหาร = Decision Cockpit (ไม่ใช่หน้ารวมทุกอย่าง)
+## รอบ 17 · หน้าผู้บริหาร = Decision Cockpit ใน 3 แท็บเดิม (หน้าตาเดิม · ลอจิคใหม่)
 
-`/exec` ใหม่ อ่านบนลงล่างตอบ 4 คำถาม: AI ทำงานดีแค่ไหน → pipeline ติดตรงไหน → ขายได้จริงเท่าไร → margin รายกลุ่ม → ใครต้องจับตา → ต้องตัดสินใจอะไร · หน้าเดิม (AR · ส่งของ · issue log) ย้ายไป `/exec-ops` เป็น drill-down
+หน้า `/exec` คงหน้าตาและ 3 แท็บเดิม (Overview · Business health · Operation) แต่เนื้อหาไล่ตามลอจิคผู้บริหาร — ไม่ใช่หน้ารวมทุกอย่าง · เฟสแรกยังไม่มีการเงิน/ขนส่ง → พับไว้ใน details ท้ายแท็บ
 
-- **API `/api/exec`** (boss/admin เท่านั้น) — `execCockpit()` ใน `src/ext.js` คืน 10 ส่วน + decisions + sources (ทุกตัวเลขมี basis):
-  1. **AI Pricing Performance** — Automation Coverage (SKU ที่ไม่ติดด่าน: ทุนผิดปกติ · ต่ำกว่า Floor · ขยับเกินที่ทุนอธิบายได้ · ทุนเปลี่ยนหลังยืนยัน — ตัวเดียวกับที่ "ให้ระบบทำรอบนี้" ใช้) · Human Review แยกเหตุผล · Recommendation Acceptance / Override (จาก `price_versions` ที่ไม่ใช่ `auto`; บอกทิศว่า AI ตั้งสูง/ต่ำไป) · Market Coverage/Confidence (สด/ใช้ได้/เก่า/ไม่มี)
-  2. **Pricing Flow Health** — ทุนพร้อม → ตลาดพร้อม (soft) → AI แนะนำได้เอง → ยืนยันแล้ว → ใบรายเจ้าส่ง Sales พร้อม "ตกเพราะอะไร" และลิงก์ root cause
-  3. **Bottlenecks** — จัดอันดับ: ราคากลางรอยืนยัน · ลูกค้าเงียบเกิน SLA · ทุนผิดปกติ · หมวดแข่งขันไม่มีตลาด · ใบราคาคู่แข่งไม่มา · LINE ล้ม พร้อม impact (ลูกค้า/ใบราคา) และ opportunity (ถ้ารู้มูลค่า)
-  4. **Commercial** — Portfolio / Quoted / Won / Lost · Customer win rate + Value win rate (จาก sales queue + deal-close · มูลค่า = `value_month` ที่นำเข้า)
-  5. **Actual** — จาก invoice เท่านั้น · GP ใช้ทุน snapshot ณ วันออกบิล (บรรทัด invoice เก็บ cost ไว้แล้ว) · YTD SKU 15 อันดับ
-  6. **Margin by Product Group** — Target/Min จาก policy · Actual จาก invoice ถ้ามี ไม่งั้นราคาสัญญาปัจจุบัน (ติดป้ายที่มา) · สถานะ Healthy/Near/Below/Risk
-  7. **Customers** — Largest opportunities · At risk (เงียบ / ต่อรองต่ำกว่า Min / Lost ให้คู่แข่ง)
-  8. **Sales** — ต่อคน: ลูกค้า · Portfolio · Won value · Win rate · Value win rate · Follow-up SLA
-  9. **Market Intelligence Accuracy** — predictions ที่ครบกำหนด ถูก/บางส่วน/ผิด + รายการ "เคยเตือนอะไร เกิดอะไรจริง"
-  10. **Automation Health** — ปกติ = บรรทัดเดียว · มีปัญหา = ตาราง (retry แล้ว? owner ใคร)
-  - **Decisions** สร้างจากกติกา: policy (กลุ่ม margin ต่ำกว่า target) · market (เตือนแนวโน้ม / ไม่มีแหล่งตลาด) · commercial (ขอต่ำกว่า Min · ราคาสัญญา ≤ ทุน) · process (คอขวดคือการกดยืนยัน → เสนอ Auto-Approve rule) — แต่ละข้อมีตัวเลือกและปุ่ม "ไปตัดสิน"
-- ไม่มีปุ่มปฏิบัติการในหน้านี้ (ส่ง LINE / แก้ราคา / จับคู่ SKU) — View → Drill down → Decide เท่านั้น
-- สถานะข้อมูลวันนี้: invoice 0 · มูลค่าลูกค้า 0/44 · ตลาด 0/210 · คำทำนาย 0 → หน้าแสดง "—/ยังไม่มี" พร้อมบอกว่าต้องทำอะไรให้ตัวเลขขึ้น (ไม่เดา)
-- เทสต์ `test/exec.test.js` 2 ข้อ (โครง+สิทธิ์+ความสอดคล้องกับ auto-round · auto ไม่นับ acceptance · override บอกทิศ · invoice ทำให้ actual/margin กลุ่มสลับไปใช้บิล)
+- **Overview** = AI Pricing Performance (Automation Coverage · Human Review แยกเหตุผล · Recommendation Acceptance/Override · Market Coverage/Confidence) → Pricing Flow Health (ตกจากขั้นไหน) → What is blocking business? (จัดอันดับ + impact + opportunity) → Decide now (เรื่องที่ระบบตัดสินแทนไม่ได้ + Attention Queue) → ผลลัพธ์รอบ (dash) → Drill down
+- **Business health** = Commercial (Portfolio / Quoted / Won / Lost · Customer & Value win rate) → Margin by Product Group (Target/Min/Actual · invoice → fallback ราคาสัญญา) → Largest opportunities / At risk → Sales performance ต่อคน → `details` การเงินจริง (Invoice · เงินเข้า · ค้างรับ — เฟสถัดไป)
+- **Operation** = Automation Health (ปกติ = บรรทัดเดียว) → Market Intelligence Accuracy → `details` ขนส่ง · ปัญหาลูกค้า (เฟสถัดไป)
+- **API `/api/exec`** (boss/admin) — `execCockpit()` ใน `src/ext.js`: ทุกตัวเลขมี basis · Actual จาก invoice เท่านั้น (GP = ราคาขายจริง − ทุน snapshot ณ วันออกบิล) · Acceptance นับเฉพาะที่คนยืนยัน (auto-round ติดธง `auto`) · Coverage ใช้ด่านชุดเดียวกับ "ให้ระบบทำรอบนี้" (มีเทสต์ล็อก) · Decisions สร้างจากกติกา policy / market / commercial / process
+- ไม่มีปุ่มปฏิบัติการในหน้านี้ — View → Drill down → Decide
+- สถานะข้อมูลวันนี้: invoice 0 · มูลค่าลูกค้า 0/44 · ตลาด 0/210 · คำทำนาย 0 → แสดง "—/ยังไม่มี" พร้อมบอกว่าต้องทำอะไรให้ตัวเลขขึ้น
+- เทสต์ `test/exec.test.js` 2 ข้อ
 
 ## โครงสร้าง
 
