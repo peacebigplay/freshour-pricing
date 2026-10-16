@@ -922,13 +922,7 @@ function pricingPanel(){
   return '<div class="ex-section"><div class="ex-section-title">Pricing & Market Overview</div>'+
     pricingSummaryCards()+
     '<div class="ex-price-panels">'+costTrendPanel()+profitMixPanel()+marketPanel()+moversPanel()+spreadPanel()+gradePanel()+'</div>'+
-    '<div class="card ex-pricing"><h3>Pricing actions <span class="sub">รอบ '+esc(D.round||D.asOf||'—')+'</span></h3><p class="hint">ข้อมูลเดิมของระบบตั้งราคาเก็บไว้ เพื่อช่วยตัดสินใจรอบนี้</p>'+
-      '<div class="ex-price-grid">'+
-      '<a href="/pricing"><span>ไปโต๊ะตั้งราคา</span><b>'+safe((D.totals||{}).sku,0)+' SKU</b><em>Pricing Home / ราคากลาง / รายเจ้า</em></a>'+
-      '<a href="/sales"><span>ไปหน้าทีม Sales</span><b>'+(SD && SD.pending ? SD.pending : 0)+' ใบค้าง</b><em>ตรวจ Quote Link และการต่อรอง</em></a>'+
-      '<a href="/costs"><span>ไปหน้าต้นทุน & ตลาด</span><b>'+safe((D.coverage||{}).usable,0)+' usable</b><em>รู้ราคาตลาดที่ใช้ได้วันนี้</em></a>'+
-      '<button onclick="announce()"><span>ประกาศราคา</span><b>รอบนี้</b><em>เปิด Preflight ก่อนทุกครั้ง →</em></button>'+
-      '</div></div>'+pricingAttention()+'</div>';
+    '</div>';
 }
 
 
@@ -1284,7 +1278,7 @@ function draw(){
   var p5 = '<div class="ex-section"><div class="ex-hierarchy"><span>Pricing intelligence</span><b>ต้นทุน ตลาด Margin Guard และสถานะใบราคา ใช้เป็นข้อมูลประกอบการตัดสินใจ</b></div>'+pricingPerformancePanel()+pricingPanel()+'</div>';
 
   /* Decision Cockpit (ลอจิคผู้บริหาร) — วางบนสุดของแต่ละแท็บ แล้วตามด้วยของเดิมครบ */
-  var cOverview = aiPricingPanel()+flowPanel()+bottleneckPanel()+'<div style="height:14px"></div>'+decisionPanel()+'<div id="exAfterAI"></div>';
+  var cOverview = aiPricingPanel()+'<div id="exAfterAI"></div>';   /* Overview = AI Pricing Performance → ผลลัพธ์รอบ → Pricing intelligence เดิม (ไม่มี flow/คอขวด/decisions/pricing actions — เจ้าของระบบตัดออก) */
   var cHealth = commercialPanel()+
     '<div class="ex-section"><div class="ex-hierarchy"><span>Margin</span><b>margin จริงเทียบ Target ของแต่ละกลุ่มสินค้า</b></div>'+marginGroupPanel()+'</div>'+
     '<div class="ex-section"><div class="ex-hierarchy"><span>Customer / Sales</span><b>ลูกค้าเจ้าไหนควรลงมาช่วยเอง · เซลล์คนไหนพอร์ตใหญ่แต่ปิดไม่ได้</b></div>'+customerPanel()+'<div style="height:12px"></div>'+salesPanel()+'</div>';
