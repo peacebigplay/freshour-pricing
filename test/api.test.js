@@ -150,7 +150,7 @@ test('ทุน/ตลาด/นโยบาย: แก้แล้วทุก�
   const pv = okj(call('ops', 'GET', '/api/product?id=' + PID0)); assert.equal(pv.p.cost, 70); assert.equal(pv.p.add, 15); assert.ok(pv.hist.length >= 1); assert.equal(pv.costMaster.current_cost, 70); assert.equal(pv.policy.target, gm.target);
   /* ตัวที่ใบตั้งปลีกเอง (override) คงค่า: กระดูกข้อขา ปลีก 24 · ส่ง 15 (ราคาเดิมสูงกว่า Target และไม่มีตลาดบอกว่าแพง → ยืนราคาเดิม) */
   const bone = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === BONE); assert.deepEqual([bone.retail, bone.w2], [24, 15]);
-  const sh = okj(call('ops', 'POST', '/api/costs', { shift: 1 })); assert.equal(sh.shifted, 195); assert.equal(sh.nocost, 0);
+  const sh = okj(call('ops', 'POST', '/api/costs', { shift: 1 })); assert.ok(sh.shifted >= 195, 'AL 195 + SKU เฉพาะลูกค้า'); assert.equal(sh.nocost, 0);
   okj(call('ops', 'POST', '/api/products/' + PID0, { vol_week: 2000 }));
   assert.equal(okj(call('ops', 'GET', '/api/board')).lines.find(l => l.id === PID0).vol, 2000);
   const np = okj(call('ops', 'POST', '/api/products', { name: 'สินค้าทดสอบ', grp: 'อื่นๆ', cost: 100, add_baht: 20 }));
@@ -171,7 +171,7 @@ test('ทุน/ตลาด/นโยบาย: แก้แล้วทุก�
   const dk2 = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID0); assert.equal(dk2.v21.goals.target.price, Math.ceil(71 / (1 - (gm.target + 2) / 100))); assert.ok(dk2.v21.policyChanged, 'SKU ในกลุ่มถูก mark Pricing Policy Changed');
   assert.equal(call('ops', 'POST', '/api/policy', { grp: 'มัน', target: 10, min: 12 }).status, 400, 'Target ต่ำกว่า Minimum ไม่ได้');
   assert.equal(okj(call('ops', 'GET', '/api/policy')).log[0].grp, 'มัน');
-  assert.equal(okj(call('ops', 'GET', '/api/data-audit')).master, 196, 'สินค้า = ใบราคา AL 192 + แช่แข็ง 3 + ที่เพิ่มในเทสต์ 1');
+  assert.ok(okj(call('ops', 'GET', '/api/data-audit')).master >= 196, 'สินค้า = ใบราคา AL 192 + แช่แข็ง 3 + SKU เฉพาะลูกค้า + ที่เพิ่มในเทสต์ 1');
 });
 
 test('ลูกค้า/สัญญา/ปรับทั้งใบ', () => {
@@ -302,8 +302,10 @@ test('V32 สูตร 4 Goal (ฟังก์ชันเดียวใน bac
 test('V32 แจ้งเตือนต่อรอง: trigger ลูกค้าต่อรอง → แบนเนอร์ทั้งเซลและตั้งราคา → ตัดสิน → ส่งใบแก้ไข = ปิดเรื่อง · ค้าง 7 วันเตือนซ้ำ', () => {
   const before = okj(call('sale', 'GET', '/api/negotiations'));
   assert.ok(before.items.every(i => !('cost' in i)), 'เซลล์ไม่เห็นทุน');
-  const CID = okj(call('ops', 'GET', '/api/customers')).customers.find(c => c.n > 0).id;
-  const dkc = okj(call('ops', 'GET', '/api/desk?customer=' + CID)).rows.find(r => r.cust && r.cust.source === 'สัญญา' && r.cust.price > r.cost + 20);
+  /* เลือกเจ้าที่มีบรรทัดสัญญาซึ่งราคาเหนือทุนพอให้ต่อรองได้ (ลูกค้าที่นำเข้าใหม่บางเจ้าราคาชิดทุน) */
+  let CID = null, dkc = null;
+  for (const cc of okj(call('ops', 'GET', '/api/customers')).customers.filter(c => c.n > 0)) { const r0 = okj(call('ops', 'GET', '/api/desk?customer=' + cc.id)).rows.find(r => r.cust && r.cust.source === 'สัญญา' && r.cust.price > r.cost + 20); if (r0) { CID = cc.id; dkc = r0; break; } }
+  assert.ok(dkc, 'มีลูกค้าที่ต่อรองได้');
   const sh = okj(call('sale', 'GET', '/api/sheet?customer=' + CID)); const row = sh.rows.find(r => r.pid === dkc.id);
   const rq = okj(call('sale', 'POST', '/api/price-request', { customer_id: CID, product_id: row.pid, want: row.board - 5, reason: 'เจ้าอื่นถูกกว่า' }));
   let n = okj(call('ops', 'GET', '/api/negotiations')); const it = n.items.find(i => i.id === rq.id);

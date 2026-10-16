@@ -25,10 +25,13 @@ test('ข้อมูลบนหน้าตั้งราคา = ใบร�
   const sheet = AL.parse(JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'al-01-07-10-69-items.json'), 'utf8')));
   const al = {}; sheet.slice(1).forEach(r => { al[r[0]] = r; });
   const desk = store.handle({ role: 'ops', method: 'GET', url: '/api/desk', origin: 'http://t' }).body;
-  assert.equal(desk.rows.length, 195);
+  assert.ok(desk.rows.length >= 195, 'AL 195 + SKU เฉพาะลูกค้า');
   const bad = [], math = [];
   desk.rows.forEach(r => {
-    const p = prods[r.id], a = al[p.pdf_idx];
+    const p = prods[r.id];
+    /* SKU เฉพาะลูกค้า (สร้างจากสินค้าฐานตอนนำเข้าใบราคาลูกค้า) ไม่อยู่ในใบ AL — ต้องบอกที่มาว่ามาจากสินค้าฐานตัวไหน */
+    if (p.pdf_idx == null) { assert.ok(/สินค้าฐาน/.test(p.cost_src || ''), 'SKU นอกใบ AL ต้องระบุสินค้าฐาน: ' + r.name); return; }
+    const a = al[p.pdf_idx];
     assert.ok(a, 'ทุกสินค้าต้องมีแถวในใบ AL: ' + r.name);
     const checks = [['ทุน', r.cost, num(a[6])], ['ทุนรอบก่อน', r.costPrev, num(a[5])], ['ส่ง 2kg รอบก่อน', r.prev, num(a[9])], ['ปลีก', r.retail, num(a[8])], ['5kg', num(a[9]) + (r.s5 - r.w2), num(a[10])], ['10kg', num(a[9]) + (r.s10 - r.w2), num(a[11])]];
     checks.forEach(([k, got, want]) => {

@@ -96,7 +96,7 @@
       var c = custOf(cid); if (!c) return null;
       var rows = (D.guard.lines || []).filter(function (l) { return l.cid === cid; }).map(function (l) {
         return { pid: l.pid, name: l.name, grp: l.grp, inOffer: false, offer: null, board: l.locked, floor: l.locked, quoted: null, response: null,
-          accepted: null, reconfirm: false, askWant: null, revision: null, prev: l.locked, hist: [], asks: [], negoCount: 0, status: 'none', request: null };
+          accepted: null, reconfirm: false, askWant: null, revision: null, prev: l.prev || l.locked, hist: l.prev && l.prev_label ? [{ label: l.prev_label, price: l.prev }] : [], asks: [], negoCount: 0, status: 'none', request: null };
       });
       var sh = { label: D.sends.label, today: today(), haggle: CFG.haggle_baht, prevLabel: D.desk.prevRound, customer: { id: c.id, name: c.name }, link: null, sent: false,
         deal: { total: 0, accepted: 0, declined: 0, open: 0, ready: false }, invoices: [], handedAt: null, handedBy: null, total: rows.length, offerTotal: 0, quoted: 0, waiting: 0, rows: rows };
@@ -720,15 +720,16 @@
       if (!c) return err(404, 'ไม่พบลูกค้า'); if (!P) return err(404, 'ไม่พบสินค้า'); if (!(px > 0)) return err(400, 'ราคาต้องมากกว่า 0');
       if (P.cost > 0 && px < P.cost * 0.5) return err(400, 'ราคา ' + px + ' ฿ ต่ำกว่าครึ่งของทุน ' + P.cost + ' ฿ — น่าจะพิมพ์ผิด');
       var l = D.guard.lines.filter(function (x) { return x.cid === cid && x.pid === pid; })[0];
-      if (l) l.locked = px;
-      else D.guard.lines.unshift({ cid: cid, cust: c.name, pid: pid, name: P.name, grp: P.grp, locked: px, cost: P.cost, margin: 0, verified: 1, state: 'ok', grade: 'A', belowTarget: false });
+      if (l) { l.locked = px; if (num(body.prev) > 0) { l.prev = Math.round(num(body.prev)); if (body.prevLabel) l.prev_label = String(body.prevLabel); } }
+      else D.guard.lines.unshift({ cid: cid, cust: c.name, pid: pid, name: P.name, grp: P.grp, locked: px, prev: num(body.prev) > 0 ? Math.round(num(body.prev)) : null, prev_label: body.prevLabel ? String(body.prevLabel) : null, cost: P.cost, margin: 0, verified: 1, state: 'ok', grade: 'A', belowTarget: false });
       var sl = S.contract_lines.filter(function (x) { return x.customer_id === cid && x.product_id === pid; })[0];
       if (sl) sl.price = px; else S.contract_lines.push({ customer_id: cid, product_id: pid, price: px, verified: 1, cost: P.cost, customer_name: c.name, customer_type: c.type || 'contract' });
       var dk = deskFor(cid);
       dk.rows.forEach(function (r) { if (r.id !== pid) return; r.cust = { price: px, cost: r.cost, source: 'สัญญา', locked: true }; r.margin = mg(px, r.cost);
         var v = r.v21 || (r.v21 = {}); if (v.baseApproved == null) { v.baseApproved = !!(v.central && v.central.state === 'approved'); v.saved = null; v.baseChanged = false; v.costChanged = false; } v.prevCustomer = px; });
       var sh = sheetFor(cid), sr = sh.rows.filter(function (r) { return r.pid === pid; })[0];
-      if (sr) { sr.board = px; sr.prev = sr.prev || px; } else sh.rows.push({ pid: pid, name: P.name, grp: P.grp, inOffer: false, offer: null, board: px, floor: px, quoted: null, response: null, accepted: null, reconfirm: false, askWant: null, revision: null, prev: px, hist: [], asks: [], negoCount: 0, status: 'none', request: null });
+      var pv = num(body.prev) > 0 ? Math.round(num(body.prev)) : null;   /* ราคารอบก่อนจากใบลูกค้า (ถ้ามี) — ใช้เป็น "ราคาขายรอบก่อน" ของเจ้านี้ */
+      if (sr) { sr.board = px; sr.prev = pv || sr.prev || px; if (pv && body.prevLabel) sr.hist = [{ label: body.prevLabel, price: pv }].concat((sr.hist || []).filter(function (h) { return h.label !== body.prevLabel; })); } else sh.rows.push({ pid: pid, name: P.name, grp: P.grp, inOffer: false, offer: null, board: px, floor: px, quoted: null, response: null, accepted: null, reconfirm: false, askWant: null, revision: null, prev: pv || px, hist: [], asks: [], negoCount: 0, status: 'none', request: null });
       rebuildGuard(); rebuildDesk(dk); rebuildSheet(sh);
       audit(role, 'contract-price', c.name + ' · ' + P.name + ' ' + px);
       return ok({ ok: true, margin: mg(px, P.cost) });
@@ -784,7 +785,7 @@
       D.pricelist.rows.push({ id: id, name: name, grp: grp, retail: tt.retail, w2: w2, s5: tt.s5, s10: tt.s10, saleFloor: w2 ? w2 - CFG.haggle_baht : 0, marks: clone(marks), pos: 'none', gap: null, cost: cost, margin: mg(w2, cost), costSrc: cost ? 'กรอกในหน้าเว็บ' : '', costSrcAt: cost ? td : '' });
       var g = D.pricelist.grps.filter(function (x) { return x.grp === grp; })[0]; if (g) g.n++; else D.pricelist.grps.push({ grp: grp, n: 1 });
       D.board.lines.push({ id: id, name: name, grp: grp, w2: w2, cost: cost, margin: mg(w2, cost), cheapest: 0, prev: 0, jump: 0, status: cost ? 'none' : 'nocost', vol: 0, okMarket: null, okMargin: cost ? mg(w2, cost) >= floorPct() : false, okMove: false });
-      S.products.push({ id: id, name: name, spec: '', grp: grp, cost: cost, prev_cost: cost, add_baht: add, markup: 0, vol_week: 0, watch: 0, override: 0, active: 1, sort: 0, cost_src: '', cost_src_at: td, central_price: null, central_goal: null, central_at: null, central_by: null, central_exception: null, central_cost_at: null });
+      S.products.push({ id: id, name: name, spec: String(body.spec || ''), grp: grp, cost: cost, prev_cost: cost, add_baht: add, markup: 0, vol_week: 0, watch: 0, override: 0, active: 1, sort: 0, cost_src: String(body.cost_src || ''), cost_src_at: td, central_price: null, central_goal: null, central_at: null, central_by: null, central_exception: null, central_cost_at: null });
       desks().forEach(function (d) {
         var guard = cost ? floorPrice(cost, targetPct()) : 0;
         var row = { id: id, name: name, spec: '', grp: grp, vol: 0, cust: null, hist: null, cost: cost, boardCost: cost, costPrev: cost, costJump: 0, costBasis: 'central', w2: w2, prev: 0, jump: 0, margin: mg(w2, cost), floorPrice: cost ? floorPrice(cost, floorPct()) : 0, saleFloor: w2 ? w2 - CFG.haggle_baht : 0,

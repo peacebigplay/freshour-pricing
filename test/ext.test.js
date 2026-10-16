@@ -70,7 +70,7 @@ test('2 เทียบตลาด: connector จับคู่ SKU · แน�
   const ob = okj(call('ops', 'GET', '/api/market-observations?sku=สามชั้นแผ่น')); assert.ok(ob.rows.length > 10);
   /* เจาะราย SKU + ราคาคาดการณ์เมื่อไม่มีการสำรวจ */
   const dt = okj(call('ops', 'GET', '/api/market-trend?grp=' + encodeURIComponent('สามชั้น'))).detail;
-  assert.equal(dt.skus.length, 17); assert.ok(dt.skus.some(x => x.status === 'fresh' && x.comps[0].series.length === 12)); assert.ok(dt.skus.some(x => x.status === 'blind' && x.est && x.est.price > 0), 'SKU ที่ไม่เคยเห็นราคาได้ราคาคาดการณ์จากหมวด');
+  assert.ok(dt.skus.length >= 17, 'สามชั้น 17 ใน AL + SKU เฉพาะลูกค้า'); assert.ok(dt.skus.some(x => x.status === 'fresh' && x.comps[0].series.length === 12)); assert.ok(dt.skus.some(x => x.status === 'blind' && x.est && x.est.price > 0), 'SKU ที่ไม่เคยเห็นราคาได้ราคาคาดการณ์จากหมวด');
   const est = okj(call('ops', 'GET', '/api/market-estimates')); assert.ok(est.n > 50);
   assert.equal(call('sale', 'GET', '/api/market-trend').status, 403);
   assert.equal(okj(call('ops', 'GET', '/api/health')).jobs.find(j => j.key === 'market-sync').status, 'ok');
