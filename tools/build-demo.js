@@ -23,7 +23,7 @@ const TH = `${stamp.getUTCDate()} ${['ม.ค.', 'ก.พ.', 'มี.ค.', 'เ
 const html = `<!doctype html>
 <html lang="th"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Freshour · ต้นแบบใช้งานได้ (ทุกหน้า)</title>
+<title>Freshour · prototype</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap">
 <style>
 :root{--ink:#0F172A;--mute:#64748B;--line:#E6EAF2;--soft:#F5F6FA;--act:#0052F3;--bar:#fff}
