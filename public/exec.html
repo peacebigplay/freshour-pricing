@@ -815,7 +815,7 @@ function aiPricingPanel(){
   var A=EXC.ai, rs=A.review.reasons, rt=A.review.reasonText;
   var why=Object.keys(rs).filter(function(k){return rs[k]>0;}).sort(function(a,b){return rs[b]-rs[a];}).map(function(k){return esc(rt[k])+' <strong>'+rs[k]+'</strong>';}).join(' · ');
   var acc=A.acceptance;
-  return '<div class="ex-section"><div class="ex-hierarchy"><span>AI Pricing Performance</span><b>automation ช่วยได้จริงแค่ไหน — รับทุน → ตรวจทุน → เทียบตลาด → แนะนำราคา โดยไม่ต้องใช้คน</b></div>'+
+  return '<div class="ex-section"><div class="ex-hierarchy"><span>AI Pricing Performance</span><b>automation ช่วยได้จริงแค่ไหน — ทำเองได้กี่ SKU · คนต้องดูกี่ตัว · คนยอมรับไหม · มีตลาดรองรับไหม · ลดเวลาไปเท่าไหร่</b></div>'+
     '<div class="ex-summary-grid">'+
     xcard('lead','/pricing','Automation Coverage', A.coverage.auto+' / '+A.coverage.total+' SKU', xp(A.coverage.pct)+' ทำเองได้ทั้งสาย · ไม่ติดด่านทุนผิดปกติ / Floor / ขยับเกินทุน')+
     xcard(A.review.n?'warn':'good','/pricing','Human Review Rate', A.review.n+' SKU', (why||'ไม่มี — AI มั่นใจทุกตัว'))+
@@ -1289,10 +1289,11 @@ function draw(){
 
   var p3 = '<div class="ex-section"><div class="ex-hierarchy"><span>Growth & customer</span><b>Pipeline ใหม่ ลูกค้าที่เสี่ยงหาย และ margin จากฐานลูกค้า</b></div><div class="ex-business-grid">'+prospectPanel()+marginPanel()+'</div></div>';
   var p4 = '<div class="ex-section"><div class="ex-hierarchy"><span>Operations</span><b>ขนส่งเจ้าไหนทำงานดี รอบไหนเริ่มผิด SLA และปัญหาที่ลูกค้าเคยแจ้ง</b></div>'+deliveryPanel()+'</div>';
-  var p5 = '<div class="ex-section"><div class="ex-hierarchy"><span>Pricing intelligence</span><b>ต้นทุน ตลาด Margin Guard และสถานะใบราคา ใช้เป็นข้อมูลประกอบการตัดสินใจ</b></div>'+pricingPerformancePanel()+pricingPanel()+'</div>';
+  var p5 = '<div class="ex-section"><div class="ex-hierarchy"><span>Pricing intelligence</span><b>ต้นทุน ตลาด Margin Guard และสถานะใบราคา ใช้เป็นข้อมูลประกอบการตัดสินใจ</b></div>'+pricingPanel()+'</div>';
 
   /* Decision Cockpit (ลอจิคผู้บริหาร) — วางบนสุดของแต่ละแท็บ แล้วตามด้วยของเดิมครบ */
-  var cOverview = aiPricingPanel()+'<div id="exAfterAI"></div>';   /* Overview = AI Pricing Performance → ผลลัพธ์รอบ → Pricing intelligence เดิม (ไม่มี flow/คอขวด/decisions/pricing actions — เจ้าของระบบตัดออก) */
+  /* mini dashboard "AI Pricing Performance" เรื่องเดียวกัน: คุณภาพ/ความครอบคลุม (4 การ์ด) + เวลาที่ลดได้ (ops-perf) — รวมไว้บนสุด */
+  var cOverview = aiPricingPanel()+'<div style="margin-top:-6px">'+pricingPerformancePanel()+'</div><div id="exAfterAI"></div>';   /* Overview = AI Pricing Performance → ผลลัพธ์รอบ → Pricing intelligence เดิม (ไม่มี flow/คอขวด/decisions/pricing actions — เจ้าของระบบตัดออก) */
   /* ลำดับตามเจ้าของระบบ: Commercial → Sales performance → ลูกค้าที่ต้องลงมาช่วย → การเงิน/Prospect (เดิม) → Margin by group (รองสุดท้าย) → Decide now (มอบหมาย) */
   var cHealth = commercialPanel()+
     '<div class="ex-section"><div class="ex-hierarchy"><span>Sales performance</span><b>เซลล์คนไหนพอร์ตใหญ่แต่ปิดไม่ได้ — ขนาดพอร์ต + ความสามารถในการปิด</b></div>'+salesPanel()+'</div>'+
