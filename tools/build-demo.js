@@ -13,6 +13,8 @@ const PAGES = JSON.parse(rd('data/pages.json'));
 const idx = JSON.parse(rd('data/fixtures/index.json'));
 const DOCS = {}; for (const k of Object.keys(idx)) DOCS[k] = fs.readFileSync(path.join(ROOT, 'data/fixtures', idx[k])).toString('base64');
 const PAGE_SRC = {}; for (const p of PAGES) PAGE_SRC[p.id] = gz(rd('public/' + p.id + '.html'));
+/* เวอร์ชันข้อมูล: เปลี่ยนเมื่อ fixture/ตัวอ่านไฟล์/หลังบ้านเปลี่ยน → สิ่งที่เคยบันทึกไว้ในเบราว์เซอร์จากเวอร์ชันก่อน (เช่น import ทุนจากตัวอ่านเก่าที่อ่านคอลัมน์ผิด) จะไม่ถูกเล่นซ้ำทับข้อมูลชุดใหม่ */
+const DATA_VERSION = require('crypto').createHash('sha1').update(Object.keys(DOCS).sort().map(k => DOCS[k]).join('|') + rd('public/alparse.js') + rd('src/store.js') + rd('src/ext.js')).digest('hex').slice(0, 10);
 const ASSETS = {}; ['peach.css', 'peach.js', 'catmargin.js', 'charts.js', 'dash.js', 'aiperf.js', 'alparse.js', 'costimport.js', 'trend.js', 'intake.js'].forEach(f => { ASSETS['/' + f] = gz(rd('public/' + f)); });
 const FEED = fs.readFileSync(path.join(ROOT, 'data/market-feed-sample.json'), 'utf8');
 const stamp = new Date(Date.now() + 7 * 3600e3);
@@ -57,9 +59,9 @@ var PAGES=${JSON.stringify(PAGES)};
 var DOCS_B64=${JSON.stringify(DOCS)};
 var PAGE_SRC=${JSON.stringify(PAGE_SRC)};
 var ASSET_SRC=${JSON.stringify(ASSETS)};
-var FEED_B64=${JSON.stringify(gz(FEED))};var SAMPLE=${process.env.FH_SAMPLE_MARKET === '1' ? 'true' : 'false'};
+var DATA_VERSION=${JSON.stringify(DATA_VERSION)};var FEED_B64=${JSON.stringify(gz(FEED))};var SAMPLE=${process.env.FH_SAMPLE_MARKET === '1' ? 'true' : 'false'};
 (function(){
-  var fr=document.getElementById('fr'),nav=document.getElementById('nav'),LS='fh-demo-journal',RS='fh-demo-role';
+  var fr=document.getElementById('fr'),nav=document.getElementById('nav'),LS='fh-demo-journal:'+DATA_VERSION,RS='fh-demo-role',OLD_LS=Object.keys(localStorage).filter(function(k){return k==='fh-demo-journal'||(k.indexOf('fh-demo-journal:')===0&&k!==LS);});
   var ROLE=sessionStorage.getItem(RS)||null,STORE=null,CUR=null,HIST=[],cache={};
   function unzip(b64){var bin=atob(b64),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'))).text();}
   function cached(k,b64){return cache[k]||(cache[k]=unzip(b64));}
@@ -134,6 +136,8 @@ var FEED_B64=${JSON.stringify(gz(FEED))};var SAMPLE=${process.env.FH_SAMPLE_MARK
     window.__loadSampleMarket=function(){return unzip(FEED_B64).then(function(t){var rows=JSON.parse(t).rows;window.__FEED={rows:rows};return STORE.handle({method:'POST',url:'/api/market-sync/run',body:{observations:rows},role:'system'});});};
     if(SAMPLE)window.__loadSampleMarket();
     setInterval(function(){STORE.ext.drainOutbox(null).then(function(n){if(n)toast('ส่ง LINE (จำลอง) '+n+' ข้อความ');});},15000);
+    /* ของที่บันทึกไว้จากเวอร์ชันก่อน: ไม่เล่นซ้ำ (ข้อมูล/ตัวอ่านเปลี่ยนแล้ว) — ลบทิ้งและบอกผู้ใช้ */
+    if(OLD_LS.length){var oldN=0;OLD_LS.forEach(function(k){try{oldN+=(JSON.parse(localStorage.getItem(k)||'[]')).length;}catch(x){}localStorage.removeItem(k);});if(oldN)toast('เวอร์ชันข้อมูลเปลี่ยน — ล้างสิ่งที่ทดสอบไว้จากเวอร์ชันก่อน '+oldN+' รายการ');}
     var j=[];try{j=JSON.parse(localStorage.getItem(LS)||'[]');}catch(x){}
     j.forEach(function(e){try{STORE.handle(e);}catch(x){}});
     if(j.length)toast('โหลดสิ่งที่บันทึกไว้ในเครื่องนี้ '+j.length+' รายการ');

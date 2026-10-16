@@ -188,6 +188,11 @@ test('รอบ 3 · แหล่งข้อมูล: สำรวจหน้
   assert.ok(ap.market.onlineSku > 0 && ap.market.online7 === pf.market.online7); assert.equal(ap.time.est.total, ap.time.est.cost + ap.time.est.price + ap.time.est.market);
   assert.ok(ap.load.humanPct != null && ap.load.humanPct <= 100); assert.ok(!/"(current_cost|approved_cost|approved_price|recommended_price|margin|w2|product_id)":/.test(JSON.stringify(ap)), 'สรุปเป็นตัวนับเท่านั้น — ไม่มีทุน/ราคา/margin รายตัว');
   assert.equal(call('sale', 'GET', '/api/ai-perf').status, 403);
+  /* ใบรอบเก่า: ไฟล์ที่มีผลก่อนทุนปัจจุบัน ห้ามทับเอง → เข้า Review เป็น old_sheet · ทุนในระบบไม่เปลี่ยน */
+  const cur = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === MAN).cost;
+  const oldSheet = okj(call('ops', 'POST', '/api/import/costs', { rows: [{ product: 'มันแข็งหมู', cost: String(cur + 7) }], commit: true, source: 'ใบราคา AL', effective_date: '2026-01-05' }));
+  assert.equal(oldSheet.applied, 0); assert.equal(oldSheet.review, 1); assert.equal(oldSheet.flags[0].kind, 'old_sheet');
+  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === MAN).cost, cur);
   const inbox = okj(call('ops', 'POST', '/api/import/costs', { rows: [{ product: 'มันแข็งหมู', cost: '69' }], commit: true, source: 'inbox: AL.csv', channel: 'inbox' })); assert.equal(inbox.applied, 1);
   assert.equal(okj(call('ops', 'GET', '/api/cost-flags')).imports[0].channel, 'inbox');
 });
@@ -204,7 +209,10 @@ test('ใบราคาขาย+ทุน AL ของจริง (PDF 01-07/
   const payload = rows.map(r => ({ idx: r[0], product: r[1], cost: r[6], unit: r[4], retail: r[8] }));
   const chk = okj(call('ops', 'POST', '/api/import/costs', { rows: payload, commit: false, source: 'ใบราคา AL', effective_date: t.meta.effective_date }));
   assert.equal(chk.rows.filter(x => x.how === 'idx').length, 195, 'จับคู่ด้วยลำดับ+ชื่อได้ทุกแถว แม้ชื่อใน PDF สะกด/เว้นวรรคต่าง');
-  assert.equal(chk.problemCount, 0); assert.ok(chk.review <= 3, 'ใบเดิมซ้ำ → แทบไม่มีอะไรให้ตรวจ (ได้ ' + chk.review + ')');
+  assert.equal(chk.problemCount, 0);
+  /* ใบเดิมซ้ำ → ที่ต้องตรวจมีเฉพาะ SKU ที่เทสต์ก่อนหน้าเพิ่งแก้ทุน (วันนี้) ซึ่งใหม่กว่าใบ 01/10 → ระบบกันไว้เป็น "ใบรอบเก่า" ไม่ทับเอง · ที่เหลือทุนเท่าเดิม = ไม่มีอะไรให้ตรวจ */
+  assert.ok(chk.review <= 5, 'ใบเดิมซ้ำ → แทบไม่มีอะไรให้ตรวจ (ได้ ' + chk.review + ')');
+  assert.ok(chk.flags.every(f => f.changed && (f.kind === 'old_sheet' || f.kind === 'anomaly')), 'ที่ติดต้องเป็นแถวที่ทุนต่างจากปัจจุบันเท่านั้น: ' + chk.flags.map(f => f.name + ':' + f.kind).join(', '));
   /* สัปดาห์ถัดไป: ทุนขยับเล็กน้อยทั้งใบ → Auto Pass เกือบหมด · มีตัวเดียวพิมพ์ผิด (ทุน 3 → 300) ต้องติด */
   const next = payload.map(r => Object.assign({}, r, { cost: String(Math.round(Number(r.cost) * 1.03)) })); next.find(r => r.idx === 112).cost = '300';
   const c2 = okj(call('ops', 'POST', '/api/import/costs', { rows: next, commit: false, source: 'ใบราคา AL 08-14/10' }));

@@ -117,7 +117,7 @@
        STEP 04 Cost Validation: เทียบทุนเดิม · ประวัติ · ช่วงที่สมเหตุผล · กลุ่มสินค้า → ระดับ warn / critical
        STEP 05 Classification: Auto Pass / Need Human Review · STEP 06 Review: Confirm / Correct / Hold · STEP 07 Approved Cost Master */
     var MIN_REASONABLE = 10;   /* ฿/กก. — ต่ำกว่านี้แทบไม่มีชิ้นส่วนหมูจริง (เลือด/กระดูกข้อขาเป็นข้อยกเว้นที่คนต้องยืนยัน) */
-    var KIND_TEXT = { anomaly: 'ทุนผิดปกติ', unmatched: 'ไม่พบ SKU', possible: 'จับคู่ไม่มั่นใจ', duplicate: 'ซ้ำในไฟล์', missing: 'ไม่มีทุน', unit: 'หน่วยไม่รู้จัก' };
+    var KIND_TEXT = { anomaly: 'ทุนผิดปกติ', unmatched: 'ไม่พบ SKU', possible: 'จับคู่ไม่มั่นใจ', duplicate: 'ซ้ำในไฟล์', missing: 'ไม่มีทุน', unit: 'หน่วยไม่รู้จัก', old_sheet: 'ใบรอบเก่า' };
     function normUnit(u) {
       var s = String(u || '').trim().toLowerCase().replace(/\s+/g, '');
       if (!s || /^(บาท|฿|thb)?\/?(กก|กิโล|kg|กิโลกรัม|kilo)\.?$/.test(s) || /thb\/kg|บาท\/กก|฿\/กก|\/kg$/.test(s)) return { unit: 'THB/KG', factor: 1, valid: true };
@@ -184,6 +184,9 @@
         seen[m.p.id] = i + 1;
         if (!u.valid) return push(item, 'unit', 'critical', ['หน่วย "' + (r.unit || body.unit) + '" แปลงเป็นบาท/กก. ไม่ได้ — ยืนยันหน่วยก่อน']);
         if (!(cost > 0)) return push(item, 'missing', 'critical', ['ทุนว่าง/เป็น 0 — ' + (raw ? 'อ่านค่า "' + raw + '" ไม่ได้' : 'ไม่มีตัวเลข')]);
+        /* ใบรอบเก่า: ไฟล์ที่มีผลก่อนทุนที่ใช้อยู่ (เช่น อัปโหลดใบสัปดาห์ก่อนซ้ำ หรือเล่นซ้ำข้อมูลเก่า) ห้ามทับทุนปัจจุบันเอง — ส่งให้คนยืนยัน */
+        var cmE = String(((S.cost_master || {})[m.p.id] || {}).effective_date || '').slice(0, 10);
+        if (item.changed && cmE && effective < cmE) return push(item, 'old_sheet', 'warn', ['ไฟล์นี้มีผล ' + effective + ' เก่ากว่าทุนที่ใช้อยู่ (มีผล ' + cmE + ') — น่าจะเป็นใบรอบเก่า ระบบไม่ทับทุนปัจจุบันเอง']);
         var checks = item.changed ? costChecks(m.p, cost) : []; item.checks = checks;   /* ทุนเท่าเดิม = ไม่มีอะไรใหม่ให้ตรวจ */
         if (checks.length) return push(item, 'anomaly', checks.some(function (c) { return c.severity === 'critical'; }) ? 'critical' : 'warn', checks.map(function (c) { return c.text; }));
         item.status = item.changed ? 'auto' : 'unchanged'; out.push(item); (item.changed ? auto : unchanged).push(item);
