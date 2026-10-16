@@ -484,9 +484,9 @@
         var uid = ev.source && ev.source.userId, text = ev.message && ev.message.text || '';
         var c = S.customers.filter(function (x) { return x.line_user_id && x.line_user_id === uid; })[0];
         if (ev.message && (ev.message.type === 'image' || ev.message.type === 'file')) {   /* รูป/ไฟล์ = ใบราคาคู่แข่ง หรือป้ายราคา → เข้ากล่องรอตรวจ (อ่านตัวเลขในเบราว์เซอร์) */
-          D.inbox.unshift({ at: stamp(), kind: 'line-' + ev.message.type, message_id: String(ev.message.id || ''), uid: uid, from: c ? c.name : 'LINE ' + String(uid || '').slice(0, 8), file: (ev.message.fileName || ('LINE ' + ev.message.type + ' ' + String(ev.message.id || ''))), status: 'pending', detail: 'รอตรวจ: ใบราคาคู่แข่ง / ป้ายราคา' }); if (D.inbox.length > 200) D.inbox.length = 200;
+          D.inbox.unshift({ at: stamp(), kind: 'line-' + ev.message.type, message_id: String(ev.message.id || ''), uid: uid, from: c ? c.name : 'LINE ' + String(uid || '').slice(0, 8), file: (ev.message.fileName || ('LINE ' + ev.message.type + ' ' + String(ev.message.id || ''))), status: 'pending', detail: 'รอตรวจ: ใบราคาคู่แข่ง (forward จากบัญชี B2B) / ป้ายราคา' }); if (D.inbox.length > 200) D.inbox.length = 200;
           logEvent({ actor: c ? 'customer' : 'system', kind: c ? 'customer' : 'system', action: 'line-image', entity: c ? 'customer' : undefined, entity_id: c ? c.id : undefined, detail: (c ? c.name : 'LINE ' + String(uid || '').slice(0, 8)) + ' ส่งรูป/ไฟล์ — เข้ากล่องรอตรวจ', status: 'ok' });
-          return handled.push({ uid: uid, result: 'image-queued', reply: 'ได้รับรูปแล้ว ทีม Pricing จะอ่านราคาและบันทึกให้' }); }
+          return handled.push({ uid: uid, result: 'image-queued', reply: 'ได้รับรูป/ไฟล์แล้ว ทีม Pricing จะอ่านราคาและบันทึกให้' }); }
         if (!c) {
           var cb = customerByBindCode(text);   /* ลูกค้าพิมพ์โค้ดผูก LINE (FH-XXXXX) จากใบราคา/การ์ดที่เซลล์ส่ง */
           if (cb && uid) { cb.line_user_id = uid; var cbd = D.desk.customers.filter(function (x) { return x.id === cb.id; })[0]; if (cbd) cbd.line_user_id = uid;
@@ -772,7 +772,8 @@
         });
         if (tasks.length) alert('warn', 'ลูกค้าเงียบเกิน ' + SLA.responseH + ' ชม. ' + tasks.length + ' เจ้า ต้องมีคนตาม', tasks.slice(0, 6).join(' · '), 'followup-check');
         if (decide.length) alert('warn', 'เงียบเกิน ' + SLA.decideDays + ' วัน ' + decide.length + ' เจ้า — เซลล์ต้องตัดสินใจ ตามต่อหรือปิด Lost', decide.slice(0, 6).join(' · '), 'followup-check');
-        jobDone('followup-check', 'ส่ง LINE ตามให้ ' + sent.length + ' · งานเซลล์ ' + tasks.length + ' · ต้องตัดสินใจ ' + decide.length);
+        var lateSheets = b2bCheck();
+        jobDone('followup-check', 'ส่ง LINE ตามให้ ' + sent.length + ' · งานเซลล์ ' + tasks.length + ' · ต้องตัดสินใจ ' + decide.length + (lateSheets ? ' · ใบราคาคู่แข่งค้าง ' + lateSheets : ''));
         return { due: sent.length + tasks.length, sent: sent, todo: tasks, decide: decide };
       } catch (e) { jobFail('followup-check', e); return { error: String(e && e.message || e) }; }
     }
@@ -863,15 +864,36 @@
     function sourceStatus() {
       return D.pricelist.comps.map(function (c) { var ss = D.source_status[c.id] || {}, obs = D.market_obs.filter(function (o) { return o.competitor_id === c.id; });
         var lastOnline = obs.filter(function (o) { return o.via !== 'survey' && o.via !== 'sheet'; }).reduce(function (a, o) { return o.observed_at > a ? o.observed_at : a; }, ''), lastSurvey = obs.filter(function (o) { return o.via === 'survey' || o.via === 'sheet'; }).reduce(function (a, o) { return o.observed_at > a ? o.observed_at : a; }, '');
-        var mode = ss.mode || (lastOnline ? 'online' : 'survey');
-        return { id: c.id, label: c.label, tier: c.tier, source: c.source || '', mode: mode, fails: ss.fails || 0, last_error: ss.last_error || null, lastOnline: lastOnline || null, lastSurvey: lastSurvey || null, onlineAge: ageDays(lastOnline), surveyAge: ageDays(lastSurvey), skus: Object.keys(obs.reduce(function (m, o) { m[o.product_id] = 1; return m; }, {})).length }; });
+        var lastSheet = obs.filter(function (o) { return o.via === 'sheet'; }).reduce(function (a, o) { return o.observed_at > a ? o.observed_at : a; }, ''), b2b = ss.b2b || null;
+        /* mode: online = connector ดึงเอง · sheet = เรามีบัญชี B2B กับเจ้านี้ ใบราคาส่งมาถึงเราทุกรอบ · survey = ไม่มีทั้งสองอย่าง ต้องมีคนไปดูหน้าร้าน */
+        var mode = ss.mode === 'online' || (!ss.mode && lastOnline) ? 'online' : b2b ? 'sheet' : 'survey';
+        var cad = b2b ? Number(b2b.cadence_days) || 7 : null, sAge = ageDays(lastSheet), sheetDue = !!b2b && (sAge == null || sAge >= cad), sheetOverdue = !!b2b && (sAge == null ? (b2b.since ? ageDays(b2b.since) > cad * 1.5 : false) : sAge > cad * 1.5);
+        return { id: c.id, label: c.label, tier: c.tier, source: c.source || '', mode: mode, fails: ss.fails || 0, last_error: ss.last_error || null, lastOnline: lastOnline || null, lastSurvey: lastSurvey || null, lastSheet: lastSheet || null, onlineAge: ageDays(lastOnline), surveyAge: ageDays(lastSurvey), sheetAge: sAge, b2b: b2b, sheetDue: sheetDue, sheetOverdue: sheetOverdue, skus: Object.keys(obs.reduce(function (m, o) { m[o.product_id] = 1; return m; }, {})).length }; });
+    }
+    /* ทะเบียนบัญชี B2B ของเรากับคู่แข่ง: เราสมัครเป็นลูกค้าส่งของเขา (Makro Pro/B2B · Betagro · CPF …) แล้วใบราคาส่งมาถึงเราเองทุกรอบ
+       — ไม่ไปขอราคาคู่แข่งจากลูกค้า · ร้านที่มีบัญชี B2B หลุดจากคิวสำรวจหน้าร้าน */
+    function b2bSet(role, body) {
+      var c = compOf(body.competitor_id); if (!c && body.new_store) c = addCompetitor(body.new_store, body.new_tier); if (!c) return err(404, 'ไม่รู้จักคู่แข่ง');
+      var ss = D.source_status[c.id] = D.source_status[c.id] || {};
+      if (body.remove) { delete ss.b2b; X.audit(role, 'config', 'ยกเลิกบัญชี B2B ' + c.label); return ok({ ok: true, removed: true }); }
+      var ch = String(body.channel || 'line'); if (['line', 'email', 'app', 'phone', 'other'].indexOf(ch) < 0) ch = 'other';
+      ss.b2b = { account: String(body.account || '').slice(0, 80), channel: ch, cadence_days: Math.max(1, Math.min(60, Math.round(num(body.cadence_days)) || 7)), contact: String(body.contact || '').slice(0, 120), note: String(body.note || '').slice(0, 200), since: (ss.b2b && ss.b2b.since) || today(), by: role };
+      logEvent({ actor: role, kind: 'human', action: 'b2b-source', detail: 'บัญชี B2B กับ ' + c.label + ' · ใบราคาทาง ' + ch + ' ทุก ' + ss.b2b.cadence_days + ' วัน', status: 'ok' });
+      X.audit(role, 'config', 'บัญชี B2B ' + c.label);
+      return ok({ ok: true, competitor_id: c.id, b2b: ss.b2b });
+    }
+    /* งานรายวัน: ใบราคาคู่แข่งที่ควรมาแล้วแต่ยังไม่มา → เตือน (คนไปทวงที่บัญชี B2B) — ไม่มีใครต้องนั่งจำว่าใบของใครมาหรือยัง */
+    function b2bCheck() {
+      var late = sourceStatus().filter(function (x) { return x.sheetOverdue; });
+      late.forEach(function (x) { alert('warn', 'ใบราคา ' + x.label + ' รอบนี้ยังไม่มา', (x.lastSheet ? 'ใบล่าสุดลงวันที่ ' + x.lastSheet + ' (' + x.sheetAge + ' วัน)' : 'ยังไม่เคยได้ใบเลยตั้งแต่ตั้งบัญชี ' + (x.b2b.since || '')) + ' · รอบปกติทุก ' + x.b2b.cadence_days + ' วัน · ทวงที่ ' + (x.b2b.contact || x.b2b.channel), 'b2b-check'); });
+      return late.length;
     }
     function weekKey(d) { return (function (x) { var dt = new Date(x + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() - dt.getUTCDay()); return dt.toISOString().slice(0, 10); })(d || today()); }
     /* แผนสำรวจสัปดาห์นี้: ร้านละไม่เกิน 15 SKU — ไม่เคยรู้ราคา (ขายเยอะก่อน) → ราคาเก่าเกิน 7 วัน → ตัวที่ตลาดขยับแรง */
     /* แผนสำรวจ "แบบประหยัด" — ไม่ไล่ 210 SKU × 3 ร้านอีก:
        · เฉพาะ SKU ที่ราคาตลาดมีผลกับการตั้งราคาจริง = หมวด "แข่งขันได้" + ตัวขายดี (สะสม 80% ของปริมาณ)
        · สัปดาห์ละ 1 ร้าน สลับกันไป (ร้านที่ดึงออนไลน์ได้ ไม่ต้องไป) · ร้านละ ≤ survey_max_sku (15)
-       · ใบราคาคู่แข่งที่ลูกค้าถือ (mode sheet) นับเป็นราคาตลาดของร้านนั้นเหมือนกัน → ถ้าได้ใบมาแล้ว สัปดาห์นั้นไม่ต้องไปร้าน */
+       · คู่แข่งที่เรามีบัญชี B2B (ใบราคาส่งมาถึงเราเอง) ไม่อยู่ในคิวสำรวจ — เหลือเฉพาะร้านที่ต้องไปดูป้ายจริง ๆ */
     function focusSkus() {
       var vol = {}; (D.board.lines || []).forEach(function (l) { vol[l.id] = l.vol || 0; });
       var comp = {}, top = {}, rows = D.desk.rows || [];
@@ -885,7 +907,7 @@
       if (CFG.survey_mode === false) return { week: wk, off: true, stores: [], recent: [], rules: { per: '', due: '' }, note: 'โหมดสำรวจหน้าร้านปิดอยู่ — เปิดเมื่อมีคนลงพื้นที่จริง' };
       var F = focusSkus(), vol = F.vol, maxN = CFG.survey_max_sku || 15;
       var subs = D.surveys.filter(function (s) { return s.week === wk; });
-      var srcs = sourceStatus(), offline = srcs.filter(function (x) { return x.mode !== 'online'; });
+      var srcs = sourceStatus(), offline = srcs.filter(function (x) { return x.mode === 'survey'; });   /* มี connector หรือบัญชี B2B แล้ว = ไม่ต้องไปร้าน */
       /* คิวร้าน: ร้านที่ "ค้างนานสุด" ก่อนสัปดาห์นี้ (นับทั้งสำรวจและใบราคา) — เพิ่มคู่แข่งใหม่ระหว่างสัปดาห์ไม่ทำให้คิวกระโดด · ส่งใบมาสัปดาห์นี้ก็ยังเป็นคิวของร้านเดิม (แค่ไม่ต้องไป) */
       var lastBefore = {}; D.market_obs.forEach(function (o) { if ((o.via === 'survey' || o.via === 'sheet') && o.observed_at < wk && (!lastBefore[o.competitor_id] || lastBefore[o.competitor_id] < o.observed_at)) lastBefore[o.competitor_id] = o.observed_at; });
       var queue = offline.slice().sort(function (a, b) { var la = lastBefore[a.id] || '', lb = lastBefore[b.id] || ''; return la < lb ? -1 : la > lb ? 1 : 0; }), dueId = queue.length ? queue[0].id : null;
@@ -901,10 +923,11 @@
         var sheetThisWeek = subs.filter(function (s) { return s.store === src.id && s.mode === 'sheet'; }).length;
         return { competitor_id: src.id, label: src.label, tier: src.tier, mode: src.mode, dueThisWeek: isDue, needed: isDue && src.mode !== 'online' && !sheetThisWeek, assignee: src.tier === 'r' ? 'เซลล์/แอดมิน' : 'แอดมิน', due: due.toISOString().slice(0, 10),
           targets: isDue ? cands : [], total: isDue ? cands.length : 0, done: isDue ? cands.filter(function (c) { return c.done; }).length : 0, submissions: subs.filter(function (s) { return s.store === src.id; }).length, sheets: sheetThisWeek,
-          note: src.mode === 'online' ? 'ดึงออนไลน์ได้ ไม่ต้องไป' : isDue ? (sheetThisWeek ? 'ได้ใบราคาคู่แข่งแล้ว — ไม่ต้องไปร้าน' : 'สัปดาห์นี้') : 'ยังไม่ถึงคิว' };
+          note: src.mode === 'online' ? 'ดึงออนไลน์ได้ ไม่ต้องไป' : src.mode === 'sheet' ? (src.sheetOverdue ? 'ใบราคารอบนี้ยังไม่มา — ทวง' : src.sheetDue ? 'รอใบราคารอบนี้' : 'มีบัญชี B2B · ใบราคามาเอง') : isDue ? (sheetThisWeek ? 'ได้ใบราคาแล้ว — ไม่ต้องไปร้าน' : 'สัปดาห์นี้') : 'ยังไม่ถึงคิว' };
       });
-      return { week: wk, today: today(), lean: true, maxSku: maxN, focus: { competitive: Object.keys(F.competitive).length, top: Object.keys(F.top).length }, stores: stores, recent: D.surveys.slice(0, 20),
-        rules: { per: 'สัปดาห์ละ 1 ร้าน สลับกัน · ร้านละ ≤ ' + maxN + ' SKU', due: 'ภายในวันเสาร์ ก่อนรอบทุนวันอังคาร', modes: ['ถ่ายรูปป้าย/ใบราคา', 'พิมพ์', 'พูด'], focus: 'เฉพาะหมวดแข่งขันได้ + ตัวขายดี (80% ของปริมาณ) — หมวดอื่นตั้งจากทุน+เป้า ไม่ต้องรู้ตลาด' } };
+      var sheets = srcs.filter(function (x) { return x.b2b; }).map(function (x) { return { competitor_id: x.id, label: x.label, b2b: x.b2b, lastSheet: x.lastSheet, sheetAge: x.sheetAge, due: x.sheetDue, overdue: x.sheetOverdue }; });
+      return { week: wk, today: today(), lean: true, maxSku: maxN, sheets: sheets, focus: { competitive: Object.keys(F.competitive).length, top: Object.keys(F.top).length }, stores: stores, recent: D.surveys.slice(0, 20),
+        rules: { per: 'เฉพาะร้านที่ไม่มี connector/บัญชี B2B · สัปดาห์ละ 1 ร้าน สลับกัน · ร้านละ ≤ ' + maxN + ' SKU', due: 'ภายในวันเสาร์ ก่อนรอบทุนวันอังคาร', modes: ['ถ่ายรูปป้าย/ใบราคา', 'พิมพ์', 'พูด'], focus: 'เฉพาะหมวดแข่งขันได้ + ตัวขายดี (80% ของปริมาณ) — หมวดอื่นตั้งจากทุน+เป้า ไม่ต้องรู้ตลาด' } };
     }
     /* แปลงข้อความอิสระ (พิมพ์/เสียง/OCR) → รายการ [สินค้า, ราคา] แล้วจับคู่ SKU ให้มากที่สุด */
     function parseSurvey(text, store) {
@@ -930,10 +953,11 @@
       var mk = function () { return { id: c.id, label: c.label, tier: c.tier, price: 0, state: 'none' }; };
       D.pricelist.rows.forEach(function (r) { (r.marks = r.marks || []).push(mk()); });
       X.desks().forEach(function (d) { d.rows.forEach(function (r) { (r.marks = r.marks || []).push(mk()); }); });
-      logEvent({ actor: 'system', kind: 'system', action: 'competitor-add', detail: 'เพิ่มคู่แข่ง ' + label + ' จากใบราคาที่ส่งเข้ามา', status: 'ok' });
+      logEvent({ actor: 'system', kind: 'system', action: 'competitor-add', detail: 'เพิ่มคู่แข่ง ' + label, status: 'ok' });
       return c;
     }
     function surveySubmit(role, body) {
+      if (body.mode === 'sheet' && LVL[role] < 2) return err(403, 'ใบราคาคู่แข่งมาจากบัญชี B2B ของเรา — Pricing/แอดมินเป็นคนบันทึก ไม่ขอจากลูกค้า');
       var store = body.store, c = compOf(store);
       if (!c && body.new_store) { c = addCompetitor(body.new_store, body.new_tier); store = c && c.id; }
       if (!c) return err(400, 'ไม่รู้จักร้าน ' + store);
@@ -941,14 +965,14 @@
       rows.forEach(function (r) { var P = r.product_id && product(r.product_id), price = num(r.price); if (!P || !(price > 0)) return bad.push(r.raw || r.name || '?'); okRows.push({ product_id: P.id, name: P.name, price: price, raw: r.raw || '' }); });
       if (!okRows.length) return err(400, 'ไม่มีรายการที่จับคู่ SKU ได้ — แก้ชื่อหรือเลือกสินค้าจากรายการก่อน');
       var total = { added: 0, matched: {}, unmatched: {} };
-      var via = body.mode === 'sheet' ? 'sheet' : 'survey', byTxt = X.curRep && X.curRep() ? role + '|' + X.curRep() : role;   /* sheet = ใบราคาคู่แข่งที่ลูกค้าถือ (ราคาส่งจริง ไม่ใช่ป้ายหน้าร้าน) */
+      var via = body.mode === 'sheet' ? 'sheet' : 'survey', byTxt = X.curRep && X.curRep() ? role + '|' + X.curRep() : role;   /* sheet = ใบราคาที่คู่แข่งส่งให้เราในฐานะลูกค้า B2B (ราคาส่งจริง ไม่ใช่ป้ายหน้าร้าน) */
       ingest(okRows.map(function (r) { return { competitor: store, sku: r.name, price: r.price, observed_at: td, source_url: (via === 'sheet' ? 'sheet:' : 'survey:') + (body.branch || c.label), via: via, by: byTxt }; }), td, total);
       var sub = { id: nextId('ob2'), at: stamp(), week: weekKey(td), store: store, label: c.label, branch: body.branch || '', by: role, mode: body.mode || 'type', photos: Number(body.photos) || 0, note: body.note || '', rows: okRows, n: okRows.length, unmatched: bad };
       D.surveys.unshift(sub); if (D.surveys.length > 500) D.surveys.length = 500;
       var ss = D.source_status[store] = D.source_status[store] || {}; ss.last_survey = stamp();
       computeTrend(true);
       X.audit(role, 'survey', c.label + ' · ' + okRows.length + ' รายการ (' + (body.mode === 'sheet' ? 'ใบราคาคู่แข่ง' : body.mode || 'พิมพ์') + ')');
-      if (via === 'sheet') logEvent({ actor: role, kind: 'human', action: 'competitor-sheet', detail: 'ใบราคา ' + c.label + (body.branch ? ' (' + body.branch + ')' : '') + ' ลงวันที่ ' + td + ' · ' + okRows.length + ' รายการ', status: 'ok' });
+      if (via === 'sheet') logEvent({ actor: role, kind: 'human', action: 'competitor-sheet', detail: 'ใบราคา ' + c.label + ' (บัญชี B2B ของเรา' + (body.branch ? ' · ' + body.branch : '') + ') ลงวันที่ ' + td + ' · ' + okRows.length + ' รายการ', status: 'ok' });
       return ok({ ok: true, id: sub.id, added: total.added, n: okRows.length, unmatched: bad });
     }
 
@@ -1111,6 +1135,7 @@
         case '/api/import/costs': need(2); return importCosts(role, body);
         case '/api/survey/parse': need(1); return ok({ rows: parseSurvey(body.text, body.store) });
         case '/api/survey/submit': need(1); return surveySubmit(role, body);
+        case '/api/sources/b2b': need(2); return b2bSet(role, body);
         case '/api/inbox/done': need(2); var ib = D.inbox.filter(function (x) { return x.message_id === String(body.id || ''); })[0]; if (ib) { ib.status = body.status || 'ok'; ib.detail = body.detail || ib.detail; } return ok({ ok: !!ib });
         case '/api/sources/fail': need(2); return ok(sourceFail(body.competitor_id, body.why || 'ดึงไม่ได้'));
         case '/api/inbox/note': need(2); D.inbox.unshift({ at: stamp(), file: body.file, status: body.status || 'ok', detail: body.detail || '' }); if (D.inbox.length > 200) D.inbox.length = 200; return ok();
