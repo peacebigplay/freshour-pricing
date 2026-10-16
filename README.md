@@ -208,11 +208,11 @@ AL / วาง / LINE / กล่องรับ → Cost Import Batch (COST-ddm
 
 ## รอบ 17 · หน้าผู้บริหาร = Decision Cockpit ใน 3 แท็บเดิม (หน้าตาเดิม · ลอจิคใหม่)
 
-หน้า `/exec` คงหน้าตาและ 3 แท็บเดิม (Overview · Business health · Operation) แต่เนื้อหาไล่ตามลอจิคผู้บริหาร — ไม่ใช่หน้ารวมทุกอย่าง · เฟสแรกยังไม่มีการเงิน/ขนส่ง → พับไว้ใน details ท้ายแท็บ
+หน้า `/exec` คงหน้าตา 3 แท็บเดิมและ**เนื้อหาเดิมครบทุกส่วน** (Pricing & Market Overview · เวลาที่ลดได้ · การเงิน/Prospect/Delivery · Decide now · ขนส่ง/ปัญหาลูกค้า) — ส่วน Decision Cockpit **เพิ่มไว้ด้านบนของแต่ละแท็บ** ไม่แทนที่
 
-- **Overview** = AI Pricing Performance (Automation Coverage · Human Review แยกเหตุผล · Recommendation Acceptance/Override · Market Coverage/Confidence) → Pricing Flow Health (ตกจากขั้นไหน) → What is blocking business? (จัดอันดับ + impact + opportunity) → Decide now (เรื่องที่ระบบตัดสินแทนไม่ได้ + Attention Queue) → ผลลัพธ์รอบ (dash) → Drill down
-- **Business health** = Commercial (Portfolio / Quoted / Won / Lost · Customer & Value win rate) → Margin by Product Group (Target/Min/Actual · invoice → fallback ราคาสัญญา) → Largest opportunities / At risk → Sales performance ต่อคน → `details` การเงินจริง (Invoice · เงินเข้า · ค้างรับ — เฟสถัดไป)
-- **Operation** = Automation Health (ปกติ = บรรทัดเดียว) → Market Intelligence Accuracy → `details` ขนส่ง · ปัญหาลูกค้า (เฟสถัดไป)
+- **Overview** = AI Pricing Performance (Automation Coverage · Human Review แยกเหตุผล · Recommendation Acceptance/Override · Market Coverage/Confidence) → Pricing Flow Health → What is blocking business? → Executive decisions → ผลลัพธ์รอบ (dash) → **ของเดิม**: Pricing AI ลดงานไปเท่าไหร่ · Pricing & Market Overview (ทุนเฉลี่ย · กำไรมาจากไหน · Market Benchmark · ต้นทุนขยับ · Margin ทั้งพอร์ต · เกรดลูกค้า) · Pricing actions
+- **Business health** = Commercial → Margin by Product Group → Largest / At risk → Sales ต่อคน → **ของเดิม**: เงินวันนี้ (Invoice · เงินเข้า · ค้างรับ) · Margin จริง / Prospect / Delivery · Actual Invoiced Sales · Prospect Pipeline · Margin & Profit · Decide now + Attention Queue
+- **Operation** = Automation Health (ปกติ = บรรทัดเดียว) → Market Intelligence Accuracy → **ของเดิม**: Delivery Performance · ปัญหาจากลูกค้า (service log)
 - **API `/api/exec`** (boss/admin) — `execCockpit()` ใน `src/ext.js`: ทุกตัวเลขมี basis · Actual จาก invoice เท่านั้น (GP = ราคาขายจริง − ทุน snapshot ณ วันออกบิล) · Acceptance นับเฉพาะที่คนยืนยัน (auto-round ติดธง `auto`) · Coverage ใช้ด่านชุดเดียวกับ "ให้ระบบทำรอบนี้" (มีเทสต์ล็อก) · Decisions สร้างจากกติกา policy / market / commercial / process
 - ไม่มีปุ่มปฏิบัติการในหน้านี้ — View → Drill down → Decide
 - สถานะข้อมูลวันนี้: invoice 0 · มูลค่าลูกค้า 0/44 · ตลาด 0/210 · คำทำนาย 0 → แสดง "—/ยังไม่มี" พร้อมบอกว่าต้องทำอะไรให้ตัวเลขขึ้น

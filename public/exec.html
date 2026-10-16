@@ -830,8 +830,7 @@ function decisionPanel(){
   var TT={policy:'Pricing Policy',market:'Market Strategy',commercial:'Commercial',process:'Resource / Process'};
   var rows=EXC?EXC.decisions.map(function(d){ var lv=d.type==='commercial'?'red':d.type==='process'?'green':'amber';
     return '<a class="ex-att '+lv+' clickable" href="'+esc(d.href)+'" style="text-decoration:none"><span class="ex-att-ic">'+({policy:'🎯',market:'📈',commercial:'🤝',process:'⚙️'}[d.type]||'•')+'</span><span class="ex-att-b"><b>'+TT[d.type]+' · '+esc(d.title)+'</b><span>'+esc(d.why)+'<br>ตัวเลือก: '+d.options.map(esc).join(' / ')+'</span></span><span class="ex-att-go">ไปตัดสิน →</span></a>'; }).join(''):'';
-  return '<div class="ex-decision-first"><div class="ex-hierarchy"><span>Decide now</span><b>'+(EXC?(EXC.decisions.length?EXC.decisions.length+' เรื่องที่ต้องให้ผู้บริหารตัดสิน — ถ้าทุกอย่างอยู่ในกติกา รายการนี้จะว่าง':'ไม่มีเรื่องต้องตัดสิน — ทุกอย่างอยู่ในกติกา'):'กำลังโหลด…')+'</b></div><div class="ex-att-list">'+rows+
-    '<div id="exec-att-db" class="ex-att-db"><span style="color:var(--tx-3);font-size:13px">กำลังโหลด Attention Queue...</span></div></div></div>';
+  return '<div class="ex-decision-first"><div class="ex-hierarchy"><span>Executive decisions</span><b>'+(EXC?(EXC.decisions.length?EXC.decisions.length+' เรื่องที่ระบบตัดสินแทนไม่ได้ — ถ้าทุกอย่างอยู่ในกติกา รายการนี้จะว่าง':'ไม่มีเรื่องต้องตัดสิน — ทุกอย่างอยู่ในกติกา'):'กำลังโหลด…')+'</b></div><div class="ex-att-list">'+(rows||'<div class="ex-att-empty">—</div>')+'</div></div>';
 }
 /* 4 · Commercial — จากใบราคา/ดีล ยังไม่ใช่ยอดขายจริง */
 function commercialPanel(){
@@ -1262,45 +1261,47 @@ function draw(){
     ['หมิง','พี่หมิง (MD)','ผู้บริหาร ตัดสินใจ']);
   h += '<div class="ex-period">'+roundPill()+'</div>';
 
-  /* ── Decide now: จาก /api/exec (กติกา) + Attention Queue (DB) ── */
-  var p1 = decisionPanel();
-  /* ── การเงินจริง (invoice / เงินเข้า / ค้างรับ): เฟสถัดไป — เก็บไว้ท้ายแท็บ ไม่โชว์เด่นจนกว่าจะมี invoice ── */
-  var fin = '<details class="ex-section"><summary style="cursor:pointer;color:var(--tx-3);font-size:12.5px">การเงินจริง · Invoice → เงินเข้า → ค้างรับ (เฟสถัดไป — ยังไม่มี invoice ในระบบ)</summary>'+
-    '<div class="ex-kpi-row-label" style="margin-top:10px">เงินวันนี้ · Sales → Invoice → Cash</div><div class="ex-kpis">'+
+  /* ── ของเดิมทั้งหมดคงไว้ · ส่วน Decision Cockpit เพิ่ม "ด้านบน" ของแต่ละแท็บ (ไม่แทนที่) ── */
+  var p1 = '<div class="ex-decision-first"><div class="ex-hierarchy"><span>Decide now</span><b>สิ่งที่ต้องตัดสินใจหรือส่งต่อเจ้าของงานวันนี้</b></div><div class="ex-att-list">'+attentionRows(false)+'</div></div>';
+
+  var p2 = '<div class="ex-section"><div class="ex-hierarchy"><span>Business health</span><b>เงินวันนี้ → กำไร/อนาคต → คุณภาพการส่งมอบ</b></div>'+
+    '<div class="ex-kpi-row-label">เงินวันนี้ · Sales → Invoice → Cash</div><div class="ex-kpis">'+
     actualRevenueCard()+
     (AR&&AR.invoices?moneyKpiCard('🏦','เงินเข้าแล้ว','฿'+mm(AR.received),'','บิลที่ถึงกำหนด ฿'+mm(AR.due)+' เก็บได้ ฿'+mm(AR.collected),(AR.collectPct!=null?'เก็บได้ '+AR.collectPct+'% ของที่ถึงกำหนด':'ยังไม่มีบิลถึงกำหนด'),AR.collectPct!=null&&AR.collectPct<80?'amber':'','cash')
       :moneyKpiCard('🏦','เงินเข้าแล้ว','—','','ยังไม่มีบิล — นำเข้าไฟล์ e-Today แล้วยอดเงินเข้าขึ้นเอง','ยังไม่มีข้อมูล','none','cash'))+
     (AR&&AR.invoices?moneyKpiCard('⏰','เงินค้างรับ','฿'+mm(AR.outstanding),'','เกินกำหนด ฿'+mm(AR.overdue)+' · จ่ายไม่ครบ ฿'+money(AR.shortPaid),'฿'+mm(AR.overdue)+' overdue',AR.overdue?'red':'','ar')
       :moneyKpiCard('⏰','เงินค้างรับ','—','','ยังไม่มีบิล — ค้างรับ/เกินกำหนดคิดจากบิล + เงินรับ','ยังไม่มีข้อมูล','none','ar'))+
-    actualMarginCard()+'</div>'+actualSalesPanel()+'</details>';
-  /* Business health: ขายได้จริงแค่ไหน → margin รายกลุ่ม → ลูกค้า/เซลล์ที่ต้องจับตา */
-  var p2 = commercialPanel()+
-    '<div class="ex-section"><div class="ex-hierarchy"><span>Margin</span><b>margin จริงเทียบ Target ของแต่ละกลุ่มสินค้า</b></div>'+marginGroupPanel()+'</div>';
-  var p3 = '<div class="ex-section"><div class="ex-hierarchy"><span>Customer / Sales</span><b>ลูกค้าเจ้าไหนควรลงมาช่วยเอง · เซลล์คนไหนพอร์ตใหญ่แต่ปิดไม่ได้</b></div>'+customerPanel()+'<div style="height:12px"></div>'+salesPanel()+'</div>'+fin;
-  /* Operation: automation + AI เตือนแม่นไหม (ขนส่ง/ปัญหาลูกค้าเดิมอยู่ถัดลงไป — เฟสถัดไป) */
-  var p4 = '<div class="ex-section"><div class="ex-hierarchy"><span>Automation</span><b>ระบบทำงานปกติไหม · AI เตือนแม่นไหม — ถ้าปกติผู้บริหารไม่ต้องทำอะไร</b></div>'+automationPanel()+'<div style="height:12px"></div>'+intelPanel()+'</div>'+
-    '<details class="ex-section"><summary style="cursor:pointer;color:var(--tx-3);font-size:12.5px">ขนส่ง · ปัญหาลูกค้า (เฟสถัดไป)</summary><div style="margin-top:10px">'+deliveryPanel()+'</div></details>';
-  /* Overview: AI ทำงานดีแค่ไหน → pipeline ติดตรงไหน → คอขวด → ต้องตัดสินอะไร → ทางลัดไปหน้าปฏิบัติการ */
-  var p5 = aiPricingPanel()+flowPanel()+bottleneckPanel()+'<div style="height:14px"></div>'+p1+'<div id="exAfterAI"></div>'+
-    '<div class="card ex-pricing" style="margin-top:14px"><h3>Drill down <span class="sub">รอบ '+esc(D.round||D.asOf||'—')+'</span></h3><div class="ex-price-grid">'+
-      '<a href="/pricing"><span>โต๊ะตั้งราคา</span><b>'+safe((D.totals||{}).sku,0)+' SKU</b><em>ราคากลาง / ใบรายเจ้า / ให้ระบบทำรอบนี้</em></a>'+
-      '<a href="/sales"><span>ทีม Sales</span><b>'+(SD && SD.pending ? SD.pending : 0)+' ใบค้าง</b><em>คิวงานเซลล์ · ลิงก์ใบราคา · ต่อรอง</em></a>'+
-      '<a href="/costs"><span>ต้นทุน & ตลาด</span><b>'+safe((D.coverage||{}).usable,0)+' usable</b><em>ทุนเข้า · แนวโน้ม · บัญชี B2B คู่แข่ง</em></a>'+
-      '<a href="/guard"><span>นโยบาย Margin</span><b>'+(CG?(CG.below?CG.below+' กลุ่มหลุดเป้า':'ผ่านทุกกลุ่ม'):'—')+'</b><em>Target / Min รายกลุ่ม · ข้อยกเว้น</em></a>'+
-      '</div></div>';
+    '</div><div class="ex-kpi-row-label">กำไร · โอกาสเติบโต · การส่งมอบ</div><div class="ex-kpis">'+
+    actualMarginCard()+
+    (PRS&&PRS.rows&&PRS.rows.length?kpiCard('🧲','Prospect Health',PRS.summary.active,' ราย','Pipeline ฿'+mm(PRS.summary.pipeline)+'/เดือน · เงียบ '+PRS.summary.idle+' ราย',PRS.summary.idle+' at risk',PRS.summary.idle?'red':'','prospect')
+      :kpiCard('🧲','Prospect Health','—','','ยังไม่มี prospect — กดเพื่อเพิ่ม','ยังไม่มีข้อมูล','none','prospect'))+
+    (DLV&&DLV.overall&&DLV.overall.total?kpiCard('🚚','Delivery Score',DLV.overall.score,'/100','On-time '+DLV.overall.onTime+'% · In-full '+DLV.overall.inFull+'%',DLV.overall.delayed+' delayed',DLV.overall.score<80?'red':DLV.overall.delayed?'amber':'','delivery')
+      :kpiCard('🚚','Delivery Score','—','','ยังไม่มีรอบส่งที่บันทึก — บันทึกที่แท็บ Operation','ยังไม่มีข้อมูล','none','delivery'))+
+    '</div>'+actualSalesPanel()+'</div>';
+
+  var p3 = '<div class="ex-section"><div class="ex-hierarchy"><span>Growth & customer</span><b>Pipeline ใหม่ ลูกค้าที่เสี่ยงหาย และ margin จากฐานลูกค้า</b></div><div class="ex-business-grid">'+prospectPanel()+marginPanel()+'</div></div>';
+  var p4 = '<div class="ex-section"><div class="ex-hierarchy"><span>Operations</span><b>ขนส่งเจ้าไหนทำงานดี รอบไหนเริ่มผิด SLA และปัญหาที่ลูกค้าเคยแจ้ง</b></div>'+deliveryPanel()+'</div>';
+  var p5 = '<div class="ex-section"><div class="ex-hierarchy"><span>Pricing intelligence</span><b>ต้นทุน ตลาด Margin Guard และสถานะใบราคา ใช้เป็นข้อมูลประกอบการตัดสินใจ</b></div>'+pricingPerformancePanel()+pricingPanel()+'</div>';
+
+  /* Decision Cockpit (ลอจิคผู้บริหาร) — วางบนสุดของแต่ละแท็บ แล้วตามด้วยของเดิมครบ */
+  var cOverview = aiPricingPanel()+flowPanel()+bottleneckPanel()+'<div style="height:14px"></div>'+decisionPanel()+'<div id="exAfterAI"></div>';
+  var cHealth = commercialPanel()+
+    '<div class="ex-section"><div class="ex-hierarchy"><span>Margin</span><b>margin จริงเทียบ Target ของแต่ละกลุ่มสินค้า</b></div>'+marginGroupPanel()+'</div>'+
+    '<div class="ex-section"><div class="ex-hierarchy"><span>Customer / Sales</span><b>ลูกค้าเจ้าไหนควรลงมาช่วยเอง · เซลล์คนไหนพอร์ตใหญ่แต่ปิดไม่ได้</b></div>'+customerPanel()+'<div style="height:12px"></div>'+salesPanel()+'</div>';
+  var cOps = '<div class="ex-section"><div class="ex-hierarchy"><span>Automation</span><b>ระบบทำงานปกติไหม · AI เตือนแม่นไหม — ถ้าปกติผู้บริหารไม่ต้องทำอะไร</b></div>'+automationPanel()+'<div style="height:12px"></div>'+intelPanel()+'</div>';
 
   var TABS=[
-    ['overview','Overview','AI Pricing · Flow · คอขวด · ตัดสินใจ'],
-    ['health','Business health','ขายได้จริง · Margin · ลูกค้า · เซลล์'],
-    ['ops','Operation','Automation · AI เตือนแม่นไหม']
+    ['overview','Overview','AI Pricing · Flow · ออกราคา · ตลาด'],
+    ['health','Business health','ขายได้จริง · Margin · ลูกค้า · เงิน'],
+    ['ops','Operation','Automation · ปัญหาลูกค้า · ขนส่ง']
   ];
   if(!TABS.some(function(t){return t[0]===EXEC_TAB})) EXEC_TAB='overview';
   h += '<div class="ex-tabs" role="tablist">'+TABS.map(function(t){
     return '<button type="button" role="tab" data-exec-tab="'+t[0]+'" class="'+(EXEC_TAB===t[0]?'on':'')+'" onclick="execTab('+jsq(t[0])+')"><b>'+t[1]+'</b><span>'+t[2]+'</span></button>';
   }).join('')+'</div>';
-  h += '<div data-exec-pane="overview"'+(EXEC_TAB==='overview'?'':' hidden')+'>'+p5+'</div>';
-  h += '<div data-exec-pane="health"'+(EXEC_TAB==='health'?'':' hidden')+'>'+p2+p3+'</div>';
-  h += '<div data-exec-pane="ops"'+(EXEC_TAB==='ops'?'':' hidden')+'>'+p4+'</div>';
+  h += '<div data-exec-pane="overview"'+(EXEC_TAB==='overview'?'':' hidden')+'>'+cOverview+p5+'</div>';
+  h += '<div data-exec-pane="health"'+(EXEC_TAB==='health'?'':' hidden')+'>'+cHealth+p2+p3+p1+'</div>';
+  h += '<div data-exec-pane="ops"'+(EXEC_TAB==='ops'?'':' hidden')+'>'+cOps+p4+'</div>';
   h += '</div></div>';
 
   document.getElementById('main').innerHTML=h;
