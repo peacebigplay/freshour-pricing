@@ -1,0 +1,25 @@
+# Fly.io — fly launch --copy-config · fly volumes create freshour_data --size 1 · fly secrets set FH_SECRET=... FH_PINS=... LINE_CHANNEL_TOKEN=... LINE_CHANNEL_SECRET=... LINE_ADMIN_USER_ID=...
+app = "freshour-pricing"
+primary_region = "sin"
+
+[build]
+
+[env]
+  PORT = "8787"
+  FH_INBOX_DIR = "/app/data/inbox"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = false
+  min_machines_running = 1
+
+[[http_service.checks]]
+  interval = "60s"
+  timeout = "5s"
+  method = "GET"
+  path = "/api/health"
+
+[mounts]
+  source = "freshour_data"
+  destination = "/app/data"

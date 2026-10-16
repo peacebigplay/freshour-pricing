@@ -835,6 +835,7 @@
     }
     function config(role, body) {
       var changed = [];
+      if (body.survey_mode != null) { CFG.survey_mode = !!body.survey_mode && body.survey_mode !== '0' && body.survey_mode !== 'false'; changed.push('survey_mode'); audit(role, 'config', 'โหมดสำรวจหน้าร้าน ' + (CFG.survey_mode ? 'เปิด' : 'ปิด')); }
       if (Array.isArray(body.competitors)) {
         body.competitors.forEach(function (c) { D.pricelist.comps.forEach(function (x) { if (x.id === c.id) { x.label = c.label || x.label; x.tier = c.tier || x.tier; x.source = c.source || ''; } });
           S.competitors.forEach(function (x) { if (x.id === c.id) { x.label = c.label || x.label; x.source = c.source || ''; } }); });
@@ -954,8 +955,9 @@
       else {
         if (!sh.rows.some(function (r) { return r.inOffer; })) return err(400, 'ใบของ ' + c.name + ' ยังไม่มีราคาที่ Pricing ยืนยัน — ส่งไม่ได้');
         if (body.label && body.label !== sh.label) return err(409, 'ใบที่เห็นเป็นรอบ ' + body.label + ' แต่รอบปัจจุบันคือ ' + sh.label + ' — โหลดใหม่', { reload: true });
-        c.sentAt = stamp(); c.sentBy = role; c.channel = body.channel || 'manual'; sh.sent = true; sh.sentAt = c.sentAt;
-        closeNegotiations(cid, role, c.channel);   /* ส่งใบราคาแก้ไขแล้ว = ปิดเรื่องต่อรอง */
+        if (!sh.link) quoteLink(role, { customer_id: cid, silent: true }, body.origin || '');   /* ส่งเองก็ต้องมีลิงก์ให้ลูกค้ากดยืนยัน/ต่อรอง */
+        if (EXT && EXT.markSent) EXT.markSent(cid, body.channel || 'manual', role);   /* นับเป็นส่งจริง: Quote V+1 · SLA เริ่ม · log รูปแบบเดียวกับ LINE */
+        else { c.sentAt = stamp(); c.sentBy = role; c.channel = body.channel || 'manual'; sh.sent = true; sh.sentAt = c.sentAt; closeNegotiations(cid, role, c.channel); }
       }
       rebuildSheet(sh);
       return ok({ ok: true, sent: !body.undo, pending: D.sends.pending });
@@ -1214,7 +1216,7 @@
     var EXT = extend({ D: D, S: S, CFG: CFG, today: today, stamp: stamp, r1: r1, mg: mg, num: num, err: err, ok: ok, clone: clone, hashId: hashId, LVL: LVL, ROLE_NAME: ROLE_NAME,
       product: product, custOf: custOf, custByName: custByName, sheetFor: sheetFor, deskFor: deskFor, sendRow: sendRow, desks: desks, rebuildSheet: rebuildSheet, rebuildGuard: rebuildGuard, rebuildTotals: rebuildTotals,
       setCost: setCost, afterCosts: afterCosts, tiersOf: tiersOf, recalcProduct: recalcProduct, policyOf: policyOf, goalsFor: goalsFor, closeNegotiations: closeNegotiations, mgState: mgState, priceAt: priceAt, holdCost: holdCost, releaseCost: releaseCost, costMasterOf: costMasterOf, ensureCostMaster: ensureCostMaster, spOf: spOf, competitorPrices: competitorPrices, quoteFor: quoteFor, quoteLink: quoteLink, quoteResponse: quoteResponse, priceRequest: priceRequest, audit: function () { return audit.apply(null, arguments); }, targetPct: targetPct, floorPct: floorPct,
-      lineConfigured: function () { return !!opts.lineConfigured; }, recordInvoice: recordInvoice, ownerOf: ownerOf, repOf: repOf, repScope: repScope, inScope: inScope, curRep: function () { return CUR_REP; } });
+      lineConfigured: function () { return !!opts.lineConfigured; }, recordInvoice: recordInvoice, savePriceSheet: savePriceSheet, handoff: handoff, quoteLink: quoteLink, ownerOf: ownerOf, repOf: repOf, repScope: repScope, inScope: inScope, curRep: function () { return CUR_REP; } });
     /* audit เดิม (หน้า "ความจำ") → ลง log กลางด้วย รูปแบบเดียวกับงานของระบบ */
     var audit0 = audit;
     audit = function (role, action, detail) { audit0(role, action, detail); EXT.logEvent({ actor: role, rep: CUR_REP, kind: 'human', action: action, detail: detail }); };
@@ -1286,7 +1288,7 @@
           case '/api/service-logs/update': need(2); return serviceLogUpdate(role, body);
           case '/api/price-request': need(1); return priceRequest(role, body);
           case '/api/quoted': need(1); return quoted(role, body);
-          case '/api/quote-sent': need(1); return quoteSent(role, body);
+          case '/api/quote-sent': need(1); body.origin = req.origin; return quoteSent(role, body);
           case '/api/quote-response': need(1); return quoteResponse(role, body);
           case '/api/quote-links': need(1); return quoteLink(role, body, req.origin);
           case '/api/invoices': need(1); return invoicesPost(role, body);

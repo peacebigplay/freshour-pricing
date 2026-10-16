@@ -251,12 +251,34 @@ window.Dash = (function () {
   function review(cid) {
     PX.get('/api/quote-review?customer=' + encodeURIComponent(cid)).then(function (q) {
       var rows = q.rows.slice().sort(function (a, b) { return b.risk - a.risk; });
-      PX.modal({ title: 'ตรวจก่อนส่ง · ' + q.customer, sub: 'ใบราคา V' + q.version + ' · รอบ ' + q.label + ' · ' + q.total + ' รายการ · ' + q.note, okText: q.line ? '📨 ส่งลิงก์ทาง LINE' : 'ผูก LINE ก่อนส่ง',
+      PX.modal({ title: 'ตรวจก่อนส่ง · ' + q.customer, sub: 'ใบราคา V' + q.version + ' · รอบ ' + q.label + ' · ' + q.total + ' รายการ · ' + q.note, okText: q.line && q.lineConfigured ? '📨 ส่งลิงก์ทาง LINE' : '✓ ส่งเองแล้ว (บันทึก)',
         html: '<div class="sc" style="max-height:50vh;overflow:auto"><table class="g" style="min-width:0"><thead><tr><th style="text-align:left">สินค้า</th><th>รอบก่อน</th><th>ราคาใหม่</th><th style="text-align:left">ธรรมชาติลูกค้าเจ้านี้</th></tr></thead><tbody>' +
           rows.map(function (r) { return '<tr' + (r.risk >= 2 ? ' style="background:var(--amber-l)"' : '') + '><td style="text-align:left"><b>' + esc(r.name) + '</b></td><td>' + (r.prev || '—') + '</td><td><b>' + r.price + '</b>' + (r.diff ? ' <small class="' + (r.diff > 0 ? 'neg' : '') + '">(' + (r.diff > 0 ? '+' : '') + r.diff + ')</small>' : '') + '</td><td style="text-align:left;font-size:11.5px">' + (r.flags.length ? r.flags.map(function (f) { return '<span class="pill2 ' + (r.risk >= 2 ? 'a' : 'n') + '" style="margin:1px 2px 1px 0">' + esc(f) + '</span>'; }).join('') : '<span style="color:var(--tx-3)">ไม่เคยต่อรอง</span>') + '</td></tr>'; }).join('') + '</tbody></table></div>' +
-          '<p class="hint" style="margin-top:8px">ลูกค้าจะได้ <b>ลิงก์</b> (ไม่ใช่ไฟล์) เปิดใน LINE แล้วกด รับราคา / ขอต่อรอง / ไม่เอา ทีละรายการ · คำขอต่อรองวิ่งเข้า Pricing เอง · ถ้าคิดว่าราคาไหนไม่น่าผ่าน <button class="lnk3" onclick="openSheet(' + jsq(cid) + ')">เปิดใบขอให้ Pricing ทบทวนก่อน</button>' + (q.link ? ' · <a href="' + esc(q.link) + '" target="_blank" rel="noopener">ดูแบบที่ลูกค้าเห็น</a>' : '') + '</p>',
-        onOk: function (v, close) { if (!q.line) { close(); bindLine(cid, q.customer); return false; } close(); return sendLine(cid); } });
+          channelBox(cid, q) + '<p class="hint" style="margin-top:8px">ลูกค้าจะได้ <b>ลิงก์</b> (ไม่ใช่ไฟล์) เปิดใน LINE แล้วกด รับราคา / ขอต่อรอง / ไม่เอา ทีละรายการ · คำขอต่อรองวิ่งเข้า Pricing เอง · ถ้าคิดว่าราคาไหนไม่น่าผ่าน <button class="lnk3" onclick="openSheet(' + jsq(cid) + ')">เปิดใบขอให้ Pricing ทบทวนก่อน</button>' + (q.link ? ' · <a href="' + esc(q.link) + '" target="_blank" rel="noopener">ดูแบบที่ลูกค้าเห็น</a>' : '') + '</p>',
+        onOk: function (v, close) { close(); return q.line && q.lineConfigured ? sendLine(cid) : manualSent(cid, q.customer); } });
     }).catch(function (e) { PX.toast('เปิดไม่ได้ — ' + esc(e.message), 'bad'); });
+  }
+  /* ช่องทางส่ง: LINE OA พร้อม = ส่งให้เอง · ยังไม่พร้อม = ก๊อปลิงก์ไปวางในแชตเดิม/โทรบอก แล้วกด "ส่งเองแล้ว" (ระบบนับเป็นส่งจริง SLA เริ่ม)
+     ลูกค้าผูก LINE ได้เองด้วยโค้ด FH-XXXXX — เซลล์ไม่ต้องไปขอ user id */
+  function channelBox(cid, q) {
+    var ready = q.line && q.lineConfigured;
+    return '<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--app)">' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><b style="font-size:12.5px">ช่องทาง:</b> ' +
+      (ready ? '<span class="pill g">LINE OA พร้อมส่ง</span>' : q.line ? '<span class="pill a">ผูก LINE แล้ว · OA ยังไม่ต่อ token — ส่งเองไปก่อน</span>' : '<span class="pill a">ลูกค้ายังไม่ผูก LINE</span>') +
+      '<button class="btn" style="padding:4px 10px;font-size:12px" onclick="Dash.copyLink(' + jsq(cid) + ')">🔗 คัดลอกลิงก์ใบราคา</button>' +
+      (ready ? '<button class="btn" style="padding:4px 10px;font-size:12px" onclick="Dash.manualSent(' + jsq(cid) + ',' + jsq(q.customer) + ')">ส่งเองแล้ว</button>' : '') + '</div>' +
+      (!q.line ? '<div style="font-size:12px;color:var(--tx-2);margin-top:6px">ให้ลูกค้าแอด LINE OA แล้วพิมพ์โค้ด <b style="font-family:var(--fn);font-size:14px;color:var(--blue)">' + esc(q.bindCode || '') + '</b> — ระบบผูกให้เอง รอบหน้าส่งเข้า LINE อัตโนมัติ · <a href="#" onclick="Dash.bindLine(' + jsq(cid) + ',' + jsq(q.customer) + ');return false">หรือใส่ user id เอง</a></div>' : '') + '</div>';
+  }
+  function copyLink(cid) {
+    return PX.post('/api/quote-links', { customer_id: cid, silent: true }).then(function (x) {
+      var url = x.url && x.url.indexOf('http') === 0 ? x.url : (location.origin + x.url);
+      var done = function () { PX.toast('คัดลอกลิงก์แล้ว · ใช้ได้ถึง ' + esc(x.expires_at || '') + ' — วางในแชตลูกค้าแล้วกด "ส่งเองแล้ว"'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(url).then(done, function () { window.prompt('คัดลอกลิงก์นี้', url); });
+      window.prompt('คัดลอกลิงก์นี้', url);
+    }).catch(function (e) { PX.toast('สร้างลิงก์ไม่ได้ — ' + esc(e.message), 'bad'); });
+  }
+  function manualSent(cid, name) {
+    return act(PX.post('/api/quote-sent', { customer_id: cid, channel: 'manual' }).then(function () { return refresh('บันทึกว่าส่งใบให้ ' + esc(name || '') + ' แล้ว — เริ่มนับเวลารอคำตอบ'); }));
   }
   /* เงียบเกิน 7 วัน: ตามต่อ (บันทึกการตาม) หรือ ปิด Lost เหตุผล "ไม่ตอบ" */
   function decide(cid, name) {
@@ -308,5 +330,5 @@ window.Dash = (function () {
     obs.observe(main, { childList: true, subtree: false });
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') load(true).then(paint).catch(function () {}); });
   }
-  return { mount: mount, refresh: refresh, rep: rep, review: review, decide: decide, timeline: timeline, filter: filter, toggleAll: toggleAll, sendLine: sendLine, sendAll: sendAll, bindLine: bindLine, follow: follow, close: close, flag: flag, ack: ack };
+  return { mount: mount, refresh: refresh, rep: rep, review: review, copyLink: copyLink, manualSent: manualSent, decide: decide, timeline: timeline, filter: filter, toggleAll: toggleAll, sendLine: sendLine, sendAll: sendAll, bindLine: bindLine, follow: follow, close: close, flag: flag, ack: ack };
 })();

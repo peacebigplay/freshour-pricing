@@ -166,6 +166,7 @@ test('รอบ 3 · แหล่งข้อมูล: สำรวจหน้
   const pr = store.ext.parseSurvey('สามชั้น 189\nสันคอหมู 178 บาท\nกระดูกซุป 45/กก\nหมูยอ 90\n135 บาท สันนอก\nอะไรก็ไม่รู้');
   assert.equal(pr.filter(r => r.ok).length, 4); assert.equal(pr.find(r => r.raw === 'หมูยอ 90').reason, 'จับคู่ SKU ไม่ได้'); assert.ok(pr.find(r => r.raw === 'หมูยอ 90').alts.length, 'เสนอตัวเลือกให้คนเลือก');
   assert.equal(pr.find(r => /สันคอหมู/.test(r.raw)).how, 'exact');
+  okj(call('ops', 'POST', '/api/config', { survey_mode: true }));   /* รอบ 15: โหมดสำรวจปิดเป็นค่าเริ่มต้น — เปิดก่อนทดสอบ */
   const plan = okj(call('sale', 'GET', '/api/survey')); assert.equal(plan.stores.length, 3); assert.ok(plan.stores.every(s => s.targets.length <= 15));
   const sub = okj(call('sale', 'POST', '/api/survey/submit', { store: 'c', mode: 'voice', branch: 'บางนา', rows: pr.filter(r => r.ok) }));
   assert.equal(sub.n, 4);

@@ -60,6 +60,43 @@ function histChip(r) {
   var mock = HIST.source === 'mock', arrow = h.dir === 'up' ? '▲' : h.dir === 'down' ? '▼' : '▬', col = h.outOfRange ? 'var(--red)' : h.dir === 'up' ? 'var(--amber)' : 'var(--tx-3)';
   return '<em style="color:' + col + ';cursor:help" title="' + esc(h.text) + (mock ? ' · ' + esc(HIST.title) : '') + '">' + arrow + ' ' + h.n + ' รอบ ' + h.lo + (h.hi !== h.lo ? '–' + h.hi : '') + (h.outOfRange ? ' · หลุดช่วง' : '') + (mock ? '*' : '') + '</em>';
 }
+/* ── "ให้ระบบทำรอบนี้": AI ยืนยันราคากลางแถวปกติ + ออกใบรายเจ้าที่ปกติ + ส่ง Sales ในคลิกเดียว · คนดูเฉพาะที่ระบบดันออกมา ── */
+var AUTOP = null, AUTO_BUSY = false;
+function autoPreview() {
+  if (AUTO_BUSY) return; AUTO_BUSY = true;
+  PX.post('/api/auto-round', { preview: true }).then(function (j) { AUTOP = j; AUTO_BUSY = false; var el = document.getElementById('autoCard'); if (el) el.outerHTML = autoCard(); })
+    .catch(function () { AUTO_BUSY = false; AUTOP = { error: true }; var el = document.getElementById('autoCard'); if (el) el.outerHTML = autoCard(); });
+}
+function autoCard() {
+  if (CUST || VIEW !== 'home') return '';
+  var a = AUTOP;
+  if (!a) { setTimeout(autoPreview, 0); return '<div id="autoCard" class="card" style="margin-top:12px"><h3>🤖 ให้ระบบทำรอบนี้</h3><p class="hint">กำลังดูว่าระบบทำอะไรให้ได้บ้าง…</p></div>'; }
+  if (a.error) return '<div id="autoCard" class="card" style="margin-top:12px"><h3>🤖 ให้ระบบทำรอบนี้</h3><p class="hint">อ่านไม่ได้ตอนนี้ <button class="btn" onclick="AUTOP=null;autoPreview()">ลองใหม่</button></p></div>';
+  var c = a.central || { auto: 0, need: [], already: 0 }, u = a.customers || { done: [], exceptions: [], skipped: [] }, nothing = !c.auto && !u.done.length;
+  return '<div id="autoCard" class="card" style="margin-top:12px;border-left:4px solid var(--blue)"><h3>🤖 ให้ระบบทำรอบนี้ <span class="sub">คลิกเดียว: ยืนยันราคากลางแถวปกติ → ออกใบรายเจ้าที่ปกติ → ส่ง Sales</span></h3>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:8px 0 10px">' +
+    '<div class="dg"><span>ราคากลาง · ระบบยืนยันให้</span><b style="color:var(--blue)">' + c.auto + '</b><small> SKU' + (c.already ? ' · ยืนยันไว้แล้ว ' + c.already : '') + '</small></div>' +
+    '<div class="dg"><span>ราคากลาง · คนต้องตัดสิน</span><b style="color:' + (c.need.length ? 'var(--amber)' : 'var(--green)') + '">' + c.need.length + '</b><small> SKU</small></div>' +
+    '<div class="dg"><span>ใบรายเจ้า · ระบบออก+ส่ง Sales</span><b style="color:var(--blue)">' + u.done.length + '</b><small> เจ้า</small></div>' +
+    '<div class="dg"><span>ใบรายเจ้า · คนต้องดู</span><b style="color:' + (u.exceptions.length ? 'var(--amber)' : 'var(--green)') + '">' + u.exceptions.length + '</b><small> เจ้า' + (u.skipped.length ? ' · ข้าม ' + u.skipped.length : '') + '</small></div></div>' +
+    '<p class="hint">' + esc(a.rule) + ' · <b>ตัวเลข "คนต้องดู" ของใบรายเจ้าจะลดลงอีกหลังราคากลางยืนยันครบ</b></p>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' + (nothing ? '<span class="pill g">ไม่มีอะไรให้ระบบทำเพิ่ม</span>' : '<button class="btn pri" onclick="autoRun()">ให้ระบบทำเลย (' + c.auto + ' SKU + ' + u.done.length + ' เจ้า)</button>') +
+    (c.need.length || u.exceptions.length ? '<button class="btn" onclick="autoShow()">ดูรายการที่คนต้องตัดสิน</button>' : '') + '</div></div>';
+}
+function autoShow(res) {
+  var a = res || AUTOP; if (!a) return; var c = a.central || { need: [] }, u = a.customers || { exceptions: [] };
+  PX.modal({ title: res ? 'ระบบทำให้แล้ว — เหลือที่คนต้องตัดสิน' : 'รายการที่คนต้องตัดสิน', ok: false,
+    sub: res ? 'ราคากลางยืนยันเอง ' + (c.saved || 0) + ' SKU · ใบรายเจ้าออก+ส่ง Sales ' + (u.done || []).length + ' เจ้า' : 'ระบบจะไม่แตะรายการเหล่านี้ — เปิดดูแล้วตัดสินเอง',
+    html: '<div style="max-height:60vh;overflow:auto">' +
+      (c.need.length ? '<h4 style="margin:4px 0 6px">ราคากลาง ' + c.need.length + ' SKU <button class="btn" style="padding:3px 9px;font-size:11.5px" onclick="document.querySelector(\'.mdl\')&&document.querySelector(\'.mdl\').remove();openBoard()">เปิดกระดานราคากลาง →</button></h4><div class="dq">' + c.need.slice(0, 40).map(function (n) { return '<div class="it" style="grid-template-columns:1.2fr 2fr"><div><b>' + esc(n.name) + '</b><small>' + esc(n.grp) + ' · แนะนำ ' + n.price + ' ฿ (รอบก่อน ' + (n.prev || '—') + ')</small></div><div class="ln">' + n.reasons.map(esc).join(' · ') + '</div></div>'; }).join('') + (c.need.length > 40 ? '<p class="hint">และอีก ' + (c.need.length - 40) + ' SKU</p>' : '') + '</div>' : '') +
+      (u.exceptions.length ? '<h4 style="margin:12px 0 6px">ใบรายเจ้า ' + u.exceptions.length + ' เจ้า</h4><div class="dq">' + u.exceptions.map(function (x) { return '<div class="it" style="grid-template-columns:1fr 2fr auto"><div><b>' + esc(x.name) + '</b><small>' + x.rows + ' รายการ</small></div><div class="ln">' + x.reasons.map(esc).join(' · ') + (x.detail && x.detail.length ? '<br><small style="color:var(--tx-3)">' + x.detail.map(esc).join(' · ') + '</small>' : '') + '</div><div class="act"><button class="btn pri" style="padding:4px 10px;font-size:12px" onclick="document.querySelector(\'.mdl\')&&document.querySelector(\'.mdl\').remove();pick(' + jsq(x.id) + ')">เปิดใบ</button></div></div>'; }).join('') + '</div>' : '') +
+      (!c.need.length && !u.exceptions.length ? '<p class="hint">ไม่มี — รอบนี้ระบบทำให้ครบ</p>' : '') + '</div>' });
+}
+function autoRun() {
+  if (AUTO_BUSY) return; AUTO_BUSY = true;
+  PX.post('/api/auto-round', {}).then(function (j) { AUTO_BUSY = false; AUTOP = null; return load('ระบบทำให้แล้ว: ราคากลาง ' + (j.central ? j.central.saved : 0) + ' SKU · ใบรายเจ้า ' + (j.customers ? j.customers.done.length : 0) + ' เจ้า').then(function () { autoShow(j); }); })
+    .catch(function (e) { AUTO_BUSY = false; PX.toast('ทำไม่สำเร็จ — ' + esc(e.message), 'bad'); });
+}
 function load(msg) {
   var want = CUST;
   return PX.get(deskURL())
@@ -430,6 +467,7 @@ function stack() {
                                     : all.length + ' ใบ · เปิดกองลูกค้าเพื่อไล่ตรวจและส่ง Sales') + '</em></button>' +
     '</div>';
 
+  h += autoCard();
   h += homeDashboard(D.rows);
   h += pricingInsights(D.rows);
   return h;

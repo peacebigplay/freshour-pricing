@@ -45,6 +45,7 @@ const MARKET_FEED_URL = process.env.MARKET_FEED_URL || '';
 const SAMPLE_MARKET = process.env.FH_SAMPLE_MARKET === '1';   /* ราคาตลาดตัวอย่าง (ไม่ใช่ของจริง) — เปิดเฉพาะตอนทดสอบ UI */
 const DATA_NOTE = 'สินค้า/ทุน/ราคาจากใบราคาขาย+ทุน AL 01-07/10/69 · ลูกค้า/สัญญา/ยอดขายจากระบบเดิม (ก.ย. 69) · ราคาตลาด: ' + (MARKET_FEED_URL ? 'connector ' + MARKET_FEED_URL : SAMPLE_MARKET ? 'ตัวอย่างสมมติ (ไม่ใช่ของจริง)' : 'ยังไม่ต่อ connector — ใช้สำรวจหน้าร้าน');
 const store = createStore(loadDocs(), { pins: parsePins(), lineConfigured: !!LINE_TOKEN, dataNote: DATA_NOTE, sampleMarket: SAMPLE_MARKET });
+if (!MARKET_FEED_URL && !SAMPLE_MARKET) { const mj = store.docs.jobs['market-sync']; if (mj && mj.status === 'never') { mj.status = 'off'; mj.detail = 'ยังไม่ต่อ connector ราคาตลาด (ตั้ง MARKET_FEED_URL) — ไม่นับเป็นระบบล้ม'; } }   /* ไม่มี connector = ปิด ไม่ใช่ล้ม — แถบแดง "ขาดรอบ" ทุกวันคือเสียงรบกวน */
 let replayed = 0;
 if (JOURNAL && fs.existsSync(JOURNAL)) {
   for (const line of fs.readFileSync(JOURNAL, 'utf8').split('\n')) {

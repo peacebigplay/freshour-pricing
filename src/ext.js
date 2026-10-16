@@ -20,7 +20,8 @@
     /* ── ตารางใหม่ (อยู่ใน D เพื่อให้ journal/เดโมเล่นซ้ำได้เหมือนเดิม) ── */
     D.events = D.events || []; D.alerts = D.alerts || []; D.outbox = D.outbox || []; D.market_obs = D.market_obs || [];
     D.predictions = D.predictions || []; D.cost_imports = D.cost_imports || []; D.surveys = D.surveys || []; D.source_status = D.source_status || {}; D.inbox = D.inbox || []; D.cost_flags = D.cost_flags || []; D.cost_batches = D.cost_batches || []; D.sku_aliases = D.sku_aliases || {}; D.followups = D.followups || []; D.deals = D.deals || [];
-    D.price_rounds = D.price_rounds || null;   /* ประวัติราคาย้อนหลังราย SKU นำเข้าจากไฟล์ (ตอนนี้ = ชุดจำลอง 6 รอบ) */
+    D.price_rounds = D.price_rounds || null;
+    D.jobs_started = D.jobs_started || stamp();   /* ฐานเวลาของงานที่ยังไม่เคยรัน — ระบบเพิ่งเปิดไม่ใช่ระบบล้ม จะนับ "ขาดรอบ" เมื่อเลยรอบแรกไปแล้วจริง */   /* ประวัติราคาย้อนหลังราย SKU นำเข้าจากไฟล์ (ตอนนี้ = ชุดจำลอง 6 รอบ) */
     D.jobs = D.jobs || { 'market-sync': { label: 'ดึงราคาตลาด (ทุกวัน)', every_h: 24, last_run: null, status: 'never', detail: '', runs: 0 },
       'line-outbox': { label: 'ส่ง LINE', every_h: 0, last_run: null, status: 'never', detail: '', runs: 0 },
       'cost-import': { label: 'อ่านไฟล์ทุน AL', every_h: 0, last_run: null, status: 'never', detail: '', runs: 0 } };
@@ -59,8 +60,8 @@
     function jobFail(k, e) { var j = D.jobs[k]; j.status = 'fail'; j.last_run = stamp(); j.error = String(e && e.message || e); j.runs++; logEvent({ actor: 'system', action: k, entity: 'job', entity_id: k, detail: j.error, status: 'fail' }); alert('bad', 'งานระบบล้ม: ' + j.label, j.error, k); }
     function ageDays(iso) { return iso ? Math.floor((Date.parse(today()) - Date.parse(String(iso).slice(0, 10))) / 864e5) : null; }
     function health() {
-      var jobs = Object.keys(D.jobs).map(function (k) { var j = D.jobs[k], age = j.last_run ? (Date.now() - Date.parse(j.last_run + '+07:00')) / 36e5 : null;
-        var stale = j.every_h && (age == null || age > j.every_h * 1.5);
+      var jobs = Object.keys(D.jobs).map(function (k) { var j = D.jobs[k], age = (Date.now() - Date.parse((j.last_run || D.jobs_started) + '+07:00')) / 36e5;
+        var stale = j.every_h && j.status !== 'off' && (age == null || age > j.every_h * 1.5);   /* 'off' = ยังไม่ได้ต่อ (เช่น ไม่มี connector ตลาด) ไม่ใช่ระบบล้ม */
         return Object.assign({ key: k, stale: !!stale, age_h: age == null ? null : r1(age) }, j); });
       var bad = jobs.filter(function (j) { return j.status === 'fail' || j.stale; });
       var ob = { queued: D.outbox.filter(function (o) { return o.status === 'queued'; }).length, failed: D.outbox.filter(function (o) { return o.status === 'failed'; }).length, sent: D.outbox.filter(function (o) { return o.status === 'sent' || o.status === 'simulated'; }).length };
@@ -483,6 +484,10 @@
         var uid = ev.source && ev.source.userId, text = ev.message && ev.message.text || '';
         var c = S.customers.filter(function (x) { return x.line_user_id && x.line_user_id === uid; })[0];
         if (!c) {
+          var cb = customerByBindCode(text);   /* ลูกค้าพิมพ์โค้ดผูก LINE (FH-XXXXX) จากใบราคา/การ์ดที่เซลล์ส่ง */
+          if (cb && uid) { cb.line_user_id = uid; var cbd = D.desk.customers.filter(function (x) { return x.id === cb.id; })[0]; if (cbd) cbd.line_user_id = uid;
+            logEvent({ actor: 'customer', kind: 'customer', action: 'line-bind', entity: 'customer', entity_id: cb.id, detail: cb.name + ' ผูก LINE เองด้วยโค้ด ' + bindCode(cb.id), status: 'ok' });
+            return handled.push({ customer: cb.name, result: 'bound', reply: 'ผูก LINE กับ ' + cb.name + ' เรียบร้อย ใบราคารอบถัดไปจะส่งมาที่นี่' }); }
           var mc = text.match(/^ทุน\s+(.+?)\s+(\d+(?:\.\d+)?)\s*$/), ms = text.match(/^ตลาด\s+(\S+)\s+(.+)$/);
           if (mc) { var ic = importCosts('line', { rows: [{ product: mc[1], cost: mc[2] }], commit: true, source: 'LINE ทุน', channel: 'line' }); return handled.push({ uid: uid, result: ic.status === 200 ? 'cost ' + (ic.body.applied || 0) + (ic.body.flagged ? ' flagged ' + ic.body.flagged : '') : ic.body.error }); }
           if (ms) { var st0 = D.pricelist.comps.filter(function (x) { return x.label.toLowerCase() === ms[1].toLowerCase() || x.id === ms[1]; })[0]; if (st0) { var pr0 = parseSurvey(ms[2], st0.id).filter(function (r) { return r.ok; }); var sr0 = surveySubmit('line', { store: st0.id, rows: pr0, mode: 'line' }); return handled.push({ uid: uid, result: sr0.status === 200 ? 'survey ' + pr0.length : sr0.body.error }); } }
@@ -544,6 +549,90 @@
       return ok({ ok: true, sent: sent, skipped: skipped });
     }
     /* ════════ ตรวจก่อนส่ง (Sales review): ใบที่ Pricing ตั้งให้เจ้านี้ ตรงกับ "ธรรมชาติ" ของลูกค้าไหม — SKU ที่เคยต่อรอง/ปฏิเสธ · ราคาขึ้นแรง · สูงกว่าที่เคยตกลง ════════ */
+
+    /* ════════ "ให้ระบบทำรอบนี้" — คลิกเดียวตั้งแต่ราคากลางถึงส่ง Sales ════════
+       เดิม: Step 1 ยืนยันราคากลางทีละแถว (210) → Step 2 เปิดทีละเจ้า (44) ยืนยันทุกแถว บันทึก ส่ง Sales — ราว 1.5–2 ชม./รอบ และเซลล์ทั้งทีมรอ
+       ตอนนี้: ระบบใช้ "ราคาแนะนำ" ทำส่วนที่ปกติให้หมด แล้วดันเฉพาะที่ต้องคนตัดสินออกมา
+       · ราคากลาง: ปกติ = ไม่ต่ำกว่า Floor · ไม่ขยับแรงเกินที่ทุนอธิบายได้ (|Δราคา − Δทุน| < jump_baht) · เครื่องไม่ได้บอกว่า "ต่ำกว่าขั้นต่ำ"
+       · ใบรายเจ้า: ปกติ = ราคากลางของทุกแถวยืนยันแล้ว · ไม่ต่ำกว่า Floor · ไม่ขยับแรงเกินที่ทุนอธิบายได้ (ราคาสัญญาที่ต่ำกว่าทุนจึงโผล่มาให้คนตัดสินเสมอ)
+       preview=true = บอกว่าจะเกิดอะไร ไม่แตะข้อมูล · step = central | customers | all */
+    function unexplainedJump(px, pv, cost, costPrev, jumpB) {
+      if (!(pv > 0)) return false;
+      var dp = px - pv, dc = (cost > 0 && costPrev > 0) ? cost - costPrev : 0;
+      return Math.abs(dp) >= Math.max(jumpB, pv * 0.05) && Math.abs(dp - dc) >= jumpB;
+    }
+    function autoCentral(role, preview, jumpB) {
+      var okRows = [], need = [], already = D.desk.rows.filter(function (r) { return r.v21 && r.v21.central && r.v21.central.state === 'approved'; }).length;
+      D.desk.rows.forEach(function (r) {
+        var v = r.v21 || {}; if (!v.goals) return;
+        if (v.central && v.central.state === 'approved') return;   /* ยืนยันไว้แล้วและยังใช้ได้ */
+        var rec = v.rec || {}, px = rec.price > 0 ? Math.round(rec.price) : 0, why = [];
+        if (!px) why.push('ไม่มีราคาแนะนำ');
+        if (v.guard > 0 && px && px < v.guard) why.push('ต่ำกว่า Floor ' + v.guard);
+        if (rec.state === 'below_min') why.push('เครื่องบอกต่ำกว่าขั้นต่ำ');
+        if (v.central && v.central.state && v.central.state !== 'approved') why.push({ margin_at_risk: 'ทุนเปลี่ยน margin เสี่ยง', review_required: 'ทุนเปลี่ยนหลังยืนยัน ต้องดูใหม่' }[v.central.state] || v.central.state);
+        if (px && unexplainedJump(px, r.prev, r.cost, r.costPrev, jumpB)) why.push('ขยับ ' + r.prev + ' → ' + px + ' เกินที่ทุนอธิบายได้ (ทุน ' + (r.costPrev || '—') + ' → ' + r.cost + ')');
+        if (why.length) need.push({ id: r.id, name: r.name, grp: r.grp, price: px, prev: r.prev, cost: r.cost, reasons: why });
+        else okRows.push({ product_id: r.id, price: px, goal: rec.strategy || 'target' });
+      });
+      var saved = 0, error = null;
+      if (!preview && okRows.length) { var r1x = X.savePriceSheet(role, { goal: 'rec', rows: okRows }); if (r1x.status === 200) saved = r1x.body.saved; else error = r1x.body.error; }
+      return { auto: okRows.length, saved: saved, need: need, error: error, already: already };
+    }
+    function autoSheets(role, body) {
+      body = body || {};
+      var only = Array.isArray(body.customers) && body.customers.length ? body.customers : null, preview = !!body.preview, jumpB = CFG.jump_baht || 8;
+      var done = [], exceptions = [], skipped = [];
+      D.desk.customers.forEach(function (c) {
+        if (only && only.indexOf(c.id) < 0) return;
+        if (!only && c.handed && !body.redo) { skipped.push({ id: c.id, name: c.name, why: 'ส่ง Sales แล้ว' }); return; }
+        var dk = X.deskFor(c.id); if (!dk) return;
+        var rows = dk.rows.filter(function (r) { return r.cust && r.cust.source === 'สัญญา'; });
+        if (!rows.length) { skipped.push({ id: c.id, name: c.name, why: 'ไม่มีรายการสัญญา' }); return; }
+        var why = { noBase: 0, noCost: 0, floor: 0, jump: 0 }, plan = [], detail = [];
+        rows.forEach(function (r) {
+          var v = r.v21 || {};
+          if (!v.goals) { why.noCost++; return; }
+          var cen = D.desk.rows.filter(function (q) { return q.id === r.id; })[0], cenOk = !!(cen && cen.v21 && cen.v21.central && cen.v21.central.state === 'approved');
+          if (!cenOk) why.noBase++;
+          var fresh = v.saved && !(v.baseChanged || v.costChanged);
+          var px = fresh ? Math.round(v.saved.price) : (v.rec && v.rec.price > 0 ? Math.round(v.rec.price) : Math.round(r.cust.price || r.w2));
+          var pv = v.prevCustomer || 0;
+          if (v.guard > 0 && px < v.guard) { why.floor++; detail.push(r.name + ' ' + px + ' < Floor ' + v.guard); }
+          else if (unexplainedJump(px, pv, r.cost, r.costPrev, jumpB)) { why.jump++; detail.push(r.name + ' ' + pv + ' → ' + px + ' (ทุน ' + (r.costPrev || '—') + ' → ' + r.cost + ')'); }
+          plan.push({ product_id: r.id, price: px, goal: fresh ? (v.saved.goal || 'target') : (v.rec && v.rec.price === px ? (v.rec.strategy || 'target') : 'target') });
+        });
+        var reasons = [];
+        if (why.noBase) reasons.push('ราคากลางยังไม่ยืนยัน ' + why.noBase + ' รายการ');
+        if (why.floor) reasons.push('ต่ำกว่า Floor ' + why.floor + ' รายการ — ต้องใส่เหตุผลข้อยกเว้น');
+        if (why.jump) reasons.push('ขยับแรงเกินที่ทุนอธิบายได้ ' + why.jump + ' รายการ');
+        if (why.noCost) reasons.push('ไม่รู้ทุน ' + why.noCost + ' รายการ');
+        if (!plan.length) reasons.push('ไม่มีแถวที่คิดราคาได้');
+        var item = { id: c.id, name: c.name, rows: plan.length, reasons: reasons, detail: detail.slice(0, 6), owner: X.ownerOf ? (X.ownerOf(c.id) || null) : null };
+        if (reasons.length) { exceptions.push(item); return; }
+        if (preview) { done.push(item); return; }
+        var r1x = X.savePriceSheet(role, { customer_id: c.id, goal: 'rec', rows: plan });
+        if (r1x.status !== 200) { item.reasons = ['บันทึกไม่ผ่าน: ' + (r1x.body.error || r1x.status)]; exceptions.push(item); return; }
+        var r2 = X.handoff(role, { customer_id: c.id, note: 'ออกอัตโนมัติจากราคากลาง' });
+        if (r2.status !== 200) { item.reasons = ['ส่ง Sales ไม่ผ่าน: ' + (r2.body.error || r2.status)]; exceptions.push(item); return; }
+        done.push(item);
+      });
+      return { done: done, exceptions: exceptions, skipped: skipped };
+    }
+    function autoRound(role, body) {
+      body = body || {};
+      var preview = !!body.preview, step = body.step || 'all', jumpB = CFG.jump_baht || 8, out = { preview: preview, step: step, jumpBaht: jumpB };
+      if (step === 'all' || step === 'central') out.central = autoCentral(role, preview, jumpB);
+      if (step === 'all' || step === 'customers') out.customers = autoSheets(role, body);
+      if (!preview) logEvent({ actor: role, kind: 'human', action: 'auto-round', detail: (out.central ? 'ราคากลางยืนยันเอง ' + out.central.saved + ' · ต้องคนดู ' + out.central.need.length : '') + (out.customers ? ' · ใบรายเจ้าออกเอง ' + out.customers.done.length + ' · ต้องคนดู ' + out.customers.exceptions.length : ''), status: 'ok' });
+      out.rule = 'ระบบทำให้เองเมื่อ: ไม่ต่ำกว่า Floor · ราคาขยับไม่เกินที่ทุนอธิบายได้ (เกิน ' + jumpB + ' ฿ และ 5%) · ราคากลางของทุกแถวยืนยันแล้ว — นอกนั้นส่งให้คนตัดสิน';
+      return ok(out);
+    }
+
+    /* ── ผูก LINE ด้วยโค้ด: ลูกค้าแอด OA แล้วพิมพ์ "FH-XXXXX" → ระบบผูก user id ให้เอง ไม่ต้องให้เซลล์ไปขอ id ──
+       (ก่อนหน้านี้ ลูกค้า 45 เจ้ามี LINE id 0 เจ้า เพราะต้องมีคนไปคัดลอก id จาก webhook มาใส่มือ) */
+    function bindCode(cid) { return 'FH-' + X.hashId('b', String(cid) + ':line').slice(1, 6).toUpperCase(); }
+    function customerByBindCode(code) { var k = String(code || '').toUpperCase().replace(/[\s-]/g, ''); if (!/^FH[0-9A-F]{5}$/.test(k)) return null; return S.customers.filter(function (c) { return bindCode(c.id).replace('-', '') === k; })[0] || null; }
     function quoteReview(cid) {
       var sh = sheetFor(cid), c = X.custOf(cid); if (!sh || !c) return err(404, 'ไม่พบลูกค้า');
       var reqs = D['price-requests'].rows.filter(function (r) { return r.customer_id === cid; }), deals = D.deals.filter(function (d) { return d.customer_id === cid; });
@@ -560,7 +649,7 @@
         return { pid: r.pid, name: r.name, grp: r.grp, price: r.offer, prev: r.prev, diff: r.prev ? r.offer - r.prev : null, lastAgreed: lastAgreed, negoCount: my.length, avgAsk: avgAsk, flags: flags, risk: risk };
       });
       var risky = rows.filter(function (r) { return r.risk >= 2; });
-      return ok({ customer: c.name, label: sh.label, version: (sh.quote_version || 0) + 1, line: !!lineIdOf(cid), link: sh.link ? sh.link.url : null, rows: rows, total: rows.length, risky: risky.length,
+      return ok({ customer: c.name, label: sh.label, version: (sh.quote_version || 0) + 1, line: !!lineIdOf(cid), lineConfigured: X.lineConfigured ? X.lineConfigured() : false, bindCode: bindCode(cid), link: sh.link ? sh.link.url : null, rows: rows, total: rows.length, risky: risky.length,
         note: risky.length ? 'มีแนวโน้มโดนต่อรอง ' + risky.length + ' รายการ — ส่งได้เลย ลูกค้ากดขอต่อรองในลิงก์ หรือขอให้ Pricing ทบทวนก่อน' : 'ไม่พบรายการที่ลูกค้าเจ้านี้มักต่อรอง — ส่งได้เลย' });
     }
     /* ════════ เอกสารขาย: ลูกค้ายืนยันในลิงก์ → เซลล์ปิด Won → ระบบสร้างคำขอให้แอดมิน/บัญชีออก Quotation → Invoice เอง (ไม่ต้องพิมพ์/ส่งไฟล์) ════════ */
@@ -776,6 +865,7 @@
     function weekKey(d) { return (function (x) { var dt = new Date(x + 'T00:00:00Z'); dt.setUTCDate(dt.getUTCDate() - dt.getUTCDay()); return dt.toISOString().slice(0, 10); })(d || today()); }
     /* แผนสำรวจสัปดาห์นี้: ร้านละไม่เกิน 15 SKU — ไม่เคยรู้ราคา (ขายเยอะก่อน) → ราคาเก่าเกิน 7 วัน → ตัวที่ตลาดขยับแรง */
     function surveyPlan() {
+      if (!CFG.survey_mode) return { week: weekKey(), off: true, stores: [], recent: [], rules: { per: '', due: '' }, note: 'โหมดสำรวจหน้าร้านปิดอยู่ — เปิดเมื่อมีคนลงพื้นที่จริงหรือยังไม่มี connector ตลาด (ตอนนี้เปิดแล้วเท่ากับเพิ่มงานกรอกมือ)' };
       var wk = weekKey(), vol = {}; (D.board.lines || []).forEach(function (l) { vol[l.id] = l.vol || 0; });
       var subs = D.surveys.filter(function (s) { return s.week === wk; });
       var stores = sourceStatus().map(function (src) {
@@ -981,6 +1071,8 @@
         case '/api/survey/submit': need(1); return surveySubmit(role, body);
         case '/api/sources/fail': need(2); return ok(sourceFail(body.competitor_id, body.why || 'ดึงไม่ได้'));
         case '/api/inbox/note': need(2); D.inbox.unshift({ at: stamp(), file: body.file, status: body.status || 'ok', detail: body.detail || '' }); if (D.inbox.length > 200) D.inbox.length = 200; return ok();
+        case '/api/auto-round': need(2); return autoRound(role, body);
+        case '/api/auto-sheets': need(2); body.step = 'customers'; return autoRound(role, body);
         case '/api/cost-flags/decide': need(2); return decideFlag(role, body);
         case '/api/market-sync/run': need(2); return marketSync(role, body);
         case '/api/line/send': need(1); body.origin = req.origin; return lineSend(role, body);
@@ -996,6 +1088,6 @@
       }
       return undefined;
     }
-    return { route: route, logEvent: logEvent, alert: alert, health: health, drainOutbox: drainOutbox, followupTick: followupTick, marketSync: marketSync, computeTrend: computeTrend, stageOf: stageOf, board: board, matchProduct: matchProduct, costChecks: costChecks, importCosts: importCosts, decideFlag: decideFlag, normUnit: normUnit, STAGES: STAGES, parseSurvey: parseSurvey, sourceFail: sourceFail, intakePerf: intakePerf };
+    return { route: route, logEvent: logEvent, alert: alert, health: health, markSent: markSent, bindCode: bindCode, drainOutbox: drainOutbox, followupTick: followupTick, marketSync: marketSync, computeTrend: computeTrend, stageOf: stageOf, board: board, matchProduct: matchProduct, costChecks: costChecks, importCosts: importCosts, decideFlag: decideFlag, normUnit: normUnit, STAGES: STAGES, parseSurvey: parseSurvey, sourceFail: sourceFail, intakePerf: intakePerf };
   };
 });
