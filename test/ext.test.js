@@ -13,21 +13,41 @@ const okj = (r, m) => { assert.equal(r.status, 200, (m || '') + ' → ' + JSON.s
 const FEED = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'market-feed-sample.json'), 'utf8')).rows;
 
 test('1 ทุนเข้า: อ่านไฟล์ AL จับคู่ชื่อ + ด่านตัวเลขแปลก', () => {
-  const rows = [{ product: 'มันแข็งหมู', cost: '66' }, { product: 'กระดูกข้อขา', cost: '3' }, { product: 'หมูบด มัน 20%', cost: '95' }, { product: 'สามชั้นหมูหั่นเส้น หนา 1.5', cost: '260' }, { product: 'หมูยอ', cost: '90' }, { product: 'มันแข็งหมู', cost: '66' }];
+  const rows = [{ product: 'มันแข็งหมู', cost: '66' }, { product: 'กระดูกข้อขา', cost: '3' }, { product: 'หมูบด มัน 20%', cost: '95' }, { product: 'สามชั้นหมูหั่นเส้น หนา 1.5', cost: '260' }, { product: 'ไก่สดทั้งตัว', cost: '90' }, { product: 'มันแข็งหมู', cost: '66' }];
   const chk = okj(call('ops', 'POST', '/api/import/costs', { rows, commit: false }));
-  assert.equal(chk.problemCount, 2, 'หมูยอ ไม่มีในระบบ + แถวซ้ำ');
-  const tiny = chk.flags.find(f => f.name === 'กระดูกข้อขา'); assert.ok(tiny && tiny.checks.some(c => c.code === 'tiny'), 'ทุน 3 บาทต้องติดด่าน');
+  assert.equal(chk.problemCount, 0); assert.equal(chk.byKind.unmatched, 1, 'หมูยอ ไม่มีในระบบ → Unmatched เข้าคิว ห้ามสร้างทุนเอง'); assert.equal(chk.byKind.duplicate, 1, 'แถวซ้ำ → Review');
+  const tiny = chk.flags.find(f => f.name === 'กระดูกข้อขา'); assert.ok(tiny && tiny.kind === 'anomaly' && tiny.severity === 'critical' && tiny.checks.some(c => c.code === 'tiny'), 'ทุน 3 บาทต้องติดด่าน critical');
   const jump = chk.flags.find(f => /สามชั้นหมูหั่นเส้น/.test(f.name)); assert.ok(jump && jump.checks.some(c => c.code === 'jump' || c.code === 'above-price'), 'กระโดด/สูงกว่าราคาขายต้องติดด่าน');
-  assert.ok(chk.rows.find(r => r.raw === 'หมูบด มัน 20%').how, 'จับคู่ชื่อที่สะกดต่างได้');
+  assert.ok(chk.rows.find(r => r.raw === 'หมูบด มัน 20%').how, 'จับคู่ชื่อได้'); assert.equal(chk.auto, 2, 'Auto Pass = มันแข็ง + หมูบด (SKU ตรง + เลขปกติ)');
+  assert.equal(chk.rows[0].unit, 'THB/KG', 'normalize หน่วยเป็นบาท/กก.');
   const before = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === BONE).cost;
-  const c = okj(call('ops', 'POST', '/api/import/costs', { rows, commit: true, source: 'AL 15/10' }));
-  assert.equal(c.applied, 2, 'ใช้เฉพาะตัวที่ผ่านด่านและเปลี่ยนจริง (มันแข็ง + หมูบด)');
+  const c = okj(call('ops', 'POST', '/api/import/costs', { rows, commit: true, source: 'AL 15/10', file: 'AL-2026-10-15.xlsx' }));
+  assert.equal(c.applied, 2, 'ใช้เฉพาะตัวที่ผ่านด่านและเปลี่ยนจริง'); assert.match(c.batch_id, /^COST-\d{6}-01$/, 'ทุกการนำเข้าเป็น Cost Import Batch'); assert.equal(c.batch.effective_date, '2026-10-15', 'วันมีผลอ่านจากชื่อไฟล์');
   assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === MAN).cost, 66);
-  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === BONE).cost, before, 'ตัวที่ติดด่านยังไม่ถูกใช้');
-  const fl = okj(call('ops', 'GET', '/api/cost-flags')); assert.equal(fl.pending, 2);
-  okj(call('ops', 'POST', '/api/cost-flags/decide', { id: fl.rows.find(f => f.name === 'กระดูกข้อขา').id, approve: true, cost: 30 }));
+  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === BONE).cost, before, 'ตัวที่ติดด่านยังไม่เข้า Cost Master');
+  const cm = okj(call('ops', 'GET', '/api/cost-master')).rows.find(r => r.product_id === MAN); assert.equal(cm.current_cost, 66); assert.equal(cm.previous_cost, 65); assert.equal(cm.batch_id, c.batch_id); assert.equal(cm.approved_by, 'ops'); assert.equal(cm.effective_date, '2026-10-15');
+  const fl = okj(call('ops', 'GET', '/api/cost-flags')); assert.equal(fl.pending, 4, 'ทุนแปลก 2 + ไม่พบ SKU 1 + ซ้ำ 1');
+  /* Review: correct · hold → Waiting for Cost · confirm · match (จำชื่อ) · skip */
+  okj(call('ops', 'POST', '/api/cost-flags/decide', { id: fl.rows.find(f => f.name === 'กระดูกข้อขา').id, action: 'correct', cost: 30, note: 'ไฟล์พิมพ์ตกเลข' }));
   assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === BONE).cost, 30);
-  assert.ok(okj(call('ops', 'GET', '/api/dashboard')).alerts.length >= 0);
+  const jid = fl.rows.find(f => /สามชั้นหมูหั่นเส้น/.test(f.name)).id, JP = PID('สามชั้นหมูหั่นเส้น');
+  okj(call('ops', 'POST', '/api/cost-flags/decide', { id: jid, action: 'hold', note: 'รอเฮียหมิงยืนยัน' }));
+  assert.equal(okj(call('ops', 'GET', '/api/cost-master')).rows.find(r => r.product_id === JP).state, 'waiting');
+  const dk = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === JP); assert.equal(dk.v21.ready, 'waiting_cost', 'SKU ที่ทุนพักไว้ตั้งราคาใหม่ไม่ได้'); assert.equal(dk.v21.goals, null);
+  assert.ok(okj(call('ops', 'GET', '/api/desk')).centralCount.waiting >= 1);
+  okj(call('ops', 'POST', '/api/cost-flags/decide', { id: jid, action: 'confirm' }));
+  assert.equal(okj(call('ops', 'GET', '/api/cost-master')).rows.find(r => r.product_id === JP).state, 'approved'); assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === JP).cost, 260);
+  const un = fl.rows.find(f => f.kind === 'unmatched'); assert.equal(un.raw, 'ไก่สดทั้งตัว'); assert.ok(Array.isArray(un.candidates));
+  const mt = okj(call('ops', 'POST', '/api/cost-flags/decide', { id: un.id, action: 'match', product_id: PID('หมูบด มัน 30%') })); assert.ok(mt.rematched || mt.status === 'approved');
+  const again = okj(call('ops', 'POST', '/api/import/costs', { rows: [{ product: 'ไก่สดทั้งตัว', cost: '86' }], commit: false }));
+  assert.equal(again.rows[0].how, 'alias', 'ครั้งถัดไประบบจำชื่อที่คนจับคู่ไว้ ไม่ถามซ้ำ'); assert.equal(again.rows[0].name, 'หมูบด มัน 30%');
+  okj(call('ops', 'POST', '/api/cost-flags/decide', { id: fl.rows.find(f => f.kind === 'duplicate').id, action: 'skip' }));
+  const b = okj(call('ops', 'GET', '/api/cost-batches')).rows[0]; assert.equal(b.id, c.batch_id); assert.equal(b.by, 'ops');
+  assert.ok(okj(call('ops', 'GET', '/api/dashboard')).batches.length >= 1);
+  /* กรอกมือก็เป็น batch + ผ่านด่านเดียวกัน: ทุน 3 บาทไม่ทับทันที */
+  const man = okj(call('ops', 'POST', '/api/costs', { items: [{ id: MAN, cost: 3 }], source: 'กรอกในหน้าเว็บ' })); assert.equal(man.saved, 0); assert.equal(man.review, 1);
+  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === MAN).cost, 66, 'Cost Anomaly — Review Required ไม่เปลี่ยนทุนเอง');
+  okj(call('ops', 'POST', '/api/cost-flags/decide', { id: okj(call('ops', 'GET', '/api/cost-flags')).rows.find(f => f.status === 'pending' && f.product_id === MAN).id, action: 'skip' }));
   assert.equal(okj(call('ops', 'GET', '/api/health')).jobs.find(j => j.key === 'cost-import').status, 'ok');
 });
 

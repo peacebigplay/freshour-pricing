@@ -130,36 +130,47 @@ test('flow ครบวง: ราคากลาง → ใบรายเจ�
   sh = okj(call('sale', 'GET', '/api/sheet?customer=' + CID)); assert.equal(sh.sent, false); assert.equal(sh.prevLabel, '01-07/10');
 });
 
-test('ทุน/ตลาด/เกณฑ์: แก้แล้วทุกหน้าเห็นตรงกัน', () => {
-  const PID0 = MAN;   /* มันแข็งหมู: ทุน 65 · ส่วนเผื่อ 15 → ปลีก 104 · 2kg 80 · 5kg 77 · 10kg 76 ตามใบ AL */
+test('ทุน/ตลาด/นโยบาย: แก้แล้วทุกหน้าเห็นตรงกัน · Target = ทุน ÷ (1 − Target%) ของกลุ่ม', () => {
+  const PID0 = MAN;   /* มันแข็งหมู: ทุน 65 · ใบ AL 80 · กลุ่ม "มัน" policy ถอดจากใบ (target > min) */
+  const pol = okj(call('ops', 'GET', '/api/policy')); const gm = pol.groups.find(g => g.grp === 'มัน'); assert.ok(gm.target > gm.min && gm.min >= 5, 'ทุกกลุ่มมี Target > Minimum');
+  assert.ok(pol.groups.every(g => g.target > g.min)); assert.ok(pol.groups.length >= 15);
+  const T0 = Math.ceil(65 / (1 - gm.target / 100)), W0 = Math.max(80, T0);
   const before = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === PID0);
-  assert.deepEqual([before.retail, before.w2, before.s5, before.s10], [104, 80, 77, 76], 'ราคาตามใบ AL เป๊ะ');
+  assert.deepEqual([before.retail, before.w2, before.s5, before.s10], [104, W0, W0 - 3, W0 - 4], 'ราคาเดิม ≥ Target → ยืนราคาใบ AL · ต่ำกว่า → ขยับขึ้น Target');
+  const dk0 = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID0);
+  assert.equal(dk0.v21.goals.target.price, T0); assert.equal(dk0.v21.goals.protect.price, Math.ceil(65 / (1 - gm.min / 100))); assert.equal(dk0.v21.guard, dk0.v21.goals.protect.price);
+  assert.ok(dk0.v21.rec && dk0.v21.rec.why.length >= 4 && dk0.v21.rec.price === W0, 'ระบบอธิบายที่มาของราคาแนะนำได้');
   okj(call('ops', 'POST', '/api/costs', { items: [{ id: PID0, cost: 70 }], source: 'ทดสอบ' }));
   const pl = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === PID0);
-  assert.equal(pl.cost, 70); assert.deepEqual([pl.retail, pl.w2, pl.s5, pl.s10], [112, 85, 82, 81], 'ทุนใหม่ → ทุกระดับคิดใหม่จากสูตรเดียวกับใบ'); assert.equal(pl.costSrc, 'ทดสอบ');
-  const bd = okj(call('ops', 'GET', '/api/board')).lines.find(l => l.id === PID0); assert.equal(bd.cost, 70); assert.equal(bd.w2, 85);
-  const dk = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID0); assert.equal(dk.cost, 70); assert.equal(dk.retail, 112); assert.equal(dk.v21.tiers.s10, 81); assert.equal(dk.v21.goals.target.price, Math.ceil(70 / 0.85));
-  const pv = okj(call('ops', 'GET', '/api/product?id=' + PID0)); assert.equal(pv.p.cost, 70); assert.equal(pv.p.add, 15); assert.ok(pv.hist.length >= 1);
-  /* ตัวที่ใบตั้งปลีกเอง (override) ต้องคงค่าที่ตั้ง: กระดูกข้อขา ปลีก 24 ทั้งที่ทุน 3 */
+  const T1 = Math.ceil(70 / (1 - gm.target / 100)), W1 = Math.max(80, T1);
+  /* เทสต์ก่อนหน้าอนุมัติราคากลางไว้แล้ว (80) → ทุนเปลี่ยน: ราคาที่อนุมัติยังใช้อยู่ แต่สถานะต้องเป็น Pricing Review Required และระบบแนะนำใหม่ทันที */
+  assert.equal(pl.cost, 70); assert.deepEqual([pl.retail, pl.w2, pl.s5, pl.s10], [112, W0, W0 - 3, W0 - 4], 'ราคาที่อนุมัติไม่เปลี่ยนเอง'); assert.equal(pl.costSrc, 'ทดสอบ'); assert.equal(pl.rec, W1, 'แนะนำใหม่ = Target ที่ทุนใหม่'); assert.equal(pl.centralState, 'margin_at_risk', 'ราคาที่อนุมัติ 80 ที่ทุน 70 = 12.5% ต่ำกว่า Minimum → Margin at Risk');
+  const bd = okj(call('ops', 'GET', '/api/board')).lines.find(l => l.id === PID0); assert.equal(bd.cost, 70); assert.equal(bd.w2, W0);
+  const dk = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID0); assert.equal(dk.cost, 70); assert.equal(dk.retail, 112); assert.equal(dk.v21.tiers.s10, W0 - 4); assert.equal(dk.v21.goals.target.price, T1); assert.equal(dk.v21.rec.price, W1); assert.equal(dk.v21.central.state, 'margin_at_risk');
+  const pv = okj(call('ops', 'GET', '/api/product?id=' + PID0)); assert.equal(pv.p.cost, 70); assert.equal(pv.p.add, 15); assert.ok(pv.hist.length >= 1); assert.equal(pv.costMaster.current_cost, 70); assert.equal(pv.policy.target, gm.target);
+  /* ตัวที่ใบตั้งปลีกเอง (override) คงค่า: กระดูกข้อขา ปลีก 24 · ส่ง 15 (ราคาเดิมสูงกว่า Target และไม่มีตลาดบอกว่าแพง → ยืนราคาเดิม) */
   const bone = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === BONE); assert.deepEqual([bone.retail, bone.w2], [24, 15]);
   const sh = okj(call('ops', 'POST', '/api/costs', { shift: 1 })); assert.equal(sh.shifted, 195); assert.equal(sh.nocost, 0);
   okj(call('ops', 'POST', '/api/products/' + PID0, { vol_week: 2000 }));
   assert.equal(okj(call('ops', 'GET', '/api/board')).lines.find(l => l.id === PID0).vol, 2000);
   const np = okj(call('ops', 'POST', '/api/products', { name: 'สินค้าทดสอบ', grp: 'อื่นๆ', cost: 100, add_baht: 20 }));
-  const nr = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === np.id); assert.equal(nr.w2, 120); assert.equal(nr.retail, 160); assert.equal(nr.s10, 116);
+  const nr = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === np.id); assert.ok(nr.w2 >= 120); assert.equal(nr.retail, 160); assert.equal(nr.s10, nr.w2 - 4);
   assert.ok(okj(call('ops', 'GET', '/api/desk?customer=cd6f5')).rows.find(r => r.id === np.id), 'สินค้าใหม่โผล่ในใบรายเจ้าด้วย');
-  okj(call('ops', 'POST', '/api/competitor-prices', { items: [{ product_id: PID0, competitor_id: 'a', price: 99 }] }));
-  const m = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === PID0).marks.find(x => x.id === 'a'); assert.equal(m.price, 99); assert.equal(m.state, 'fresh');
-  assert.equal(okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID0).v21.goals.competitive.disabled, undefined);
+  /* ตลาด: ราคาปลีก (Makro หน้าร้าน) ไม่ใช้เทียบราคาส่ง · ราคาส่ง (Makro B2B) ใช้ → Competitive = ถูกสุด − 1 */
+  okj(call('ops', 'POST', '/api/competitor-prices', { items: [{ product_id: PID0, competitor_id: 'a', price: 150 }] }));
+  assert.equal(okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID0).v21.goals.competitive.disabled, true);
+  okj(call('ops', 'POST', '/api/competitor-prices', { items: [{ product_id: PID0, competitor_id: 'c', price: 99 }] }));
+  const m = okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === PID0).marks.find(x => x.id === 'c'); assert.equal(m.price, 99); assert.equal(m.state, 'fresh');
+  const gc = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID0).v21; assert.equal(gc.goals.competitive.price, 98); assert.equal(gc.market.freshness, 'fresh');
   assert.equal(call('ops', 'PUT', '/api/config', { floor_pct: 10 }).status, 400);
   okj(call('ops', 'PUT', '/api/config', { floor_pct: 13, haggle_baht: 3 }));
   assert.equal(okj(call('ops', 'GET', '/api/guard')).floorPct, 13); assert.equal(okj(call('ops', 'GET', '/api/pricelist')).haggle, 3);
-  okj(call('ops', 'PUT', '/api/category-targets', { key: 'competitive', lo: 12, hi: 14, target: 14 }));
-  assert.equal(okj(call('ops', 'GET', '/api/category-guard')).groups.find(g => g.key === 'competitive').effective, 14);
-  assert.equal(okj(call('ops', 'GET', '/api/category-items?key=competitive')).items[0].catTarget, 14);
-  const compItem = okj(call('ops', 'GET', '/api/category-items?key=competitive')).items[0].id;
-  const sk = okj(call('ops', 'POST', '/api/sku-category', { product_id: compItem, category_key: 'popular', target_pct: 22 })); assert.equal(sk.effective, 22);
-  assert.ok(okj(call('ops', 'GET', '/api/category-items?key=popular')).items.find(i => i.id === compItem).moved);
+  /* Policy Change: แก้ Target กลุ่ม "มัน" → ทุก SKU ในกลุ่ม mark Pricing Policy Changed + Target ใหม่ทันที · ไม่ต้องแก้ทีละตัว */
+  assert.equal(call('ops', 'PUT', '/api/category-targets', { key: 'competitive', lo: 12, hi: 14, target: 14 }).status, 410, 'เป้าหมวดเดิมเลิกใช้ → /api/policy');
+  const pu = okj(call('ops', 'POST', '/api/policy', { grp: 'มัน', target: gm.target + 2, min: gm.min, reason: 'ทดสอบนโยบาย' })); assert.equal(pu.changed, 7); assert.equal(pu.version, pol.version + 1);
+  const dk2 = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === PID0); assert.equal(dk2.v21.goals.target.price, Math.ceil(71 / (1 - (gm.target + 2) / 100))); assert.ok(dk2.v21.policyChanged, 'SKU ในกลุ่มถูก mark Pricing Policy Changed');
+  assert.equal(call('ops', 'POST', '/api/policy', { grp: 'มัน', target: 10, min: 12 }).status, 400, 'Target ต่ำกว่า Minimum ไม่ได้');
+  assert.equal(okj(call('ops', 'GET', '/api/policy')).log[0].grp, 'มัน');
   assert.equal(okj(call('ops', 'GET', '/api/data-audit')).master, 196, 'สินค้า = ใบราคา AL 192 + แช่แข็ง 3 + ที่เพิ่มในเทสต์ 1');
 });
 
@@ -232,4 +243,33 @@ test('server จริง: cookie · redirect ตามบทบาท · หน
     r = await req('GET', '/q/nothing'); assert.equal(r.status, 200); assert.ok(r.text.includes('ใช้ไม่ได้แล้ว'));
     r = await req('GET', '/logout', null, ck); assert.equal(r.status, 302); assert.ok(r.headers['set-cookie'][0].includes('Max-Age=0'));
   } finally { server.close(); }
+});
+
+test('Pricing: Approved Central Price มี version · Cost Change Impact → Pricing Review Required / Margin at Risk · ต่ำกว่า Minimum = block', () => {
+  const P = PID('สันคอหมู');
+  const dk = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === P), v = JSON.parse(JSON.stringify(dk.v21)), M = v.goals.protect.price;   /* snapshot — store คืน object จริง เปลี่ยนตามเมื่อคิดใหม่ */
+  assert.equal(call('ops', 'POST', '/api/save-price-sheet', { customer_id: null, rows: [{ product_id: P, price: M - 1 }] }).status, 400, 'ต่ำกว่า Minimum โดยไม่มีเหตุผล = block');
+  okj(call('ops', 'POST', '/api/save-price-sheet', { customer_id: null, rows: [{ product_id: P, price: v.rec.price }] }));
+  let c = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === P).v21.central; assert.equal(c.state, 'approved'); assert.equal(c.recommended, v.rec.price); assert.ok(c.version >= 1); assert.equal(c.target, v.policy.target);
+  const v1 = c.version, vs = okj(call('ops', 'GET', '/api/price-versions?id=' + P)).rows; assert.ok(vs.length >= 1); assert.equal(vs[0].approved_price, v.rec.price); assert.equal(vs[0].approved_by, 'ops');
+  const c0 = v.rec.cost || dk.cost, step1 = Math.round(c0 * 1.03);   /* +3% → Auto Pass */
+  okj(call('ops', 'POST', '/api/costs', { items: [{ id: P, cost: step1 }], source: 'ทดสอบ' }));
+  c = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === P).v21.central; assert.equal(c.state, 'review_required', 'ทุนเปลี่ยน → ไม่ปล่อยให้ Approved'); assert.ok(c.impact.margin_after < c.impact.margin_before);
+  assert.equal(okj(call('ops', 'GET', '/api/pricelist')).rows.find(r => r.id === P).w2, v.rec.price, 'ราคาที่อนุมัติยังใช้อยู่จนกว่าจะยืนยันใหม่');
+  const step2 = Math.round(v.rec.price * (1 - v.policy.min / 100)) + 1;   /* ทำให้ margin ต่ำกว่า Minimum */
+  okj(call('ops', 'POST', '/api/costs', { items: [{ id: P, cost: step2 }], source: 'ทดสอบ' }));
+  c = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === P).v21.central;
+  if (c.state !== 'margin_at_risk') { const f = okj(call('ops', 'GET', '/api/cost-flags')).rows.find(x => x.status === 'pending' && x.product_id === P); okj(call('ops', 'POST', '/api/cost-flags/decide', { id: f.id, action: 'confirm' })); c = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === P).v21.central; }
+  assert.equal(c.state, 'margin_at_risk');
+  const rec2 = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === P).v21.rec; assert.ok(rec2.price > v.rec.price, 'แนะนำใหม่ขยับขึ้นตามทุน');
+  okj(call('ops', 'POST', '/api/save-price-sheet', { customer_id: null, rows: [{ product_id: P, price: rec2.price }] }));
+  c = okj(call('ops', 'GET', '/api/desk')).rows.find(r => r.id === P).v21.central; assert.equal(c.state, 'approved'); assert.equal(c.version, v1 + 1, 'เก็บ version ไม่ทับของเดิม');
+  assert.equal(okj(call('ops', 'GET', '/api/price-versions?id=' + P)).rows.length, vs.length + 1);
+  const cc = okj(call('ops', 'GET', '/api/desk')).centralCount; ['review_required', 'margin_at_risk', 'policy_changed', 'waiting'].forEach(k => assert.ok(k in cc));
+  /* ราคารายเจ้าเริ่มจากราคากลาง · ต่ำกว่าเป้าได้ (มีเหตุผล) · ต่ำกว่า Minimum ต้องมี exception */
+  const CID = okj(call('ops', 'GET', '/api/customers')).customers.find(x => x.n > 0).id;
+  const cd = okj(call('ops', 'GET', '/api/desk?customer=' + CID)).rows.find(r => r.id === P); assert.equal(cd.v21.base, rec2.price);
+  const sv = okj(call('ops', 'POST', '/api/save-price-sheet', { customer_id: CID, rows: [{ product_id: P, price: rec2.price - 2 }] }));
+  const saved = okj(call('ops', 'GET', '/api/desk?customer=' + CID)).rows.find(r => r.id === P).v21.saved; assert.equal(saved.delta, -2); assert.ok(saved.state && saved.margin != null);
+  assert.ok(okj(call('ops', 'GET', '/api/price-versions?customer=' + CID)).rows.some(x => x.kind === 'customer' && x.product_id === P));
 });

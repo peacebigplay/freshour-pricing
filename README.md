@@ -84,6 +84,24 @@ npm test                                    # ทดสอบ 13 ชุด (flow
 - **กราฟ** (`public/charts.js` ไม่มี library): เส้น/พื้นที่ · แท่งปลายมน · โดนัท · sparkline · tooltip · ชุดสีหมวดตรวจแล้ว (คนตาบอดสี/คอนทราสต์ผ่าน) — Pricing Home: ความคืบหน้า 3 ขั้น + ทุนเฉลี่ยรายรอบ + margin vs เป้า + ตลาดสดกี่ % · หน้ารับทุน: ช่องทางทุนเข้า + ดัชนีตลาด 12 เดือน + margin รายกลุ่ม
 - หน้าตั้งราคาแสดงทุกระดับใต้ช่อง 2kg: `ปลีก · 5kg · 10kg · หน่วย` · นำเข้า PDF ได้ตรง (pdf.js) นอกจาก Excel/CSV
 
+## รอบ 5 · FRESHOUR COST & PRICING LOGIC — รับทุนอัตโนมัติ หยุดเฉพาะที่น่าสงสัย · ราคาจาก Margin Policy ของกลุ่ม
+
+```
+AL / วาง / LINE / กล่องรับ → Cost Import Batch (COST-ddmmyy-nn: ที่มา · เวลา · ใคร · ไฟล์ · วันมีผล)
+  → Normalize (ชื่อ · ทุน · หน่วย→บาท/กก.) → SKU Matching: Matched / Possible (คิว) / Unmatched (ห้ามสร้างทุนเอง · คนจับแล้วระบบจำ alias)
+  → Cost Validation (ทุนเดิม · ประวัติ · ช่วงสมเหตุผล ≤10฿ · กลุ่ม) → Auto Pass | Review Queue (ยืนยัน / แก้เป็น / พักไว้=Waiting for Cost / เลือก SKU / ไม่ใช้)
+  → Approved Cost Master (product_id · current · previous · effective_date · source · approved_by/at · batch) — ทุกหน้าอ่านชุดเดียว
+  → Cost Change Impact: มีราคาอนุมัติอยู่ → margin ใหม่ทันที → Pricing Review Required / Margin at Risk (ไม่ปล่อยให้ Approved)
+  → Policy รายกลุ่ม (Target / Minimum) + ตลาด (fresh <7 · usable 7–30 · stale >30 ไม่ใช้คิด) + ราคาเดิม
+  → Engine: Target = ทุน÷(1−Target) · Minimum = ทุน÷(1−Min) · Hold · Competitive = ตลาดถูกสุด−1 → Recommended + เหตุผล → Margin Guard
+  → พี่จุ๋ม: รับแนะนำ / เลือก Goal / กรอกเอง (ต่ำกว่า Minimum = block/ต้องมีเหตุผล) → Approved Central Price (version) → ราคารายเจ้าเริ่มจากราคากลาง
+```
+
+- API ใหม่: `GET/POST /api/policy` (แก้เป้ากลุ่ม → mark Pricing Policy Changed + คิดใหม่ทั้งกลุ่ม) · `GET /api/cost-master` · `GET /api/cost-batches` · `GET /api/price-versions?id=|customer=` · `POST /api/cost-flags/decide {action: confirm|correct|hold|match|skip}` · `/api/costs` (กรอกมือ) ก็เป็น batch ผ่านด่านเดียวกัน
+- ค่า Target/Minimum เริ่มต้นถอดจากใบราคา AL (median margin ของกลุ่ม · min = target−3) — **ค่าจริงต้องมาจาก Freshour** แก้ได้ที่ตารางนโยบายหน้าตั้งราคา/Margin Guard
+- ตัดสินใจของเครื่อง: ไม่ลดราคาเองถ้าไม่มีหลักฐานตลาด (ราคาเดิม ≥ Target → ยืน) · Target สูงกว่าตลาดทุกเจ้า → แข่งขัน แต่ไม่ต่ำกว่า Minimum · ราคาปลีกหน้าร้าน (Makro) ไม่ใช้เทียบราคาส่ง
+- Executive ยังอ่าน margin จริงจาก invoice (ไม่ใช่ quote) เหมือนเดิม
+
 ## โครงสร้าง
 
 ```

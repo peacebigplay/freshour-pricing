@@ -69,7 +69,7 @@ PX.get('/api/guard').then(function (G) {
 var CAT = null;
 function tgtText(g) { return g.lo === g.hi ? g.lo + '%' : g.lo + '–' + g.hi + '%'; }
 function loadCat() {
-  PX.get('/api/category-guard').then(function (c) { CAT = c; drawCat(); })
+  PX.get('/api/policy').then(function (c) { CAT = c; drawCat(); })
     .catch(function () { var b = document.getElementById('catBox'); if (b) b.innerHTML = ''; });
 }
 /* ตารางหมวดใช้ชิ้นเดียวกับหน้าตั้งราคา (catmargin.js) — ข้อมูลชุดเดียวกัน แก้ที่ไหนเห็นตรงกันทุกหน้า */
