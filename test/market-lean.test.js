@@ -6,6 +6,7 @@ const fs = require('fs'), path = require('path'), zlib = require('zlib');
 const { createStore } = require('../src/store');
 function loadDocs() { const dir = path.join(__dirname, '..', 'data', 'fixtures'); const idx = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')); const d = {}; for (const k of Object.keys(idx)) d[k] = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(dir, idx[k]))).toString('utf8')); return d; }
 const docs = loadDocs(), store = createStore(docs, {}), S = docs.state;
+const TODAY = new Date(Date.now() + 7 * 36e5).toISOString().slice(0, 10);   /* วันที่กรุงเทพ — ใบราคาลงวันนี้ จะได้ไม่ครบรอบ 7 วันเพราะเวลาผ่านไป */
 const call = (role, method, url, body, rep) => store.handle({ role, rep, method, url, body, origin: 'http://t' });
 const okj = (r, m) => { assert.equal(r.status, 200, (m || '') + ' → ' + JSON.stringify(r.body).slice(0, 300)); return r.body; };
 
@@ -35,12 +36,12 @@ test('ใบราคาคู่แข่ง = เราขอมาเอง�
   const plan = okj(call('ops', 'GET', '/api/survey'));
   assert.ok(plan.stores.filter(s => s.mode === 'survey').length === 2 && plan.stores.filter(s => s.dueThisWeek).length === 1, 'เหลือคิวสำรวจเฉพาะร้านที่ไม่มีบัญชี B2B');
   assert.ok(!plan.stores.find(s => s.competitor_id === 'b').dueThisWeek && plan.sheets.length === 2);
-  const r = okj(call('ops', 'POST', '/api/survey/submit', { store: cpf.competitor_id, mode: 'sheet', observed_at: '2026-10-14', rows: pids.map((id, i) => ({ product_id: id, price: 100 + i })) }));
+  const r = okj(call('ops', 'POST', '/api/survey/submit', { store: cpf.competitor_id, mode: 'sheet', observed_at: TODAY, rows: pids.map((id, i) => ({ product_id: id, price: 100 + i })) }));
   assert.equal(r.n, 3);
   const obs = docs.market_obs.filter(o => o.competitor_id === cpf.competitor_id); assert.equal(obs.length, 3);
-  obs.forEach(o => { assert.equal(o.via, 'sheet'); assert.equal(o.observed_at, '2026-10-14'); });
+  obs.forEach(o => { assert.equal(o.via, 'sheet'); assert.equal(o.observed_at, TODAY); });
   src = okj(call('ops', 'GET', '/api/sources')).sources; const sc = src.find(x => x.id === cpf.competitor_id);
-  assert.equal(sc.mode, 'sheet'); assert.equal(sc.sheetDue, false, 'ได้ใบรอบนี้แล้ว'); assert.equal(sc.lastSheet, '2026-10-14'); assert.ok(!sc.lastOnline, 'ใบราคาไม่นับเป็นดึงออนไลน์');
+  assert.equal(sc.mode, 'sheet'); assert.equal(sc.sheetDue, false, 'ได้ใบรอบนี้แล้ว'); assert.equal(sc.lastSheet, TODAY); assert.ok(!sc.lastOnline, 'ใบราคาไม่นับเป็นดึงออนไลน์');
   assert.ok(docs.events.some(e => e.action === 'competitor-sheet' && /B2B/.test(e.detail)) && docs.events.some(e => e.action === 'b2b-source'));
   /* ถึงรอบแล้วใบไม่มา → งานรายวันเตือนให้ทวง (ไม่มีใครต้องจำ) */
   docs.source_status.b.b2b.since = '2026-09-20';

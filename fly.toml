@@ -1,4 +1,5 @@
-# Fly.io — fly launch --copy-config · fly volumes create freshour_data --size 1 · fly secrets set FH_SECRET=... FH_PINS=... LINE_CHANNEL_TOKEN=... LINE_CHANNEL_SECRET=... LINE_ADMIN_USER_ID=...
+# Fly.io — fly launch --copy-config · fly volumes create freshour_data --size 1 · fly secrets set LINE_CHANNEL_TOKEN=... LINE_CHANNEL_SECRET=... LINE_ADMIN_USER_ID=... LINE_STAFF_USER_IDS=...
+# บัญชีผู้ใช้: fly ssh console → node tools/users.js add <id> --role admin --name "ชื่อ" (เก็บบน volume /app/data/var)
 app = "freshour-pricing"
 primary_region = "sin"
 
@@ -6,7 +7,7 @@ primary_region = "sin"
 
 [env]
   PORT = "8787"
-  FH_INBOX_DIR = "/app/data/inbox"
+  FH_SECURE = "1"
 
 [http_service]
   internal_port = 8787
@@ -18,8 +19,8 @@ primary_region = "sin"
   interval = "60s"
   timeout = "5s"
   method = "GET"
-  path = "/api/health"
+  path = "/healthz"
 
 [mounts]
   source = "freshour_data"
-  destination = "/app/data"
+  destination = "/app/data/var"

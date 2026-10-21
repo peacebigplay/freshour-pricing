@@ -13,7 +13,7 @@ function loadDocs() {
   for (const k of Object.keys(idx)) docs[k] = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(dir, idx[k]))).toString('utf8'));
   return docs;
 }
-const store = createStore(loadDocs(), {});
+const store = createStore(loadDocs(), { devOpen: true });
 const call = (role, method, url, body, rep) => store.handle({ role, rep, method, url, body, origin: 'http://t' });
 const okj = r => { assert.equal(r.status, 200, JSON.stringify(r.body).slice(0, 200)); return r.body; };
 
@@ -84,7 +84,7 @@ test('ตามเจ้าที่เงียบ: งานระบบรา
 });
 
 test('SALES LOGIC: ส่งแล้วต่อเมื่อ LINE สำเร็จจริง · ส่งไม่สำเร็จ = งาน P1 · ราคาต่อรองที่ Pricing ตัดสินแล้ว = P1 · เงียบเกิน SLA → ตาม → เกิน 7 วันต้องตัดสินใจ · Lost ต้องมีเหตุผลแบบโครงสร้าง', async () => {
-  const docs2 = loadDocs(); const st2 = createStore(docs2, {});
+  const docs2 = loadDocs(); const st2 = createStore(docs2, { devOpen: true });
   const c2 = (role, method, url, body, rep) => st2.handle({ role, rep, method, url, body, origin: 'http://t' });
   const q = () => okj(c2('sale', 'GET', '/api/sales-queue', null, 's1')).rows;
   /* Pricing: ยืนยันราคากลาง → บันทึกใบรายเจ้าของลูกค้า s1 หนึ่งเจ้า → ส่ง Sales = เข้าคิว "พร้อมส่ง" ของเซลล์ 1 (ก่อนหน้านั้นเป็น "รอ Pricing" ไม่ใช่งานเซลล์) */
@@ -132,7 +132,7 @@ test('SALES LOGIC: ส่งแล้วต่อเมื่อ LINE สำเ�
 });
 
 test('ส่งใบราคาเป็นลิงก์ ไม่ใช่เอกสาร: เซลล์ตรวจก่อนส่ง → LINE ส่งลิงก์ (ไม่มีราคาในข้อความ) → ลูกค้ารับ/ต่อรองในลิงก์ → Pricing ตอบในใบเดียวกัน → ยืนยันครบ → Won → ระบบขอ Quotation/Invoice ให้แอดมินเอง', async () => {
-  const docs3 = loadDocs(); const st = createStore(docs3, {});
+  const docs3 = loadDocs(); const st = createStore(docs3, { devOpen: true });
   const c3 = (role, method, url, body, rep) => st.handle({ role, rep, method, url, body, origin: 'http://t' });
   /* Pricing เตรียมใบของลูกค้า s1 หนึ่งเจ้า */
   let dk = okj(c3('ops', 'GET', '/api/desk'));

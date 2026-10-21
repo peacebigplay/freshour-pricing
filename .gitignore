@@ -1,4 +1,5 @@
 data/journal.jsonl
+data/var/
 node_modules/
 dist/
 .playwright/

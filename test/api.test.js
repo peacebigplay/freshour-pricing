@@ -17,7 +17,7 @@ function loadDocs() {
   return docs;
 }
 const docs = loadDocs();
-const store = createStore(docs, {});
+const store = createStore(docs, { devOpen: true });   /* devOpen = โหมดเครื่องพัฒนา เลือกบทบาทได้ · ของจริง server ตรวจบัญชีก่อน */
 const call = (role, method, url, body) => store.handle({ role, method, url, body, origin: 'http://t' });
 const PID = name => (docs.pricelist.rows.find(r => r.name === name) || {}).id;   /* fixture ตามใบราคา AL — อ้างด้วยชื่อ ไม่ใช่ id */
 const MAN = PID('มันแข็งหมู'), BONE = PID('กระดูกข้อขา');
@@ -40,10 +40,10 @@ test('สิทธิ์: anon 401 · sale ไม่เห็นทุน · ops
 test('login: บทบาทที่รู้จักเท่านั้น · โหมดรหัสผ่าน', () => {
   assert.equal(call('anon', 'POST', '/api/login', { role: 'ops' }).session, 'ops');
   assert.equal(call('anon', 'POST', '/api/login', { role: 'hacker' }).status, 400);
-  const s2 = createStore(loadDocs(), { pins: { ops: '1234' } });
-  assert.equal(s2.handle({ role: 'anon', method: 'POST', url: '/api/login', body: { role: 'ops', pin: '0000' } }).status, 401);
-  assert.equal(s2.handle({ role: 'anon', method: 'POST', url: '/api/login', body: { role: 'ops', pin: '1234' } }).session, 'ops');
+  const s2 = createStore(loadDocs(), {});   /* ไม่ใช่เครื่องพัฒนา: store ไม่ให้เลือกบทบาทเอง — ต้องผ่านบัญชีที่ server (src/auth.js) */
+  assert.equal(s2.handle({ role: 'anon', method: 'POST', url: '/api/login', body: { role: 'ops' } }).status, 503);
   assert.equal(s2.handle({ role: 'anon', method: 'GET', url: '/api/me' }).body.needPin, true);
+  assert.equal(s2.handle({ role: 'anon', method: 'GET', url: '/api/reps' }).status, 401, 'รายชื่อเซลล์ไม่เปิดให้คนนอก');
 });
 
 test('flow ครบวง: ราคากลาง → ใบรายเจ้า → ส่ง Sales → ลูกค้า → ต่อรอง → invoice → รับเงิน → ประกาศรอบ', () => {
@@ -223,7 +223,8 @@ test('บริการ/ขนส่ง/prospect/baseline/สมอง', () => 
 });
 
 test('server จริง: cookie · redirect ตามบทบาท · หน้า · ลิงก์ลูกค้า', async () => {
-  process.env.FH_JOURNAL = '0'; process.env.FH_PORT = '0'; process.env.FH_JOBS = '0';
+  process.env.FH_JOURNAL = '0'; process.env.FH_PORT = '0'; process.env.FH_JOBS = '0'; process.env.FH_DEV_OPEN = '1';
+  process.env.FH_VAR_DIR = fs.mkdtempSync(path.join(require('os').tmpdir(), 'fh-var-'));
   const { server } = require('../server');
   await new Promise(r => server.listen(0, r));
   const port = server.address().port, base = 'http://127.0.0.1:' + port;
@@ -233,10 +234,11 @@ test('server จริง: cookie · redirect ตามบทบาท · หน
   });
   try {
     let r = await req('GET', '/'); assert.equal(r.status, 302); assert.equal(r.headers.location, '/login');
-    r = await req('POST', '/api/login', { role: 'boss' }); const ck = r.headers['set-cookie'][0].split(';')[0]; assert.ok(ck.startsWith('fh_role='));
+    r = await req('POST', '/api/login', { role: 'boss' }); const ck = r.headers['set-cookie'][0].split(';')[0]; assert.ok(ck.startsWith('fh_sid='));
     r = await req('GET', '/', null, ck); assert.equal(r.headers.location, '/exec');
     r = await req('GET', '/api/me', null, ck); assert.equal(JSON.parse(r.text).role, 'boss');
-    r = await req('GET', '/api/me', null, 'fh_role=boss.forged'); assert.equal(JSON.parse(r.text).role, null, 'cookie ปลอมต้องไม่ผ่าน');
+    r = await req('GET', '/api/me', null, 'fh_sid=forgedforgedforged'); assert.equal(JSON.parse(r.text).role, null, 'cookie ปลอมต้องไม่ผ่าน');
+    r = await req('GET', '/healthz'); assert.equal(r.status, 200);
     r = await req('GET', '/price', null, ck); assert.equal(r.status, 200); assert.ok(r.text.includes('<title>'));
     r = await req('GET', '/exec.html', null, ck); assert.equal(r.status, 200);
     r = await req('GET', '/peach.js'); assert.ok(r.text.includes('window.__NAV'));

@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs'), path = require('path'), zlib = require('zlib');
 const { createStore } = require('../src/store');
 function loadDocs() { const dir = path.join(__dirname, '..', 'data', 'fixtures'); const idx = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')); const d = {}; for (const k of Object.keys(idx)) d[k] = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(dir, idx[k]))).toString('utf8')); return d; }
-const store = createStore(loadDocs(), {});
+const store = createStore(loadDocs(), { devOpen: true, lineStaff: ['Ustaff9'] });
 const PID = name => (store.docs.pricelist.rows.find(r => r.name === name) || {}).id;
 const MAN = PID('มันแข็งหมู'), BONE = PID('กระดูกข้อขา');
 const call = (role, method, url, body) => store.handle({ role, method, url, body, origin: 'http://t' });
@@ -116,7 +116,7 @@ test('3+4 LINE → กระดานสถานะ → ตามเจ้า�
   /* ปิดดีล: ได้ · margin จริง */
   assert.equal(call('sale', 'POST', '/api/deal-close', { customer_id: CID, outcome: 'lost' }).status, 400, 'เสียต้องมีเหตุผล');
   const dc = okj(call('sale', 'POST', '/api/deal-close', { customer_id: CID, outcome: 'won' }));
-  assert.equal(dc.agreedN, n); assert.ok(dc.margin != null);
+  assert.equal(dc.agreedN, n); assert.equal(dc.margin, undefined, 'เซลล์ไม่ได้ margin กลับ');
   b = okj(call('sale', 'GET', '/api/sales-board')); assert.equal(b.rows.find(r => r.id === CID).stage, 'won');
   const dv = okj(call('boss', 'GET', '/api/deals')); assert.equal(dv.summary.won, 1); assert.ok(dv.summary.margin != null);
   const dvs = okj(call('sale', 'GET', '/api/deals')); assert.equal(dvs.summary.gp, undefined, 'เซลล์ไม่เห็นกำไร'); assert.equal(dvs.deals[0].lines[0].cost, undefined);

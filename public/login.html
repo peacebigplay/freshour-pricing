@@ -18,7 +18,7 @@ var R = [
   { k: 'sale',  ic: 'chart', t: 'ทีมขาย',              s: 'ดูราคาที่ประกาศ · เปิดใบราคา', go: '/sales' },
   { k: 'admin', ic: 'wrench', t: 'อิ๊บ',                s: 'ผู้ดูแลระบบ',            go: '/exec' }
 ];
-var NEED = true, PICK = null, BUSY = false, REPS = [], REP = '';   /* ทีมขายมีหลายคน — เลือกชื่อก่อน จะได้เห็นเฉพาะลูกค้าของตัวเอง */
+var NEED = true, PICK = null, BUSY = false, REPS = [], REP = '', MODE = 'users', LOCKED = false;   /* MODE: users = ชื่อ+รหัสผ่านรายคน · open = เครื่องพัฒนา เลือกบทบาท */   /* ทีมขายมีหลายคน — เลือกชื่อก่อน จะได้เห็นเฉพาะลูกค้าของตัวเอง */
 
 function nextUrl(def) {
   var q = new URLSearchParams(__NAV.search).get('next');
@@ -42,9 +42,16 @@ function draw() {
         '</ul>' +
       '</div>' +
       '<div class="lgr">' +
-        '<div class="lgh"><b>เข้าในฐานะใคร</b>' +
-          '<span id="lgSub">' + (NEED ? 'เลือกชื่อ แล้วใส่รหัสของตัวเอง'
-                                       : 'เครื่องนี้ไม่ต้องใส่รหัส — เลือกแล้วเข้าได้เลย') + '</span></div>' +
+        (MODE === 'users'
+          ? '<div class="lgh"><b>เข้าระบบ</b><span id="lgSub">' + (LOCKED ? 'ระบบยังไม่ได้ตั้งบัญชีผู้ใช้ — ติดต่อผู้ดูแล' : 'ใส่ชื่อผู้ใช้และรหัสผ่านของตัวเอง') + '</span></div>' +
+            (LOCKED ? '' : '<form class="lgp" id="userF" style="padding-top:18px"><label for="user">ชื่อผู้ใช้</label>' +
+              '<input id="user" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="เช่น jum">' +
+              '<label for="pin" style="margin-top:10px">รหัสผ่าน</label>' +
+              '<input id="pin" type="password" autocomplete="current-password" placeholder="ใส่รหัส แล้วกด Enter">' +
+              '<button class="go" type="submit">เข้าระบบ</button><p class="msg" id="msg"></p></form>') +
+            '<p class="lgn">ลืมรหัส — ให้ผู้ดูแลตั้งใหม่ให้ ระบบไม่เก็บรหัสไว้ให้ดู · ใส่ผิด 5 ครั้งจะถูกล็อก 15 นาที</p>'
+          : '<div class="lgh"><b>เข้าในฐานะใคร</b>' +
+          '<span id="lgSub">เครื่องพัฒนา — เลือกแล้วเข้าได้เลย (ของจริงต้องใส่ชื่อ+รหัส)</span></div>' +
         '<div class="lgs">' + R.map(function (r) {
           return '<button class="lgb' + (PICK === r.k ? ' on' : '') + '" data-r="' + r.k + '">' +
             '<i>' + PX.icon(r.ic) + '</i><span><b>' + esc(r.t) + '</b><em>' + esc(r.s) + '</em></span>' +
@@ -63,8 +70,7 @@ function draw() {
             '<button class="go" type="submit">เข้าระบบ</button>' +
             '<p class="msg" id="msg"></p></form>'
           : '') +
-        '<p class="lgn">ลืมรหัส — ให้ผู้ดูแลตั้งใหม่ให้ ระบบไม่เก็บรหัสไว้ให้ดู · ' +
-          'ใส่ผิดจะถูกบันทึกว่าใครใส่เมื่อไร</p>' +
+        '<p class="lgn">โหมดนี้ไม่มีรหัส — เปิดด้วย FH_DEV_OPEN=1 เท่านั้น</p>') +
       '</div>' +
     '</div></div>';
   bind();
@@ -91,6 +97,8 @@ function bind() {
     e.preventDefault();
     send(document.getElementById('pin').value);
   };
+  var uf = document.getElementById('userF');
+  if (uf) { uf.onsubmit = function (e) { e.preventDefault(); sendUser(document.getElementById('user').value, document.getElementById('pin').value); }; var u0 = document.getElementById('user'); if (u0) u0.focus(); }
 }
 
 function say(t, bad) {
@@ -120,14 +128,30 @@ function send(pin) {
   }).catch(function () { BUSY = false; say('ต่อเน็ตไม่ได้ ลองใหม่อีกครั้ง', true); });
 }
 
+/* โหมดบัญชีรายคน: ชื่อผู้ใช้ + รหัสผ่าน → บทบาทมาจากบัญชี ไม่ได้เลือกเอง */
+function sendUser(user, pw) {
+  if (BUSY) return;
+  if (!String(user || '').trim() || !pw) { say('ใส่ชื่อผู้ใช้และรหัสผ่าน', true); return; }
+  BUSY = true; say('กำลังตรวจ…', false);
+  fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ user: String(user).trim(), password: pw }) })
+    .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) {
+      BUSY = false;
+      if (r.ok) { __NAV.href = nextUrl(goOf(j.role)); return; }
+      say(j.error || 'เข้าไม่ได้ (' + r.status + ')', true);
+      var c = document.querySelector('.lgp'); if (c) { c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake'); }
+      var el = document.getElementById('pin'); if (el) { el.value = ''; el.focus(); }
+    }); })
+    .catch(function () { BUSY = false; say('ต่อเน็ตไม่ได้ ลองใหม่อีกครั้ง', true); });
+}
+
 /* ล็อกอินอยู่แล้วไม่ต้องมาถามซ้ำ — พาไปหน้าที่บทบาทนั้นเริ่มงานจริงเลย */
 fetch('/api/me', { credentials: 'same-origin' })
   .then(function (r) { return r.json(); })
   .then(function (me) {
     if (me && me.role) { location.replace(nextUrl(goOf(me.role))); return; }
-    NEED = me.needPin !== false;
+    NEED = me.needPin !== false; MODE = me.mode === 'open' ? 'open' : 'users'; LOCKED = !!me.locked;
     draw();
-    fetch('/api/reps', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { REPS = (j && j.reps) || []; if (PICK === 'sale') draw(); }).catch(function () {});
+    if (MODE === 'open') fetch('/api/reps', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { REPS = (j && j.reps) || []; if (PICK === 'sale') draw(); }).catch(function () {});
   })
   .catch(function () { draw(); });
 </script>

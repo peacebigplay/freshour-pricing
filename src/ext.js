@@ -493,11 +493,14 @@
             logEvent({ actor: 'customer', kind: 'customer', action: 'line-bind', entity: 'customer', entity_id: cb.id, detail: cb.name + ' ผูก LINE เองด้วยโค้ด ' + bindCode(cb.id), status: 'ok' });
             return handled.push({ customer: cb.name, result: 'bound', reply: 'ผูก LINE กับ ' + cb.name + ' เรียบร้อย ใบราคารอบถัดไปจะส่งมาที่นี่' }); }
           var mc = text.match(/^ทุน\s+(.+?)\s+(\d+(?:\.\d+)?)\s*$/), ms = text.match(/^ตลาด\s+(\S+)\s+(.+)$/);
+          var staff = uid && (X.lineStaff || []).indexOf(uid) >= 0;   /* คำสั่ง "ทุน …"/"ตลาด …" รับจาก LINE ของทีมงานที่ลงทะเบียนไว้เท่านั้น (LINE_STAFF_USER_IDS) */
+          if (mc && !staff) { logEvent({ actor: 'system', kind: 'system', action: 'line-inbound', detail: 'LINE ' + String(uid || '').slice(0, 8) + ' พยายามส่งทุนแต่ไม่ใช่ทีมงาน — ไม่รับ', status: 'warn' }); return handled.push({ uid: uid, result: 'rejected' }); }
           if (mc) { var ic = importCosts('line', { rows: [{ product: mc[1], cost: mc[2] }], commit: true, source: 'LINE ทุน', channel: 'line' }); return handled.push({ uid: uid, result: ic.status === 200 ? 'cost ' + (ic.body.applied || 0) + (ic.body.flagged ? ' flagged ' + ic.body.flagged : '') : ic.body.error }); }
+          if (ms && !staff) { logEvent({ actor: 'system', kind: 'system', action: 'line-inbound', detail: 'LINE ' + String(uid || '').slice(0, 8) + ' พยายามส่งราคาตลาดแต่ไม่ใช่ทีมงาน — ไม่รับ', status: 'warn' }); return handled.push({ uid: uid, result: 'rejected' }); }
           if (ms) { var st0 = D.pricelist.comps.filter(function (x) { return x.label.toLowerCase() === ms[1].toLowerCase() || x.id === ms[1]; })[0]; if (st0) { var pr0 = parseSurvey(ms[2], st0.id).filter(function (r) { return r.ok; }); var sr0 = surveySubmit('line', { store: st0.id, rows: pr0, mode: 'line' }); return handled.push({ uid: uid, result: sr0.status === 200 ? 'survey ' + pr0.length : sr0.body.error }); } }
           logEvent({ actor: 'customer', kind: 'customer', action: 'line-inbound', detail: 'ไม่รู้จัก LINE ' + uid + ': ' + text.slice(0, 80), status: 'warn' }); return handled.push({ uid: uid, result: 'unknown' }); }
         var sh = sheetFor(c.id), res = 'noted';
-        var mk = text.match(/^ตลาด\s+(\S+)\s+(.+)$/); if (mk) { var st = D.pricelist.comps.filter(function (x) { return x.label.toLowerCase() === mk[1].toLowerCase() || x.id === mk[1]; })[0]; if (st) { var pr = parseSurvey(mk[2], st.id).filter(function (r) { return r.ok; }); var sr2 = surveySubmit('line', { store: st.id, rows: pr, mode: 'line' }); res = sr2.status === 200 ? 'survey ' + pr.length : sr2.body.error; } }
+        var mk = (X.lineStaff || []).indexOf(uid) >= 0 ? text.match(/^ตลาด\s+(\S+)\s+(.+)$/) : null; if (mk) {   /* ราคาตลาดจากลูกค้าไม่รับ — เราหาเอง (ทีมงานที่ลงทะเบียนส่งได้) */ var st = D.pricelist.comps.filter(function (x) { return x.label.toLowerCase() === mk[1].toLowerCase() || x.id === mk[1]; })[0]; if (st) { var pr = parseSurvey(mk[2], st.id).filter(function (r) { return r.ok; }); var sr2 = surveySubmit('line', { store: st.id, rows: pr, mode: 'line' }); res = sr2.status === 200 ? 'survey ' + pr.length : sr2.body.error; } }
         if (/^(ยืนยัน|ตกลง|โอเค|ok|รับ)/i.test(text.trim()) && sh && sh.sent) { var r = X.quoteResponse('customer', { customer_id: c.id, kind: 'accept', all: true }); res = r.status === 200 ? 'accepted ' + r.body.n : r.body.error; }
         else { var m = text.match(/ขอ\s*(.+?)\s*(\d+)\s*(บาท|฿)?/); if (m && sh) { var mp = matchProduct(m[1]); if (mp) { var rr = X.priceRequest('customer', { customer_id: c.id, product_id: mp.p.id, want: Number(m[2]), reason: 'ขอผ่าน LINE: ' + text.slice(0, 60) }); res = rr.status === 200 ? 'request ' + mp.p.name + ' ' + m[2] : rr.body.error; } } }
         var sr = sendRow(c.id); if (sr && !sr.opened) sr.opened = stamp();
@@ -803,7 +806,7 @@
       if (outcome === 'lost') { sh.rows.forEach(function (r) { if (r.inOffer && !r.response) r.response = 'decline'; }); }
       rebuildSheet(sh);
       X.audit(role, 'deal-close', c.name + ' → ' + (outcome === 'won' ? 'ได้ ' + value + ' ฿ (margin ' + deal.margin + '%)' : 'เสีย: ' + deal.reason));
-      return ok({ ok: true, id: deal.id, outcome: outcome, value: value, margin: deal.margin, agreedN: won.length });
+      return ok(LVL[role] < 2 ? { ok: true, id: deal.id, outcome: outcome, value: value, agreedN: won.length } : { ok: true, id: deal.id, outcome: outcome, value: value, margin: deal.margin, agreedN: won.length });
     }
     function dealsView(role, scope) {
       var label = D.sends.label, cur = D.deals.filter(function (d) { return d.label === label && X.inScope(scope, d.customer_id); }), custN = D.sends.customers.filter(function (c) { return X.inScope(scope, c.id); }).length, won = cur.filter(function (d) { return d.outcome === 'won'; }), lost = cur.filter(function (d) { return d.outcome === 'lost'; });
@@ -823,7 +826,7 @@
       var noCost = D.pricelist.rows.filter(function (r) { return !(r.cost > 0); }).length;
       var mk = D.pricelist.rows.filter(function (r) { return (r.marks || []).some(function (m) { return m.price > 0 && m.state === 'fresh'; }); }).length;
       var mkOld = D.pricelist.rows.filter(function (r) { return (r.marks || []).some(function (m) { return m.price > 0; }) && !(r.marks || []).some(function (m) { return m.price > 0 && m.state === 'fresh'; }); }).length;
-      var common = { today: td, round: D.sends.label, stages: b.stages, alerts: h.alerts.slice(0, 5), health: { ok: h.ok, jobs: h.jobs.map(function (j) { return { key: j.key, label: j.label, status: j.status, stale: j.stale, last_run: j.last_run, detail: j.detail }; }), outbox: h.outbox } };
+      var common = { today: td, round: D.sends.label, stages: b.stages, alerts: LVL[role] < 2 ? [] : h.alerts.slice(0, 5), health: { ok: h.ok, jobs: h.jobs.map(function (j) { return { key: j.key, label: j.label, status: j.status, stale: j.stale, last_run: j.last_run, detail: j.detail }; }), outbox: h.outbox } };
       if (salesView) {
         /* แดชบอร์ดเซลล์ตาม SALES LOGIC: Performance · Pipeline · My Work Today (เรียง priority) · Response Board · Recently Closed — เฉพาะลูกค้าของคนนี้ ไม่มีทุน/margin */
         var rows = salesQueue(scope), perf = salesPerf(rows), pipe = {}; Object.keys(SQ_STATE).forEach(function (k) { pipe[k] = 0; }); rows.forEach(function (r) { pipe[r.state]++; });
@@ -1224,10 +1227,10 @@
       if (cm && method === 'POST') { need(1); if (LVL[role] < 2) body = { line_user_id: body.line_user_id, contact: body.contact }; return updateCustomer(role, cm[1], body); }   /* เซลล์ผูก LINE/ผู้ติดต่อได้ · ชื่อ/เจ้าของ ต้อง ops ขึ้นไป */
       if (path === '/api/line/webhook' && method === 'POST') return lineWebhook(body);   /* ของจริงตรวจลายเซ็นที่ server */
       if (method === 'GET') switch (path) {
-        case '/api/health': return ok(health());
+        case '/api/health': need(1); return ok(health());   /* liveness ของแพลตฟอร์มใช้ /healthz (server.js) */
         case '/api/exec': need(3); return ok(execCockpit());
         case '/api/events': need(1); var evScope = X.repScope(role, req.rep, q); var list = D.events.filter(function (e) { return (!q.customer || (e.entity === 'customer' && e.entity_id === q.customer)) && (!evScope || e.rep === evScope || (e.entity === 'customer' && X.inScope(evScope, e.entity_id))) && (!q.actor || e.actor === q.actor) && (!q.kind || e.kind === q.kind) && (!q.step || e.step === q.step) && (!q.status || e.status === q.status) && (!q.q || (e.detail + ' ' + e.action + ' ' + e.entity_id).indexOf(q.q) >= 0); });
-          if (LVL[role] < 2) list = list.filter(function (e) { return !/cost|import|central|config|category/.test(e.action); });
+          if (LVL[role] < 2) list = list.filter(function (e) { return !/cost|import|central|config|category|policy|deal-close|guard|flag|price-decide|margin/.test(e.action) && !/margin|ทุน|floor/i.test(String(e.detail || '')); });   /* เซลล์: ไม่มีเหตุการณ์ที่พูดถึงทุน/margin/floor เลย */
           return ok({ total: list.length, rows: list.slice(0, Number(q.limit) || 200), steps: ['ทุนเข้า', 'เทียบตลาด', 'ตั้งราคา', 'ส่งราคา', 'ต่อรอง', 'ปิดรอบ', 'บริการ', 'ระบบ'] });
         case '/api/alerts': need(1); return ok({ rows: D.alerts.slice(0, 100) });
         case '/api/dashboard': need(1); return dashboard(role, req.origin, req, q);
@@ -1284,7 +1287,7 @@
         case '/api/followups/auto': need(1); return followupAuto(role, X.repScope(role, req.rep));
         case '/api/followups/tick': need(4); return ok(followupTick());
         case '/api/deal-close': need(1); return dealClose(role, body);
-        case '/api/alerts/ack': need(1); var a = D.alerts.filter(function (x) { return x.id === Number(body.id); })[0]; if (!a) return err(404, 'ไม่พบ'); a.acked = true; a.acked_by = role; a.acked_at = stamp(); return ok();
+        case '/api/alerts/ack': need(2); var a = D.alerts.filter(function (x) { return x.id === Number(body.id); })[0]; if (!a) return err(404, 'ไม่พบ'); a.acked = true; a.acked_by = role; a.acked_at = stamp(); return ok();
         case '/api/log': need(1); return ok(logEvent({ actor: role, kind: 'human', action: body.action || 'note', entity: body.entity, entity_id: body.entity_id, detail: body.detail, status: body.status }));
       }
       return undefined;

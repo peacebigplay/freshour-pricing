@@ -111,7 +111,7 @@ var DATA_VERSION=${JSON.stringify(DATA_VERSION)};var FEED_B64=${JSON.stringify(g
   /* เตรียมข้อมูล: แตกทุกก้อน → store → เล่นซ้ำสิ่งที่เคยบันทึกในเครื่องนี้ */
   var keys=Object.keys(DOCS_B64),docs={};
   Promise.all(keys.map(function(k){return unzip(DOCS_B64[k]).then(function(t){docs[k]=JSON.parse(t);});})).then(function(){
-    STORE=FHStore.createStore(docs,{dataNote:'สินค้า/ทุน/ราคาจากใบราคาขาย+ทุน AL 01-07/10/69 · ลูกค้า/สัญญา/ยอดขายจากระบบเดิม (ก.ย. 69) · ราคาตลาด: '+(SAMPLE?'ตัวอย่างสมมติ (ไม่ใช่ของจริง)':'ยังไม่มี — ของจริงต้องต่อ connector หรือสำรวจหน้าร้าน'),sampleMarket:SAMPLE});
+    STORE=FHStore.createStore(docs,{devOpen:true,dataNote:'สินค้า/ทุน/ราคาจากใบราคาขาย+ทุน AL 01-07/10/69 · ลูกค้า/สัญญา/ยอดขายจากระบบเดิม (ก.ย. 69) · ราคาตลาด: '+(SAMPLE?'ตัวอย่างสมมติ (ไม่ใช่ของจริง)':'ยังไม่มี — ของจริงต้องต่อ connector หรือสำรวจหน้าร้าน'),sampleMarket:SAMPLE});
     /* งานที่ระบบทำเอง (เวอร์ชันในเบราว์เซอร์): ดึงราคาตลาดจาก feed ตัวอย่างตอนเปิด · ส่ง LINE แบบจำลองทุก 15 วิ */
     window.__loadSampleMarket=function(){return unzip(FEED_B64).then(function(t){var rows=JSON.parse(t).rows;window.__FEED={rows:rows};return STORE.handle({method:'POST',url:'/api/market-sync/run',body:{observations:rows},role:'system'});});};
     if(SAMPLE)window.__loadSampleMarket();

@@ -51,8 +51,7 @@
   function createStore(docs, opts) {
     opts = opts || {};
     var D = docs;                                   /* ก้อนข้อมูลทั้งหมด (แก้ในที่) */
-    var PINS = opts.pins || null;                   /* {role: pin} · ไม่ตั้ง = เครื่องนี้ไม่ต้องใส่รหัส */
-    var needPin = !!PINS;
+    var needPin = !opts.devOpen;                    /* server จัดการบัญชี/รหัสเอง (src/auth.js) — store รู้แค่ว่าเครื่องนี้เปิดโล่งไหม */
     var seq = { log: 100, dlv: 100, prs: 100, req: 100, inv: 0, talk: 1000 };
     var tokens = {};                                /* quote-link token → customer_id */
 
@@ -495,17 +494,15 @@
       return ok({ ok: true, id: id, reps: repsView(role).reps });
     }
     function meOf(role, rep) {
-      if (!role || role === 'anon') return { role: null, needPin: needPin };
+      if (!role || role === 'anon') return { role: null, needPin: needPin, mode: opts.devOpen ? 'open' : 'users' };
       var base = D['me:' + (role === 'admin' ? 'boss' : role)] || { tabs: [], dispatch: false, seeCost: false };
-      return Object.assign({}, base, { role: role, needPin: needPin, dataNote: (opts.dataNote || '') + (CFG.cost_basis ? ' · ' + CFG.cost_basis : ''), costBasis: CFG.cost_basis || '', sampleMarket: !!opts.sampleMarket, rep: repOf(rep), reps: LVL[role] >= 2 ? repsView(role).reps : undefined });
+      return Object.assign({}, base, { role: role, needPin: needPin, mode: opts.devOpen ? 'open' : 'users', dataNote: (opts.dataNote || '') + (CFG.cost_basis ? ' · ' + CFG.cost_basis : ''), costBasis: CFG.cost_basis || '', sampleMarket: !!opts.sampleMarket, rep: repOf(rep), reps: LVL[role] >= 2 ? repsView(role).reps : undefined });
     }
+    /* login ที่ store = โหมดเครื่องพัฒนาเท่านั้น (เลือกบทบาท) · บน server จริง src/auth.js รับ /api/login ก่อนถึงตรงนี้ */
     function login(body) {
-      var role = String(body.role || ''), pin = body.pin == null ? '' : String(body.pin);
+      var role = String(body.role || '');
       if (!LVL[role] || role === 'anon' || role === 'system') return err(400, 'ไม่รู้จักบทบาทนี้');
-      if (PINS) {
-        if (!pin) return err(401, 'ต้องใส่รหัสของ ' + (ROLE_NAME[role] || role));
-        if (PINS[role] !== pin) { audit(role, 'login-fail', 'รหัสผิด'); return err(401, 'รหัสไม่ถูกต้อง'); }
-      }
+      if (!opts.devOpen) return err(503, 'ต้องเข้าระบบด้วยบัญชีผู้ใช้');
       if (role === 'sale' && (S.sales_reps || []).length) {
         var rp = repOf(String(body.rep || '')); if (!rp) return err(400, 'เลือกชื่อเซลล์ก่อน — แต่ละคนเห็นเฉพาะลูกค้าของตัวเอง');
         return { status: 200, body: { ok: true, role: role, rep: rp }, session: role + '|' + rp.id };
@@ -517,10 +514,26 @@
     function pricelistFor(role) {
       var P = D.pricelist;
       if (LVL[role] >= 2) return P;
-      var o = clone(P); o.seeCost = false; o.costUpdated = '';
-      o.comps = o.comps.map(function (c) { return { id: c.id, label: c.label, tier: c.tier }; });
-      o.rows.forEach(function (r) { delete r.cost; delete r.margin; delete r.costSrc; delete r.costSrcAt; });
+      /* เซลล์: whitelist เท่านั้น — ไม่มีทุน margin floor นโยบาย หรือราคาคู่แข่ง (ไม่ว่าจะโชว์บนจอหรือไม่) */
+      var KEEP = ['id', 'name', 'grp', 'retail', 'w2', 's5', 's10', 'saleFloor', 'unit', 'frozen', 'pdf_idx', 'needs_price', 'ready'];
+      return { today: P.today, asOf: P.asOf, haggle: P.haggle, ttlDays: P.ttlDays, seeCost: false, costUpdated: '', dirty: P.dirty, dispatched: P.dispatched, comps: [], grps: P.grps,
+        rows: P.rows.map(function (r) { var o = {}; KEEP.forEach(function (k) { if (r[k] !== undefined) o[k] = r[k]; }); return o; }) };
+    }
+    /* ใบรายเจ้าที่เซลล์เห็น: ตัด floor (คำนวณกลับเป็นทุนได้) และสถานะที่บอกว่าต่ำกว่า floor */
+    function sheetView(role, sh) {
+      if (!sh || LVL[role] >= 2) return sh;
+      var o = clone(sh);
+      o.rows = (o.rows || []).map(function (r) { delete r.floor; if (r.status === 'floored') r.status = 'none'; return r; });
       return o;
+    }
+    function historyFor(role) {
+      if (LVL[role] >= 2) return D.history;
+      return D.history.map(function (h) { return { id: h.id, label: h.label, dispatched_at: h.dispatched_at, by_role: h.by_role, mock: h.mock }; });
+    }
+    function preflightFor(role) {
+      if (LVL[role] >= 2) return D.preflight;
+      var t = D.preflight.totals || {};
+      return { passed: D.preflight.passed, blockers: [], warnings: [], totals: { count: t.count }, actions: [], moved: D.preflight.moved, jumped: D.preflight.jumped };
     }
     function guardFor(role, rep) {
       var G = D.guard;
@@ -1056,6 +1069,7 @@
       var r = recordInvoice(role, body.customer_id, no, date, body.lines || []);
       if (r.error) return err(400, r.error);
       audit(role, 'invoice', no + ' ' + r.net_sales + ' ฿');
+      if (LVL[role] < 2) return ok({ ok: true, id: r.id, invoice_no: no, net_sales: r.net_sales, total_kg: r.total_kg, lines: r.lines });   /* เซลล์ไม่ได้ gp/margin กลับ */
       return ok(Object.assign({ ok: true }, r));
     }
     function thaiDate(s) {
@@ -1217,7 +1231,7 @@
     var EXT = extend({ D: D, S: S, CFG: CFG, today: today, stamp: stamp, r1: r1, mg: mg, num: num, err: err, ok: ok, clone: clone, hashId: hashId, LVL: LVL, ROLE_NAME: ROLE_NAME,
       product: product, custOf: custOf, custByName: custByName, sheetFor: sheetFor, deskFor: deskFor, sendRow: sendRow, desks: desks, rebuildSheet: rebuildSheet, rebuildGuard: rebuildGuard, rebuildTotals: rebuildTotals,
       setCost: setCost, afterCosts: afterCosts, tiersOf: tiersOf, recalcProduct: recalcProduct, policyOf: policyOf, goalsFor: goalsFor, closeNegotiations: closeNegotiations, mgState: mgState, priceAt: priceAt, holdCost: holdCost, releaseCost: releaseCost, costMasterOf: costMasterOf, ensureCostMaster: ensureCostMaster, spOf: spOf, competitorPrices: competitorPrices, quoteFor: quoteFor, quoteLink: quoteLink, quoteResponse: quoteResponse, priceRequest: priceRequest, audit: function () { return audit.apply(null, arguments); }, targetPct: targetPct, floorPct: floorPct,
-      lineConfigured: function () { return !!opts.lineConfigured; }, recordInvoice: recordInvoice, savePriceSheet: savePriceSheet, handoff: handoff, quoteLink: quoteLink, ownerOf: ownerOf, repOf: repOf, repScope: repScope, inScope: inScope, curRep: function () { return CUR_REP; } });
+      lineConfigured: function () { return !!opts.lineConfigured; }, lineStaff: opts.lineStaff || [], recordInvoice: recordInvoice, savePriceSheet: savePriceSheet, handoff: handoff, quoteLink: quoteLink, ownerOf: ownerOf, repOf: repOf, repScope: repScope, inScope: inScope, curRep: function () { return CUR_REP; } });
     /* audit เดิม (หน้า "ความจำ") → ลง log กลางด้วย รูปแบบเดียวกับงานของระบบ */
     var audit0 = audit;
     audit = function (role, action, detail) { audit0(role, action, detail); EXT.logEvent({ actor: role, rep: CUR_REP, kind: 'human', action: action, detail: detail }); };
@@ -1242,13 +1256,13 @@
             case '/api/pricelist': need(1); return ok(pricelistFor(role));
             case '/api/guard': need(1); return ok(guardFor(role, req.rep));
             case '/api/sends': need(1); return ok(sendsFor(role, req.rep, q));
-            case '/api/reps': return ok(repsView(role));
+            case '/api/reps': if (!opts.devOpen) need(1); return ok(repsView(role));   /* เครื่องพัฒนาให้หน้า login เลือกชื่อเซลล์ได้ · ของจริงต้องล็อกอินก่อน */
             case '/api/deliveries': need(1); return ok(D.deliveries);
             case '/api/prospects': need(1); return ok(D.prospects);
-            case '/api/preflight': need(1); return ok(D.preflight);
-            case '/api/history': need(1); return ok(D.history);
+            case '/api/preflight': need(1); return ok(preflightFor(role));
+            case '/api/history': need(1); return ok(historyFor(role));
             case '/api/state': need(2); return ok(S);
-            case '/api/sheet': need(1); var sh = sheetFor(q.customer); return sh ? ok(sh) : err(404, 'ไม่พบลูกค้า ' + q.customer);
+            case '/api/sheet': need(1); var sh = sheetFor(q.customer); return sh ? ok(sheetView(role, sh)) : err(404, 'ไม่พบลูกค้า ' + q.customer);
             case '/api/quote': need(1); return quoteFor(q.customer, q.tier || 'w2');
             case '/api/service-logs': if (q.customer) { need(1); return ok(serviceLogsFor(q.customer)); } need(2); return ok(serviceLogsFor(null));
             case '/api/desk': need(2); if (!q.customer) return ok(D.desk); var dk = deskFor(q.customer); return dk ? ok(dk) : err(404, 'ไม่พบลูกค้า ' + q.customer);
@@ -1324,14 +1338,28 @@
     }
 
     /* ทุกคำสั่งเขียนลง log กลางรูปแบบเดียวกัน (สำเร็จ/ล้มเหลว) — ยกเว้น activity ping · /api/log เขียนเองแล้ว */
+    /* เส้นทางที่ส่งมาแค่ id ของรายการ → หาว่าเป็นลูกค้าใคร (เซลล์ข้ามเจ้ากันไม่ได้แม้จะเดา id ถูก) */
+    function customerOfId(p, b) {
+      var id = b.id; if (id == null || id === '') return '';
+      var pick = function (rows, key) { var r = (rows || []).filter(function (x) { return String(x.id) === String(id); })[0]; return r ? (r[key || 'customer_id'] || '') : '__none__'; };
+      switch (p) {
+        case '/api/price-requests/status': return pick(D['price-requests'].rows);
+        case '/api/deliveries/update': return pick(D.deliveries.rows);
+        case '/api/service-logs/update': return pick(D['service-logs'] && D['service-logs'].rows);
+        case '/api/doc-requests/issue': case '/api/doc-requests/done': return pick(D.doc_requests);
+        case '/api/followups/done': return pick(D.followups);
+      }
+      return '';
+    }
     function handle(req) {
       CUR_REP = req.rep || null;
       var m = (req.method || 'GET').toUpperCase(), p = String(req.url || '').split('?')[0];
       /* เซลล์เห็น/แตะได้เฉพาะลูกค้าที่ตัวเองถือ — ด่านเดียวคุมทุกเส้นทางที่ระบุลูกค้า (customer_id ใน body · ?customer= · /api/customers/:id) */
       if (req.role && LVL[req.role] === 1 && req.rep) {
         var bq = {}; String(req.url || '').split('?')[1] && String(req.url).split('?')[1].split('&').forEach(function (kv) { var j = kv.indexOf('='); try { bq[decodeURIComponent(kv.slice(0, j < 0 ? kv.length : j))] = decodeURIComponent(j < 0 ? '' : kv.slice(j + 1)); } catch (e) {} });
-        var cm2 = p.match(/^\/api\/customers\/([^/]+)$/), cidX = (req.body && req.body.customer_id) || bq.customer || (cm2 && cm2[1]) || '';
+        var cm2 = p.match(/^\/api\/customers\/([^/]+)$/), cidX = (req.body && req.body.customer_id) || bq.customer || (cm2 && cm2[1]) || customerOfId(p, req.body || {});
         if (cidX && ownerOf(cidX) && ownerOf(cidX) !== (req.rep || '')) return err(403, 'ลูกค้ารายนี้อยู่กับเซลล์คนอื่น');
+        if (cidX && !ownerOf(cidX) && custOf(cidX)) return err(403, 'ลูกค้ารายนี้ยังไม่มีเซลล์ดูแล — ให้ Pricing มอบหมายก่อน');
       }
       var r = handle0(req);
       if (m !== 'GET' && !/\/api\/(activity|log|login|logout|line\/webhook)$/.test(p) && !/^\/api\/public-quotes\//.test(p)) {

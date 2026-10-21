@@ -4,3 +4,6 @@ scratchpad
 test
 .git
 *.png
+data/var
+data/journal.jsonl
+data/inbox

@@ -439,11 +439,11 @@ function showQuote(q, cid) {
 /* ── ส่งออก CSV ของรายการที่เห็นอยู่ ── */
 function exportCsv(rows) {
   var head = ['สินค้า', 'หมวด', 'ปลีก', 'ส่ง 2kg', 'ส่ง 5kg', 'ส่ง 10kg+']
-    .concat(D.comps.map(function (c) { return c.label; }))
+    .concat((D.comps || []).map(function (c) { return c.label; }))
     .concat(['ต่อรองต่ำสุด']).concat(D.seeCost ? ['ทุน', 'margin %'] : []);
   var body = rows.map(function (r) {
     return [r.name, r.grp, r.retail, r.w2, r.s5, r.s10]
-      .concat(r.marks.map(function (m) { return m.price || ''; }))
+      .concat((r.marks || []).map(function (m) { return m.price || ''; }))
       .concat([r.saleFloor]).concat(D.seeCost ? [r.cost, r.margin] : []);
   });
   PX.csv('freshour-ราคาเสนอ-' + D.today + '.csv', [head].concat(body));
@@ -451,6 +451,7 @@ function exportCsv(rows) {
 }
 
 function posPill(r) {
+  if (!r.pos) return '';   /* เซลล์ไม่ได้รับข้อมูลคู่แข่ง */
   if (r.pos === 'none') return '<span class="pill2 a">ไม่มีข้อมูล</span>';
   if (r.pos === 'cheaper') return '<span class="pill2 g">เราถูกกว่า</span>';
   if (r.pos === 'dearer') return '<span class="pill2 r">เราแพงกว่า ' + r.gap + ' ฿</span>';

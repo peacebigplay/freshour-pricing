@@ -25,11 +25,21 @@
 | **เซิร์ฟเวอร์จริง** | ทดสอบหลายคนพร้อมกัน / หลายเครื่อง / ลิงก์ลูกค้า | `npm start` → http://localhost:8787 (ต้อง Node ≥ 18 · ไม่มี dependency) |
 
 ```bash
-npm start                                   # เปิดที่ :8787 · เลือกชื่อแล้วเข้าได้เลย (ไม่ต้องใส่รหัส)
-FH_PINS=boss:1234,ops:2345,sale:3456 npm start   # เปิดโหมดใส่รหัสเหมือนเว็บจริง
-npm run reset                               # ล้างสิ่งที่ทดสอบไว้ กลับชุดตั้งต้น (ลบ data/journal.jsonl)
-npm test                                    # ทดสอบ 13 ชุด (flow ครบวง + รอบ 2 + รอบ 3)
+FH_DEV_OPEN=1 npm start                     # เครื่องพัฒนา: เลือกบทบาทแล้วเข้าได้เลย (ห้ามใช้บน production)
+npm run users -- add jum --role ops --name "พี่จุ๋ม"        # สร้างบัญชี (สุ่มรหัสให้ครั้งแรก) → เก็บใน data/var/users.json
+npm run users -- add sale1 --role sale --rep s1 --name "เซลล์ 1"
+npm start                                   # มีบัญชีแล้ว = ทุกคนใส่ชื่อ+รหัส · ไม่มีบัญชีและไม่ตั้ง FH_DEV_OPEN = ประตูปิด
+npm run reset                               # ล้างสิ่งที่ทดสอบไว้ กลับชุดตั้งต้น (ลบ journal)
+npm test                                    # ทดสอบ 43 ชุด (flow ครบวง + ความปลอดภัย)
 ```
+
+**บัญชีและสิทธิ์ (รอบ 19 · เตรียมขึ้น production)**
+- บทบาทมาจากบัญชี ไม่ได้เลือกเองหน้า login · รหัสเก็บเป็น scrypt hash · session สุ่มฝั่ง server (30 วัน / ไม่ใช้ 7 วัน) · logout หลุดจริง · ใส่ผิด 5 ครั้ง ล็อก 15 นาที · cookie `HttpOnly SameSite=Lax` และ `Secure` หลัง https (`FH_SECURE=1`)
+- `node tools/users.js add|passwd|disable|enable|remove|list` · เปลี่ยนรหัส/ปิดบัญชี = session ของคนนั้นหลุดทันที · ตั้งค่าครั้งแรกบนคลาวด์ใช้ `FH_USERS_JSON` ชั่วคราวได้
+- เซลล์ (LVL 1) ได้ payload แบบ whitelist เท่านั้น: ไม่มี `cost/margin/floor/policy/marks` ใน `/api/pricelist` `/api/sheet` `/api/history` `/api/preflight` `/api/events` และผลตอบของ `deal-close`/`invoices` · ทดสอบใน `test/security.test.js`
+- เซลล์ข้ามเจ้ากันไม่ได้แม้ส่งมาแค่ `id` (คำขอต่อรอง · รอบส่ง) · `/api/reps` และ `/api/health` ต้องล็อกอิน · `/healthz` สำหรับแพลตฟอร์ม
+- LINE webhook: ตรวจลายเซ็นจาก body ดิบ **ก่อน** แตะข้อมูล · ไม่ตั้ง `LINE_CHANNEL_SECRET` = webhook ปิด · คำสั่ง "ทุน …"/"ตลาด …" รับจาก `LINE_STAFF_USER_IDS` เท่านั้น (ลูกค้าส่งราคาตลาดมาไม่รับ — เราหาเอง)
+- ของที่เปลี่ยนได้ตอนรัน (journal · บัญชี · session · inbox) อยู่ใน `data/var` (`FH_VAR_DIR`) · Render/Fly mount volume ที่ `/app/data/var` จึงไม่ทับ fixtures อีก (เดิม mount ทับ `data/` แล้วบูตไม่ขึ้น)
 
 ## ใครเห็นอะไร (ตรงกับสิทธิ์จริง)
 
@@ -241,6 +251,12 @@ data/journal.jsonl   สิ่งที่บันทึกตอนทดส�
 test/api.test.js     flow ครบวง + สิทธิ์ + server · test/ext.test.js 6 เรื่องตามคอมเมนต์ผู้ใช้
 tools/build-demo.js  สร้าง dist/freshour-demo.html
 ```
+
+## รอบ 19 · สัปดาห์ 1 ของการขึ้น production — ปิด Blocker ด้านความปลอดภัย
+- `src/auth.js` ใหม่: บัญชีรายคน + session จริง + fail-closed · `server.js` รับ `/api/login` `/api/logout` `/api/me` เอง · เลิกใช้ `FH_PINS`/`FH_SECRET` (cookie เซ็นด้วย role เดิมปลอมได้)
+- `public/peach.js` เลิก "ล็อกอินให้เองเป็น ops เมื่อ 401" (เดิมถ้าไม่ตั้งรหัส คนนอก/เซลล์ที่ cookie หายกลายเป็น ops) · `public/login.html` มีฟอร์มชื่อ+รหัส
+- whitelist ฝั่งเซลล์ · เช็คเจ้าของจาก id · webhook verify-before-handle · staff allowlist · `/healthz` · 413 เมื่อ body เกิน 5 MB · handler `unhandledRejection`/`SIGTERM`
+- ยังไม่ทำ (สัปดาห์ 2–3): ข้อมูลคงทน/replay ด้วยเวลาจริง · token ลิงก์ลูกค้าคงอยู่ข้ามรีสตาร์ท · save บางส่วนบนกระดาน · confirm ก่อน "ให้ระบบทำเลย" · ภาษาไทยหน้าผู้บริหาร · ล้าง mock
 
 ## ต้นแบบนี้ต่างจากระบบจริงตรงไหน
 

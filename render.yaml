@@ -1,18 +1,19 @@
 # Render.com — กด "New Blueprint" ชี้ repo นี้ · ใส่ค่า env ที่ sync:false ในหน้า dashboard
+# บัญชีผู้ใช้: สร้างใน shell ของ service ด้วย `node tools/users.js add …` (เก็บบน disk /app/data/var) หรือใส่ FH_USERS_JSON ชั่วคราวตอนตั้งค่าครั้งแรก
 services:
   - type: web
     name: freshour-pricing
     runtime: docker
     plan: starter
-    healthCheckPath: /api/health
+    healthCheckPath: /healthz
     disk:
       name: freshour-data
-      mountPath: /app/data
+      mountPath: /app/data/var
       sizeGB: 1
     envVars:
-      - key: FH_SECRET
-        generateValue: true
-      - key: FH_PINS
+      - key: FH_SECURE
+        value: "1"
+      - key: FH_USERS_JSON
         sync: false
       - key: LINE_CHANNEL_TOKEN
         sync: false
@@ -22,5 +23,5 @@ services:
         sync: false
       - key: MARKET_FEED_URL
         sync: false
-      - key: FH_INBOX_DIR
-        value: /app/data/inbox
+      - key: LINE_STAFF_USER_IDS
+        sync: false

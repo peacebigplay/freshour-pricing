@@ -210,19 +210,9 @@ window.PX = (function () {
     var go = function () { return fetch(url, { credentials: 'same-origin' }); };
     return go().then(function (r) {
       if (r.ok) return r;
-      /* ล็อกอินให้อัตโนมัติได้เฉพาะตอน "ยังไม่ได้ล็อกอินเลย" และเครื่องนี้ไม่ต้องใช้รหัส
-         ถ้ามี session อยู่แล้ว (เช่นเซลล์) ห้ามยกระดับเป็นผู้ออกราคาเด็ดขาด */
-      return fetch('/api/me', { credentials: 'same-origin' })
-        .then(function (m) { return m.ok ? m.json() : {}; })
-        .catch(function () { return {}; })
-        .then(function (me) {
-          if (me && me.role) return r;          // ล็อกอินอยู่แล้วแต่ไม่มีสิทธิ์ → คืน 403 ตามจริง
-          if (me && me.needPin) return toLogin();
-          return fetch('/api/login', {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ role: 'ops' }), credentials: 'same-origin'
-          }).then(function (lr) { return lr.ok ? go() : toLogin(); });
-        });
+      /* 401 = ยังไม่ได้เข้าระบบ (หรือ session หมดอายุ) → ไปประตูเสมอ · ไม่มีการล็อกอินให้เองอีกแล้ว (เคยยกระดับคนที่ cookie หายเป็น ops) */
+      if (r.status === 401) return toLogin();
+      return r;
     }).then(function (r) {
       if (r.status === 403) throw new Error('บัญชีนี้ไม่มีสิทธิ์เปิดหน้านี้');
       if (r.status === 401) return toLogin();

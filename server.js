@@ -4,8 +4,12 @@
 
    node server.js            → http://localhost:8787
    FH_PORT=3000              → เปลี่ยนพอร์ต
-   FH_PINS=boss:1234,ops:2345,sale:3456,admin:0000  → เปิดโหมดใส่รหัส (ไม่ตั้ง = เลือกชื่อแล้วเข้าได้เลย)
-   FH_JOURNAL=0              → ไม่จำสิ่งที่บันทึกข้ามการรีสตาร์ท (ปกติเขียนลง data/journal.jsonl)
+   บัญชีผู้ใช้              → node tools/users.js add <id> --role ops --name "พี่จุ๋ม" (เก็บใน data/var/users.json)
+   FH_DEV_OPEN=1             → เครื่องพัฒนา: ไม่มีบัญชีก็เลือกบทบาทแล้วเข้าได้เลย (ห้ามใช้บน production)
+   FH_VAR_DIR=/path          → ที่เก็บของที่เปลี่ยนได้ (journal/บัญชี/session/inbox) · ค่าเริ่มต้น data/var · mount volume ตรงนี้
+   FH_JOURNAL=0              → ไม่จำสิ่งที่บันทึกข้ามการรีสตาร์ท
+   LINE_CHANNEL_SECRET       → ต้องตั้งเมื่อเปิด webhook จริง (ไม่ตั้ง = webhook ปิด ยกเว้น FH_DEV_OPEN=1)
+   LINE_STAFF_USER_IDS       → LINE userId ของทีมงานที่พิมพ์ "ทุน …"/"ตลาด …" เข้า OA ได้ (คั่นด้วย ,)
    npm run reset             → ล้างข้อมูลที่ทดสอบไว้ กลับเป็นชุดตั้งต้น
    ══════════════════════════════════════════════════════════════════ */
 'use strict';
@@ -15,14 +19,20 @@ const path = require('path');
 const zlib = require('zlib');
 const crypto = require('crypto');
 const { createStore } = require('./src/store');
+const { createAuth } = require('./src/auth');
 const QuotePage = require('./src/quote-page');
 
 const ROOT = __dirname;
 const PUB = path.join(ROOT, 'public');
 const DATA = path.join(ROOT, 'data');
 const PORT = Number(process.env.FH_PORT || process.env.PORT || 8787);
-const JOURNAL = process.env.FH_JOURNAL === '0' ? null : path.join(DATA, 'journal.jsonl');
-const SECRET = process.env.FH_SECRET || 'freshour-prototype';
+/* ของที่เปลี่ยนได้ตอนรัน (journal · บัญชี · session · inbox) แยกโฟลเดอร์จาก fixtures — volume ของ Render/Fly mount ที่นี่ ไม่ทับข้อมูลตั้งต้น */
+const VAR = process.env.FH_VAR_DIR || path.join(DATA, 'var');
+try { fs.mkdirSync(VAR, { recursive: true }); } catch (e) { /* อ่านอย่างเดียวก็ยังเปิดได้ */ }
+const JOURNAL = process.env.FH_JOURNAL === '0' ? null : path.join(VAR, 'journal.jsonl');
+const LEGACY_JOURNAL = path.join(DATA, 'journal.jsonl');
+if (JOURNAL && !fs.existsSync(JOURNAL) && fs.existsSync(LEGACY_JOURNAL)) { try { fs.copyFileSync(LEGACY_JOURNAL, JOURNAL); } catch (e) { /* ใช้ของเก่าต่อ */ } }
+const DEV_OPEN = process.env.FH_DEV_OPEN === '1';
 const PAGES = require('./data/pages.json').map(p => p.id);
 
 /* ── ข้อมูลตั้งต้น ── */
@@ -32,11 +42,6 @@ function loadDocs() {
   for (const k of Object.keys(idx)) docs[k] = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(DATA, 'fixtures', idx[k]))).toString('utf8'));
   return docs;
 }
-function parsePins() {
-  const s = process.env.FH_PINS; if (!s) return null;
-  const pins = {}; s.split(',').forEach(kv => { const [r, p] = kv.split(':'); if (r && p) pins[r.trim()] = p.trim(); });
-  return Object.keys(pins).length ? pins : null;
-}
 
 const t0 = Date.now();
 const LINE_TOKEN = process.env.LINE_CHANNEL_TOKEN || '';
@@ -44,7 +49,12 @@ const LINE_ADMIN = process.env.LINE_ADMIN_USER_ID || '';
 const MARKET_FEED_URL = process.env.MARKET_FEED_URL || '';
 const SAMPLE_MARKET = process.env.FH_SAMPLE_MARKET === '1';   /* ราคาตลาดตัวอย่าง (ไม่ใช่ของจริง) — เปิดเฉพาะตอนทดสอบ UI */
 const DATA_NOTE = 'สินค้า/ทุน/ราคาจากใบราคาขาย+ทุน AL 01-07/10/69 · ลูกค้า/สัญญา/ยอดขายจากระบบเดิม (ก.ย. 69) · ราคาตลาด: ' + (MARKET_FEED_URL ? 'connector ' + MARKET_FEED_URL : SAMPLE_MARKET ? 'ตัวอย่างสมมติ (ไม่ใช่ของจริง)' : 'ยังไม่ต่อ connector — ใช้สำรวจหน้าร้าน');
-const store = createStore(loadDocs(), { pins: parsePins(), lineConfigured: !!LINE_TOKEN, dataNote: DATA_NOTE, sampleMarket: SAMPLE_MARKET });
+const LINE_SECRET = process.env.LINE_CHANNEL_SECRET || '';
+const LINE_STAFF = (process.env.LINE_STAFF_USER_IDS || '').split(',').map(x => x.trim()).filter(Boolean);
+const auth = createAuth({ varDir: VAR, usersJson: process.env.FH_USERS_JSON, devOpen: DEV_OPEN, log: m => console.error('[freshour] auth:', m) });
+if (auth.mode === 'locked') console.error('[freshour] ยังไม่มีบัญชีผู้ใช้ — ประตูปิดอยู่ · สร้างด้วย: node tools/users.js add <id> --role admin --name "ชื่อ"  (หรือ FH_DEV_OPEN=1 เฉพาะเครื่องพัฒนา)');
+if (auth.mode === 'open') console.error('[freshour] FH_DEV_OPEN=1 — ไม่ต้องใส่รหัส ใช้เฉพาะเครื่องพัฒนาเท่านั้น');
+const store = createStore(loadDocs(), { devOpen: auth.mode === 'open', lineConfigured: !!LINE_TOKEN, lineStaff: LINE_STAFF, dataNote: DATA_NOTE, sampleMarket: SAMPLE_MARKET });
 if (!MARKET_FEED_URL && !SAMPLE_MARKET) { const mj = store.docs.jobs['market-sync']; if (mj && mj.status === 'never') { mj.status = 'off'; mj.detail = 'ยังไม่ต่อ connector ราคาตลาด (ตั้ง MARKET_FEED_URL) — ไม่นับเป็นระบบล้ม'; } }   /* ไม่มี connector = ปิด ไม่ใช่ล้ม — แถบแดง "ขาดรอบ" ทุกวันคือเสียงรบกวน */
 let replayed = 0;
 if (JOURNAL && fs.existsSync(JOURNAL)) {
@@ -87,7 +97,7 @@ async function notifyAlerts() {
 }
 /* ── กล่องรับไฟล์ทุนจากโรงงาน (อัตโนมัติ): วางไฟล์ .csv/.json ใน data/inbox (จาก email forwarder / LINE bot / shared folder)
    ระบบอ่านทุก 20 วิ → เข้าด่านตรวจเดียวกับการอัปโหลด → ย้ายไป inbox/done · PDF/Excel ให้แปลงเป็น CSV ก่อน (หรืออัปโหลดในหน้าเว็บ ซึ่งอ่านได้ทั้งสองแบบ) ── */
-const INBOX = process.env.FH_INBOX_DIR || path.join(DATA, 'inbox');
+const INBOX = process.env.FH_INBOX_DIR || path.join(VAR, 'inbox');
 function parseCsv(text) {
   const rows = [], t = text.replace(/^\uFEFF/, ''); let row = [], f = '', q = false;
   for (let i = 0; i < t.length; i++) { const c = t[i];
@@ -142,25 +152,22 @@ async function tick() {
 if (process.env.FH_JOBS !== '0') { setTimeout(tick, 800).unref(); setInterval(tick, 20000).unref(); }
 
 
-/* ── session: cookie เซ็นด้วย HMAC (ไม่ต้องมีฐานข้อมูล session) ── */
-function sign(role) { return role + '.' + crypto.createHmac('sha256', SECRET).update(role).digest('base64url').slice(0, 24); }
-/* ค่าใน cookie = "role" หรือ "sale|s1" (เซลล์ + รหัสคนขาย) — เซ็นทั้งก้อน */
-function roleOf(req) {
-  const m = /(?:^|;\s*)fh_role=([^;]+)/.exec(req.headers.cookie || ''); if (!m) return null;
-  const v = decodeURIComponent(m[1]), sess = v.split('.')[0];
-  return sign(sess) === v ? sess : null;
+/* ── session: cookie ถือแค่ id สุ่ม · ตัวจริงอยู่ฝั่ง server (src/auth.js) · logout = ลบจริง ── */
+function sidOf(req) { const m = /(?:^|;\s*)fh_sid=([^;]+)/.exec(req.headers.cookie || ''); return m ? decodeURIComponent(m[1]) : null; }
+function isHttps(req) { return process.env.FH_SECURE === '1' || (req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https'; }
+function setSid(res, req, sid) {
+  const sec = isHttps(req) ? '; Secure' : '';
+  res.setHeader('Set-Cookie', sid ? `fh_sid=${encodeURIComponent(sid)}; Path=/; HttpOnly; SameSite=Lax${sec}; Max-Age=2592000`
+                                  : `fh_sid=; Path=/; HttpOnly; SameSite=Lax${sec}; Max-Age=0`);
 }
-function splitSess(sess) { const p = String(sess || '').split('|'); return { role: p[0] || null, rep: p[1] || null }; }
-function setRole(res, role) {
-  res.setHeader('Set-Cookie', role ? `fh_role=${encodeURIComponent(sign(role))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`
-                                   : 'fh_role=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
-}
+function ipOf(req) { return String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(); }
 
-/* LINE webhook: ตรวจลายเซ็นเมื่อมี LINE_CHANNEL_SECRET · ไม่ตั้ง = โหมดทดสอบ (ยิงเองได้) */
-function verifyLine(req, body) {
-  const secret = process.env.LINE_CHANNEL_SECRET; if (!secret) return true;
-  const sig = req.headers['x-line-signature'] || '';
-  return sig === crypto.createHmac('sha256', secret).update(JSON.stringify(body)).digest('base64');
+/* LINE webhook: ตรวจลายเซ็นจาก body ดิบ (ไบต์เดียวกับที่ LINE เซ็น) ก่อนทำอะไรทั้งนั้น · ไม่ตั้ง secret = ปิด webhook (ยกเว้นเครื่องพัฒนา) */
+function verifyLine(req, raw) {
+  if (!LINE_SECRET) return DEV_OPEN;
+  const sig = Buffer.from(String(req.headers['x-line-signature'] || ''), 'base64');
+  const want = crypto.createHmac('sha256', LINE_SECRET).update(raw).digest();
+  return sig.length === want.length && crypto.timingSafeEqual(sig, want);
 }
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json; charset=utf-8', '.png': 'image/png' };
 function send(res, status, body, type, extra) {
@@ -173,11 +180,13 @@ function file(res, p) {
   const ext = path.extname(p);
   send(res, 200, fs.readFileSync(p), MIME[ext] || 'application/octet-stream', ext === '.html' ? {} : { 'cache-control': 'public, max-age=300' });
 }
+const BODY_MAX = 5e6;
 function readBody(req) {
   return new Promise(resolve => {
-    let s = ''; req.on('data', c => { s += c; if (s.length > 5e6) req.destroy(); });
-    req.on('end', () => { try { resolve(s ? JSON.parse(s) : {}); } catch (e) { resolve({ __bad: true }); } });
-    req.on('error', () => resolve({}));
+    const chunks = []; let n = 0, over = false;
+    req.on('data', c => { n += c.length; if (n > BODY_MAX) { over = true; return; } chunks.push(c); });
+    req.on('end', () => { if (over) return resolve({ __big: true, raw: '' }); const raw = Buffer.concat(chunks).toString('utf8'); try { resolve({ raw, body: raw ? JSON.parse(raw) : {} }); } catch (e) { resolve({ __bad: true, raw }); } });
+    req.on('error', () => resolve({ raw: '', body: {} }));
   });
 }
 function journal(entry) {
@@ -190,11 +199,26 @@ const MOVED = { '/price': '/pricing', '/market': '/costs', '/trend': '/costs?tab
 const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
   let p = u.pathname.replace(/\.html$/, '').replace(/\/+$/, '') || '/';
-  const sess = roleOf(req); let { role, rep } = splitSess(sess);
-  /* เซลล์ต้องระบุคน — cookie เก่าที่มีแต่ "sale" ให้เข้าระบบใหม่ (จะได้เห็นเฉพาะลูกค้าของตัวเอง) */
+  const sid = sidOf(req), sess = auth.get(sid); let role = sess ? sess.role : null, rep = sess ? sess.rep : null;
+  /* เซลล์ต้องระบุคน — บัญชีเซลล์ที่ยังไม่ผูกชื่อในทีมขาย ให้เข้าระบบใหม่ (จะได้เห็นเฉพาะลูกค้าของตัวเอง) */
   if (role === 'sale' && !rep && (store.docs.state.sales_reps || []).length) { role = null; rep = null; }
   try {
-    if (p === '/api/connectors/test' && req.method === 'POST') { if (!role || store.LVL[role] < 2) return json(res, { status: 403, body: { error: 'ไม่มีสิทธิ์' } }); const b = await readBody(req); const r = await testConnector(b.competitor_id); return json(res, { status: 200, body: r }); }
+    if (p === '/healthz') return json(res, { status: 200, body: { ok: true, up_s: Math.round((Date.now() - t0) / 1000), auth: auth.mode } });   /* liveness ของแพลตฟอร์ม — ไม่ปนกับเรื่องธุรกิจ */
+    if (p === '/api/login' && req.method === 'POST') {
+      const rb = await readBody(req); if (rb.__bad || rb.__big) return json(res, { status: 400, body: { error: 'อ่าน JSON ไม่ได้' } });
+      const r = auth.login(rb.body, ipOf(req));
+      if (r.session) { setSid(res, req, r.session.id); store.handle({ method: 'POST', url: '/api/log', role: r.session.role, rep: r.session.rep, body: { action: 'login', detail: (r.session.name || r.session.uid) + ' เข้าระบบ' } }); }
+      else if (r.status === 401 || r.status === 429) store.handle({ method: 'POST', url: '/api/log', role: 'system', body: { action: 'login-fail', detail: 'เข้าระบบไม่สำเร็จ: ' + String(rb.body && (rb.body.user || rb.body.role) || '?').slice(0, 40) + ' จาก ' + ipOf(req), status: 'warn' } });
+      return json(res, { status: r.status, body: r.body });
+    }
+    if (p === '/api/logout') { if (sid) auth.drop(sid); setSid(res, req, null); return json(res, { status: 200, body: { ok: true } }); }
+    if (p === '/api/me') {
+      if (!sess || !role) return json(res, { status: 200, body: { role: null, needPin: auth.mode !== 'open', mode: auth.mode, locked: auth.mode === 'locked' } });
+      const r = store.handle({ method: 'GET', url: '/api/me', role, rep, body: {} });
+      if (r.status === 200) Object.assign(r.body, { needPin: auth.mode !== 'open', mode: auth.mode, user: { id: sess.uid, name: sess.name } });
+      return json(res, r);
+    }
+    if (p === '/api/connectors/test' && req.method === 'POST') { if (!role || store.LVL[role] < 2) return json(res, { status: 403, body: { error: 'ไม่มีสิทธิ์' } }); const b = (await readBody(req)).body || {}; const r = await testConnector(b.competitor_id); return json(res, { status: 200, body: r }); }
     if (p === '/api/line/content') {   /* รูป/ไฟล์ที่ส่งเข้า LINE OA → ดึงมาอ่านในเบราว์เซอร์ (OCR) — เฉพาะ Pricing ขึ้นไป */
       if (!role || store.LVL[role] < 2) return json(res, { status: 403, body: { error: 'ไม่มีสิทธิ์' } });
       if (!LINE_TOKEN) return json(res, { status: 503, body: { error: 'ยังไม่ตั้ง LINE_CHANNEL_TOKEN' } });
@@ -203,19 +227,23 @@ const server = http.createServer(async (req, res) => {
       if (!lr.ok) return json(res, { status: 502, body: { error: 'LINE ' + lr.status } });
       const buf = Buffer.from(await lr.arrayBuffer()); res.writeHead(200, { 'content-type': lr.headers.get('content-type') || 'application/octet-stream', 'cache-control': 'private, max-age=300' }); return res.end(buf);
     }
-    if (p === '/api/market-feed-sample') { if (!roleOf(req)) return json(res, { status: 401, body: { error: 'กรุณาเข้าระบบ' } }); return send(res, 200, fs.readFileSync(path.join(DATA, 'market-feed-sample.json'))); }
+    if (p === '/api/market-feed-sample') { if (!role) return json(res, { status: 401, body: { error: 'กรุณาเข้าระบบ' } }); return send(res, 200, fs.readFileSync(path.join(DATA, 'market-feed-sample.json'))); }
     if (p.startsWith('/api/')) {
-      const body = req.method === 'GET' || req.method === 'HEAD' ? {} : await readBody(req);
-      if (body.__bad) return json(res, { status: 400, body: { error: 'อ่าน JSON ไม่ได้' } });
-      const entry = { method: req.method, url: u.pathname + u.search, body, role: role || 'anon', rep: rep || null, origin: `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}` };
+      const rb = req.method === 'GET' || req.method === 'HEAD' ? { raw: '', body: {} } : await readBody(req);
+      if (rb.__big) return json(res, { status: 413, body: { error: 'ไฟล์/ข้อมูลใหญ่เกิน 5 MB' } });
+      if (rb.__bad) return json(res, { status: 400, body: { error: 'อ่าน JSON ไม่ได้' } });
+      const body = rb.body;
+      if (p === '/api/line/webhook') {   /* ตรวจลายเซ็นก่อน แล้วค่อยให้ store แตะข้อมูล */
+        if (req.method !== 'POST') return json(res, { status: 405, body: { error: 'POST เท่านั้น' } });
+        if (!LINE_SECRET && !DEV_OPEN) return json(res, { status: 503, body: { error: 'webhook ปิดอยู่ — ยังไม่ตั้ง LINE_CHANNEL_SECRET' } });
+        if (!verifyLine(req, rb.raw)) return json(res, { status: 401, body: { error: 'ลายเซ็น LINE ไม่ถูกต้อง' } });
+      }
+      const entry = { method: req.method, url: u.pathname + u.search, body, role: role || 'anon', rep: rep || null, user: sess ? sess.uid : null, origin: `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}` };
       const r = store.handle(entry);
-      if (p === '/api/health' && !r.body.ok) r.status = 503;
-      if ('session' in r) setRole(res, r.session);
-      if (p === '/api/line/webhook' && req.method === 'POST' && !verifyLine(req, body)) return json(res, { status: 401, body: { error: 'ลายเซ็น LINE ไม่ถูกต้อง' } });
       if (req.method !== 'GET' && r.status < 300 && !/\/api\/(login|logout|survey\/parse)$/.test(p)) journal({ method: entry.method, url: entry.url, body, role: entry.role, rep: entry.rep, at: new Date().toISOString() });
       return json(res, r);
     }
-    if (p === '/logout') { setRole(res, null); return redirect(res, '/login'); }
+    if (p === '/logout') { if (sid) auth.drop(sid); setSid(res, req, null); return redirect(res, '/login'); }
     if (MOVED[p]) { if (MOVED[p].indexOf('?') >= 0) return redirect(res, MOVED[p]); p = MOVED[p]; }
     if (p === '/') return redirect(res, role ? HOME[role] || '/pricing' : '/login');
     const qm = p.match(/^\/q\/([A-Za-z0-9]+)$/);
@@ -230,7 +258,12 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.requestTimeout = 30000; server.headersTimeout = 35000;
+process.on('unhandledRejection', e => console.error('[freshour] unhandledRejection', e && e.stack || e));
+process.on('uncaughtException', e => { console.error('[freshour] uncaughtException', e && e.stack || e); });
+function shutdown(sig) { console.log('[freshour] ' + sig + ' — ปิดอย่างเรียบร้อย'); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); }
 if (require.main === module) {
-  server.listen(PORT, () => console.log(`[freshour] เปิดที่ http://localhost:${PORT}  (เข้าระบบ → /login)`));
+  process.on('SIGTERM', () => shutdown('SIGTERM')); process.on('SIGINT', () => shutdown('SIGINT'));
+  server.listen(PORT, () => console.log(`[freshour] เปิดที่ http://localhost:${server.address().port}  (เข้าระบบ → /login) · โหมดบัญชี: ${auth.mode}`));
 }
-module.exports = { server, store };
+module.exports = { server, store, auth };
