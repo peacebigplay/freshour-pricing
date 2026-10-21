@@ -16,7 +16,11 @@
   var GOAL_NAMES = { competitive: 'แข่งขันได้', hold: 'ยืนราคาเดิม', target: 'กำไรตามเป้า', protect: 'ป้องกันกำไร' };
 
   /* ── เวลาไทย ─────────────────────────────────────────────────── */
-  function bkk(now) { return new Date((now || Date.now()) + 7 * 3600e3); }
+  /* นาฬิกาเดียวของทั้ง store — ตอนเล่น journal ซ้ำ server ตั้งเป็นเวลาของรายการนั้น จะได้ไม่เขียนวันที่ใหม่ทับของเดิม */
+  var CLOCK = null;
+  function nowMs() { return CLOCK != null ? CLOCK : Date.now(); }
+  function setClock(ms) { CLOCK = ms == null ? null : Number(ms); }
+  function bkk(now) { return new Date((now || nowMs()) + 7 * 3600e3); }
   function today(now) { return bkk(now).toISOString().slice(0, 10); }
   function stamp(now) { return bkk(now).toISOString().slice(0, 19); }
   function weekStart(d) { var x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() - x.getUTCDay()); return x.toISOString().slice(0, 10); }
@@ -53,6 +57,14 @@
     var D = docs;                                   /* ก้อนข้อมูลทั้งหมด (แก้ในที่) */
     var needPin = !opts.devOpen;                    /* server จัดการบัญชี/รหัสเอง (src/auth.js) — store รู้แค่ว่าเครื่องนี้เปิดโล่งไหม */
     var seq = { log: 100, dlv: 100, prs: 100, req: 100, inv: 0, talk: 1000 };
+    /* เลขรันต้องต่อจากของที่มีอยู่จริง — เปิดจาก snapshot แล้วห้ามชนกับ id เดิม */
+    function maxId(rows) { var m = 0; (Array.isArray(rows) ? rows : []).forEach(function (r) { var n = Number(String(r && r.id != null ? r.id : '').replace(/\D/g, '')); if (n > m) m = n; }); return m; }
+    (function initSeq() {
+      var sl = D['service-logs']; seq.log = Math.max(seq.log, maxId(sl && (sl.rows || sl)));
+      seq.dlv = Math.max(seq.dlv, maxId(D.deliveries && D.deliveries.rows)); seq.prs = Math.max(seq.prs, maxId(D.prospects && D.prospects.rows));
+      seq.req = Math.max(seq.req, maxId(D['price-requests'] && D['price-requests'].rows)); seq.talk = Math.max(seq.talk, maxId(D.brain && D.brain.talk));
+      seq.inv = Math.max(seq.inv, (D.invoices && D.invoices.invoices || []).length);
+    })();
     var tokens = {};                                /* quote-link token → customer_id */
 
     var S = D.state, CFG = S.config;
@@ -756,7 +768,7 @@
     function addCustomer(role, body) {
       var name = String(body.name || '').trim(); if (!name) return err(400, 'ต้องมีชื่อลูกค้า');
       if (custByName(name)) return err(400, 'มีลูกค้าชื่อนี้อยู่แล้ว');
-      var id = hashId('c', name + Date.now()), type = body.type || 'contract', tier = body.tier || 'w2';
+      var id = hashId('c', name + nowMs()), type = body.type || 'contract', tier = body.tier || 'w2';
       D.guard.customers.push({ id: id, name: name, type: type, tier: tier, adjust: 0, n: 0, low: 0, loss: 0, mgSum: 0, verified: 0, margin: null, allVerified: true, grade: '—', belowTarget: 0 });
       S.customers.push({ id: id, name: name, type: type, tier: tier, owner: body.owner || '', haggles: 0, contact: body.contact || '', note: body.note || '', active: 1, adjust: 0 });
       D.desk.customers.push({ id: id, name: name, type: type, adjust: 0, contractItems: 0, lines: 0, work: 0, low: 0, priced: 0, handed: false, gateMissing: 0, gateStale: 0, margin: null });
@@ -799,7 +811,7 @@
     function addProduct(role, body) {
       var name = String(body.name || '').trim(); if (!name) return err(400, 'ต้องมีชื่อสินค้า');
       var grp = body.grp || 'อื่นๆ', cost = num(body.cost) || 0, add = num(body.add_baht) == null ? 15 : num(body.add_baht);
-      var id = hashId('p', name + Date.now()), td = today(), tt = tiersOf({ add_baht: add }, cost), w2 = tt.w2;
+      var id = hashId('p', name + nowMs()), td = today(), tt = tiersOf({ add_baht: add }, cost), w2 = tt.w2;
       var marks = D.pricelist.comps.map(function (c) { return { id: c.id, label: c.label, tier: c.tier, price: 0, state: 'none' }; });
       D.pricelist.rows.push({ id: id, name: name, grp: grp, retail: tt.retail, w2: w2, s5: tt.s5, s10: tt.s10, saleFloor: w2 ? w2 - CFG.haggle_baht : 0, marks: clone(marks), pos: 'none', gap: null, cost: cost, margin: mg(w2, cost), costSrc: cost ? 'กรอกในหน้าเว็บ' : '', costSrcAt: cost ? td : '' });
       var g = D.pricelist.grps.filter(function (x) { return x.grp === grp; })[0]; if (g) g.n++; else D.pricelist.grps.push({ grp: grp, n: 1 });
@@ -1186,19 +1198,23 @@
     function quoteLink(role, body, origin) {
       var cid = body.customer_id, sh = sheetFor(cid), c = sendRow(cid); if (!sh || !c) return err(404, 'ไม่พบลูกค้า');
       if (!sh.rows.some(function (r) { return r.inOffer; })) return err(400, 'ใบของ ' + sh.customer.name + ' ยังไม่มีราคาที่ Pricing ยืนยัน — ยังสร้างลิงก์ไม่ได้');
-      var token = sh.link && sh.link.token || hashId('q', cid + ':' + sh.label).slice(1) + Math.random().toString(36).slice(2, 8);
+      var expired = sh.link && sh.link.expires_at && sh.link.expires_at < today(), fresh = false;
+      var token = (!expired && sh.link && sh.link.token) || (body.__token && String(body.__token)) || (fresh = true, hashId('q', cid + ':' + sh.label).slice(1) + Math.random().toString(36).slice(2, 8));
       tokens[token] = cid;
-      var exp = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+      var exp = new Date(nowMs() + 14 * 864e5).toISOString().slice(0, 10);
       sh.link = { token: token, url: (origin || '') + '/q/' + token, expires_at: exp, opened_at: sh.link && sh.link.opened_at || null, label: sh.label };
       /* สร้างลิงก์เพื่อให้เซลล์ส่งเอง = ถือว่าส่งแล้วทางลิงก์ · แต่ถ้าสร้างเพื่อแนบใน LINE (silent) สถานะ "ส่งแล้ว" รอ LINE สำเร็จจริงก่อน */
       if (!body.silent && !c.sentAt) { c.sentAt = stamp(); c.sentBy = role; c.channel = 'link'; sh.sent = true; }
       c.linked = true; rebuildSheet(sh);
-      return ok({ url: sh.link.url, token: token, expires_at: exp, label: sh.label, opened_at: sh.link.opened_at });
+      var out = ok({ url: sh.link.url, token: token, expires_at: exp, label: sh.label, opened_at: sh.link.opened_at });
+      out.journal = { __token: token };   /* server เก็บ token ลง journal — เล่นซ้ำแล้วลิงก์เดิมยังใช้ได้ */
+      return out;
     }
     function publicQuote(token) {
       var cid = tokens[token]; if (!cid) { sheets().forEach(function (sh) { if (sh.link && sh.link.token === token) cid = sh.customer.id; }); }
       var sh = cid && sheetFor(cid); if (!sh || !sh.link) return null;
-      var firstOpen = !sh.link.opened_at || (Date.now() - Date.parse(sh.link.opened_at + '+07:00')) > 36e5;
+      if (sh.link.expires_at && sh.link.expires_at < today()) return null;   /* หมดอายุ = ลิงก์ใช้ไม่ได้ เซลล์สร้างใหม่ได้ */
+      var firstOpen = !sh.link.opened_at || (nowMs() - Date.parse(sh.link.opened_at + '+07:00')) > 36e5;
       sh.link.opened_at = stamp(); var c = sendRow(cid); if (c) c.opened = sh.link.opened_at;
       if (firstOpen) EXT.logEvent({ actor: 'customer', kind: 'customer', action: 'quote-open', entity: 'customer', entity_id: cid, detail: sh.customer.name + ' เปิดใบราคา V' + (sh.quote_version || 1) + ' ทางลิงก์' });
       /* ห้ามส่ง cost · margin · ราคาขั้นต่ำ · คู่แข่ง · โน้ตภายใน */
@@ -1214,6 +1230,7 @@
     function publicRespond(token, body) {
       var cid = tokens[token]; if (!cid) { sheets().forEach(function (sh) { if (sh.link && sh.link.token === token) cid = sh.customer.id; }); }
       var sh = cid && sheetFor(cid); if (!sh) return err(404, 'ลิงก์นี้ใช้ไม่ได้แล้ว');
+      if (sh.link && sh.link.expires_at && sh.link.expires_at < today()) return err(410, 'ลิงก์นี้หมดอายุแล้ว — ติดต่อเซลล์เพื่อขอลิงก์ใหม่');
       sh.sent = true; var c = sendRow(cid); if (c && !c.sentAt) { c.sentAt = stamp(); c.sentBy = 'link'; }
       var pname = (product(body.product_id) || {}).name || '';
       if (body.kind === 'nego') {
@@ -1231,7 +1248,7 @@
     var EXT = extend({ D: D, S: S, CFG: CFG, today: today, stamp: stamp, r1: r1, mg: mg, num: num, err: err, ok: ok, clone: clone, hashId: hashId, LVL: LVL, ROLE_NAME: ROLE_NAME,
       product: product, custOf: custOf, custByName: custByName, sheetFor: sheetFor, deskFor: deskFor, sendRow: sendRow, desks: desks, rebuildSheet: rebuildSheet, rebuildGuard: rebuildGuard, rebuildTotals: rebuildTotals,
       setCost: setCost, afterCosts: afterCosts, tiersOf: tiersOf, recalcProduct: recalcProduct, policyOf: policyOf, goalsFor: goalsFor, closeNegotiations: closeNegotiations, mgState: mgState, priceAt: priceAt, holdCost: holdCost, releaseCost: releaseCost, costMasterOf: costMasterOf, ensureCostMaster: ensureCostMaster, spOf: spOf, competitorPrices: competitorPrices, quoteFor: quoteFor, quoteLink: quoteLink, quoteResponse: quoteResponse, priceRequest: priceRequest, audit: function () { return audit.apply(null, arguments); }, targetPct: targetPct, floorPct: floorPct,
-      lineConfigured: function () { return !!opts.lineConfigured; }, lineStaff: opts.lineStaff || [], recordInvoice: recordInvoice, savePriceSheet: savePriceSheet, handoff: handoff, quoteLink: quoteLink, ownerOf: ownerOf, repOf: repOf, repScope: repScope, inScope: inScope, curRep: function () { return CUR_REP; } });
+      lineConfigured: function () { return !!opts.lineConfigured; }, lineStaff: opts.lineStaff || [], nowMs: nowMs, recordInvoice: recordInvoice, savePriceSheet: savePriceSheet, handoff: handoff, quoteLink: quoteLink, ownerOf: ownerOf, repOf: repOf, repScope: repScope, inScope: inScope, curRep: function () { return CUR_REP; } });
     /* audit เดิม (หน้า "ความจำ") → ลง log กลางด้วย รูปแบบเดียวกับงานของระบบ */
     var audit0 = audit;
     audit = function (role, action, detail) { audit0(role, action, detail); EXT.logEvent({ actor: role, rep: CUR_REP, kind: 'human', action: action, detail: detail }); };
@@ -1366,7 +1383,7 @@
         var b = req.body || {}, cid = b.customer_id || (b.id && /customers/.test(p) ? b.id : ''), pid = b.product_id || '';
         var detail = r.status < 300 ? '' : (r.body && r.body.error) || ('ผิดพลาด ' + r.status);
         var ent = cid ? (custOf(cid) || {}).name || cid : pid ? (product(pid) || {}).name || pid : b.id != null ? String(b.id) : '';
-        var already = r.status < 300 && D.events[0] && D.events[0].actor === (req.role || 'anon') && Date.parse(D.events[0].at + '+07:00') > Date.now() - 1500 && D.events[0].kind === 'human';
+        var already = r.status < 300 && D.events[0] && D.events[0].actor === (req.role || 'anon') && Date.parse(D.events[0].at + '+07:00') > nowMs() - 1500 && D.events[0].kind === 'human';
         if (!already) EXT.logEvent({ actor: req.role || 'anon', rep: req.rep || null, kind: 'human', action: p.replace('/api/', ''), entity: cid ? 'customer' : pid ? 'product' : '', entity_id: cid || pid || (b.id == null ? '' : b.id), detail: (ent ? ent + ' · ' : '') + detail, status: r.status < 300 ? 'ok' : 'fail' });
       }
       return r;
@@ -1376,7 +1393,7 @@
     ensurePolicy(); ensureCostMaster(); syncPrevRound(); recalcAll(); rebuildCategoryGuard();
     rebuildSends(); rebuildDeliveries(); ensureReps();
 
-    return { handle: handle, docs: D, meOf: meOf, publicQuote: publicQuote, today: today, goalsFor: goalsFor, LVL: LVL, ROLE_NAME: ROLE_NAME, GOAL_NAMES: GOAL_NAMES, esc: esc, ext: EXT };
+    return { handle: handle, docs: D, meOf: meOf, publicQuote: publicQuote, today: today, goalsFor: goalsFor, LVL: LVL, ROLE_NAME: ROLE_NAME, GOAL_NAMES: GOAL_NAMES, esc: esc, ext: EXT, setClock: setClock, nowMs: nowMs };
   }
 
   return { createStore: createStore, keyOf: keyOf, LVL: LVL, ROLE_NAME: ROLE_NAME };

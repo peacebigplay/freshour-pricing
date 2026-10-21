@@ -27,6 +27,12 @@
       'cost-import': { label: 'อ่านไฟล์ทุน AL', every_h: 0, last_run: null, status: 'never', detail: '', runs: 0 } };
     D.jobs['followup-check'] = D.jobs['followup-check'] || { label: 'ตามลูกค้าที่เงียบ (ทุกวัน)', every_h: 24, last_run: null, status: 'never', detail: '', runs: 0 };
     var seq = { ev: 0, al: 0, ob: 0, pr: 0, ci: 0, cf: 0, fu: 0, dl: 0, ob2: 0 };
+    /* เลขรันต่อจากของเดิม (fixtures/snapshot) — เดิมเริ่ม 0 เสมอ ทำให้ id ชนกับเหตุการณ์ที่มีอยู่แล้ว */
+    (function initSeq() {
+      var mx = function (rows) { var m = 0; (Array.isArray(rows) ? rows : []).forEach(function (r) { var n = Number(String(r && r.id != null ? r.id : '').replace(/\D/g, '')); if (n > m) m = n; }); return m; };
+      seq.ev = mx(D.events); seq.al = mx(D.alerts); seq.ob = mx(D.market_obs); seq.pr = mx(D.predictions); seq.ci = mx(D.cost_imports); seq.cf = mx(D.cost_flags);
+      seq.fu = mx(D.followups); seq.dl = mx(D.deals); seq.ob2 = Math.max(mx(D.outbox), mx(D.surveys));
+    })();
     var nextId = function (k) { return ++seq[k]; };
 
     /* ════════ 5 · LOG รูปแบบเดียวทั้งคนและระบบ ════════ */
@@ -60,7 +66,7 @@
     function jobFail(k, e) { var j = D.jobs[k]; j.status = 'fail'; j.last_run = stamp(); j.error = String(e && e.message || e); j.runs++; logEvent({ actor: 'system', action: k, entity: 'job', entity_id: k, detail: j.error, status: 'fail' }); alert('bad', 'งานระบบล้ม: ' + j.label, j.error, k); }
     function ageDays(iso) { return iso ? Math.floor((Date.parse(today()) - Date.parse(String(iso).slice(0, 10))) / 864e5) : null; }
     function health() {
-      var jobs = Object.keys(D.jobs).map(function (k) { var j = D.jobs[k], age = (Date.now() - Date.parse((j.last_run || D.jobs_started) + '+07:00')) / 36e5;
+      var jobs = Object.keys(D.jobs).map(function (k) { var j = D.jobs[k], age = (X.nowMs() - Date.parse((j.last_run || D.jobs_started) + '+07:00')) / 36e5;
         var stale = j.every_h && j.status !== 'off' && (age == null || age > j.every_h * 1.5);   /* 'off' = ยังไม่ได้ต่อ (เช่น ไม่มี connector ตลาด) ไม่ใช่ระบบล้ม */
         return Object.assign({ key: k, stale: !!stale, age_h: age == null ? null : r1(age) }, j); });
       var bad = jobs.filter(function (j) { return j.status === 'fail' || j.stale; });
@@ -467,13 +473,13 @@
     }
     /* server เรียกเป็นระยะพร้อม transport (async) — ส่งจริงเมื่อมี LINE token · ไม่มี = บันทึกว่าจำลองส่ง เพื่อให้ flow เดินต่อได้ */
     function drainOutbox(transport) {
-      var nowMs = Date.now(), q = D.outbox.filter(function (o) { return o.status === 'queued' && (!o.next_try || Date.parse(o.next_try) <= nowMs); }).slice(-10).reverse(); if (!q.length) return Promise.resolve(0);
+      var nowMs = X.nowMs(), q = D.outbox.filter(function (o) { return o.status === 'queued' && (!o.next_try || Date.parse(o.next_try) <= nowMs); }).slice(-10).reverse(); if (!q.length) return Promise.resolve(0);
       jobStart('line-outbox');
       return q.reduce(function (p, o) { return p.then(function () {
         o.attempts++;
         return Promise.resolve().then(function () { return transport ? transport(o.to, o.text, o) : { simulated: true }; })
           .then(function (r) { o.status = r && r.simulated ? 'simulated' : 'sent'; o.sent_at = stamp(); o.error = null; o.next_try = null; if (o.kind === 'quote') markSent(o.customer_id, 'line', o.by || 'system'); else if (o.kind === 'revised') { X.closeNegotiations(o.customer_id, o.by || 'system', 'line'); logEvent({ actor: o.by || 'system', kind: o.by && o.by !== 'system' ? 'human' : 'system', action: 'revised-quote-sent', entity: 'customer', entity_id: o.customer_id, detail: o.customer + ' · ราคาต่อรองที่ตัดสินแล้วถึงลูกค้าทาง LINE', status: 'ok' }); } logEvent({ actor: 'system', action: 'line-send', entity: 'customer', entity_id: o.customer_id, detail: o.kind + ' → ' + o.customer + (o.status === 'simulated' ? ' (จำลอง — ยังไม่ตั้ง LINE token)' : ''), status: 'ok' }); })
-          .catch(function (e) { o.error = String(e && e.message || e); var back = [1, 5, 15][o.attempts - 1]; if (back) o.next_try = new Date(Date.now() + back * 6e4).toISOString(); else { o.status = 'failed'; alert('bad', 'ส่ง LINE ไม่สำเร็จ: ' + o.customer, o.error + ' — ลอง 3 ครั้งแล้ว (1/5/15 นาที)', 'line-outbox'); } logEvent({ actor: 'system', action: 'line-send', entity: 'customer', entity_id: o.customer_id, detail: o.error, status: 'fail' }); });
+          .catch(function (e) { o.error = String(e && e.message || e); var back = [1, 5, 15][o.attempts - 1]; if (back) o.next_try = new Date(X.nowMs() + back * 6e4).toISOString(); else { o.status = 'failed'; alert('bad', 'ส่ง LINE ไม่สำเร็จ: ' + o.customer, o.error + ' — ลอง 3 ครั้งแล้ว (1/5/15 นาที)', 'line-outbox'); } logEvent({ actor: 'system', action: 'line-send', entity: 'customer', entity_id: o.customer_id, detail: o.error, status: 'fail' }); });
       }); }, Promise.resolve()).then(function () { var f = D.outbox.filter(function (o) { return o.status === 'failed'; }).length; jobDone('line-outbox', 'ส่ง ' + q.length + ' ข้อความ' + (f ? ' · ล้มเหลวสะสม ' + f : '')); return q.length; });
     }
     function retryOutbox(role, body) { var n = 0; D.outbox.forEach(function (o) { if (o.status === 'failed' && (!body.id || o.id === Number(body.id))) { if (!o.to) o.to = lineIdOf(o.customer_id); if (o.to) { o.status = 'queued'; o.attempts = 0; o.error = null; n++; } } }); return ok({ ok: true, requeued: n }); }
@@ -520,7 +526,7 @@
         : (c.accepted + c.declined) >= (c.offerLines || 1) && c.accepted ? 'agreed' : (c.accepted + c.declined) > 0 ? 'partial' : 'sent';
       var lastFu = D.followups.filter(function (f) { return f.customer_id === cid; })[0];
       var silentSince = c.sentAt && st === 'sent' ? (lastFu && lastFu.at > c.sentAt ? lastFu.at : c.sentAt) : null;
-      var silentDays = silentSince ? Math.floor((Date.now() - Date.parse(silentSince + '+07:00')) / 864e5) : 0;
+      var silentDays = silentSince ? Math.floor((X.nowMs() - Date.parse(silentSince + '+07:00')) / 864e5) : 0;
       var due = st === 'sent' && silentDays >= (lastFu && lastFu.next_in_days || FOLLOW_DAYS);
       var ob = D.outbox.filter(function (o) { return o.customer_id === cid; })[0];
       return { stage: st, label: STAGE_LABEL[st], silentDays: silentDays, followupDue: !!due, lastFollowup: lastFu || null, line: !!lineIdOf(cid), lineStatus: ob ? ob.status : null, channel: c.channel || (c.sentAt ? 'manual' : null), opened: c.opened || null, deal: deal || null };
@@ -698,7 +704,7 @@
       waiting_revision: 'รอ Pricing ตอบราคาต่อรอง', revised_ready: 'ราคาใหม่พร้อมส่ง', accepted: 'ลูกค้าตอบรับ รอปิดดีล', won: 'ปิดได้ (Won)', lost: 'เสีย (Lost)', invoiced: 'ออก invoice แล้ว' };
     var SQ_ACTION = { send: 'ส่ง LINE', resend: 'ส่งใหม่ / แก้ช่องทาง', send_revised: 'ส่งราคาใหม่', close_won: 'ปิดดีล Won', decide: 'ตามต่อ หรือ ปิด Lost', followup: 'ตามลูกค้า' };
     var LOST_REASONS = { price: 'ราคาสูงไป', competitor: 'ไปเจ้าอื่น', credit: 'เงื่อนไขเครดิต', delivery: 'เงื่อนไขจัดส่ง', no_demand: 'ไม่มีความต้องการ', no_response: 'ไม่ตอบ', postponed: 'เลื่อนไปก่อน', other: 'อื่นๆ' };
-    function hoursSince(iso) { return iso ? Math.max(0, (Date.now() - Date.parse(String(iso).replace(' ', 'T') + (String(iso).length <= 19 ? '+07:00' : ''))) / 36e5) : null; }
+    function hoursSince(iso) { return iso ? Math.max(0, (X.nowMs() - Date.parse(String(iso).replace(' ', 'T') + (String(iso).length <= 19 ? '+07:00' : ''))) / 36e5) : null; }
     function lastEventFor(cid) { return D.events.filter(function (e) { return e.entity === 'customer' && e.entity_id === cid; })[0] || null; }
     function salesQueue(scope) {
       var label = D.sends.label;
@@ -1266,7 +1272,7 @@
         case '/api/exec-attention/assign': need(3); {
           var XA = D['exec-attention'] = D['exec-attention'] || { items: [] }; XA.items = XA.items || [];
           var ttl = String(body.title || '').trim(); if (!ttl) return err(400, 'ต้องมีหัวข้อ');
-          var it = { id: 'xa' + Date.now().toString(36) + (XA.items.length + 1), at: stamp(), by: role, title: ttl.slice(0, 160), detail: String(body.detail || '').slice(0, 400), owner: String(body.owner || '').slice(0, 40), owner_name: String(body.owner_name || body.owner || '').slice(0, 60), due_at: body.due_at ? String(body.due_at).slice(0, 10) : null, severity: ['high', 'medium', 'low'].indexOf(body.severity) >= 0 ? body.severity : 'medium', source: String(body.source || 'exec').slice(0, 40), status: 'assigned', note: String(body.note || '').slice(0, 300) };
+          var it = { id: 'xa' + X.nowMs().toString(36) + (XA.items.length + 1), at: stamp(), by: role, title: ttl.slice(0, 160), detail: String(body.detail || '').slice(0, 400), owner: String(body.owner || '').slice(0, 40), owner_name: String(body.owner_name || body.owner || '').slice(0, 60), due_at: body.due_at ? String(body.due_at).slice(0, 10) : null, severity: ['high', 'medium', 'low'].indexOf(body.severity) >= 0 ? body.severity : 'medium', source: String(body.source || 'exec').slice(0, 40), status: 'assigned', note: String(body.note || '').slice(0, 300) };
           XA.items.unshift(it); if (XA.items.length > 300) XA.items.length = 300;
           logEvent({ actor: role, kind: 'human', action: 'assign', entity: 'attention', entity_id: it.id, detail: 'มอบหมาย "' + it.title + '" → ' + it.owner_name + (it.due_at ? ' ภายใน ' + it.due_at : ''), status: 'ok' });
           return ok({ ok: true, item: it }); }
@@ -1292,6 +1298,6 @@
       }
       return undefined;
     }
-    return { route: route, logEvent: logEvent, alert: alert, health: health, markSent: markSent, bindCode: bindCode, drainOutbox: drainOutbox, followupTick: followupTick, marketSync: marketSync, computeTrend: computeTrend, stageOf: stageOf, board: board, matchProduct: matchProduct, costChecks: costChecks, importCosts: importCosts, decideFlag: decideFlag, normUnit: normUnit, STAGES: STAGES, parseSurvey: parseSurvey, sourceFail: sourceFail, intakePerf: intakePerf };
+    return { route: route, logEvent: logEvent, alert: alert, health: health, markSent: markSent, bindCode: bindCode, matchProduct: matchProduct, drainOutbox: drainOutbox, followupTick: followupTick, marketSync: marketSync, computeTrend: computeTrend, stageOf: stageOf, board: board, matchProduct: matchProduct, costChecks: costChecks, importCosts: importCosts, decideFlag: decideFlag, normUnit: normUnit, STAGES: STAGES, parseSurvey: parseSurvey, sourceFail: sourceFail, intakePerf: intakePerf };
   };
 });

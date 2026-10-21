@@ -8,7 +8,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test test/*.test.js",
-    "reset": "node -e \"require('fs').rmSync('data/journal.jsonl',{force:true});require('fs').rmSync('data/var/journal.jsonl',{force:true});console.log('ล้างข้อมูลทดสอบแล้ว')\"",
+    "reset": "node -e \"for(const f of ['data/journal.jsonl','data/var/journal.jsonl','data/var/snapshot.json.gz'])require('fs').rmSync(f,{force:true});console.log('ล้างข้อมูลทดสอบแล้ว')\"",
     "users": "node tools/users.js",
     "build:demo": "node tools/build-demo.js"
   },

@@ -30,7 +30,7 @@ npm run users -- add jum --role ops --name "พี่จุ๋ม"        # ส�
 npm run users -- add sale1 --role sale --rep s1 --name "เซลล์ 1"
 npm start                                   # มีบัญชีแล้ว = ทุกคนใส่ชื่อ+รหัส · ไม่มีบัญชีและไม่ตั้ง FH_DEV_OPEN = ประตูปิด
 npm run reset                               # ล้างสิ่งที่ทดสอบไว้ กลับชุดตั้งต้น (ลบ journal)
-npm test                                    # ทดสอบ 43 ชุด (flow ครบวง + ความปลอดภัย)
+npm test                                    # ทดสอบ 48 ชุด (flow ครบวง + ความปลอดภัย + ข้อมูลคงทน)
 ```
 
 **บัญชีและสิทธิ์ (รอบ 19 · เตรียมขึ้น production)**
@@ -257,6 +257,15 @@ tools/build-demo.js  สร้าง dist/freshour-demo.html
 - `public/peach.js` เลิก "ล็อกอินให้เองเป็น ops เมื่อ 401" (เดิมถ้าไม่ตั้งรหัส คนนอก/เซลล์ที่ cookie หายกลายเป็น ops) · `public/login.html` มีฟอร์มชื่อ+รหัส
 - whitelist ฝั่งเซลล์ · เช็คเจ้าของจาก id · webhook verify-before-handle · staff allowlist · `/healthz` · 413 เมื่อ body เกิน 5 MB · handler `unhandledRejection`/`SIGTERM`
 - ยังไม่ทำ (สัปดาห์ 2–3): ข้อมูลคงทน/replay ด้วยเวลาจริง · token ลิงก์ลูกค้าคงอยู่ข้ามรีสตาร์ท · save บางส่วนบนกระดาน · confirm ก่อน "ให้ระบบทำเลย" · ภาษาไทยหน้าผู้บริหาร · ล้าง mock
+
+## รอบ 20 · สัปดาห์ 2 — ข้อมูลคงทนข้ามรีสตาร์ท/deploy
+- **เล่นซ้ำด้วยเวลาจริงของรายการ**: store มีนาฬิกาเดียว (`nowMs()` · `store.setClock`) · ตอนบูต server ตั้งเวลาเป็น `at` ของแต่ละบรรทัด journal → วันที่ประกาศ/อนุมัติ/invoice/อายุลิงก์ ไม่ถูกเขียนทับเป็นวันรีสตาร์ทอีก
+- **ลิงก์ลูกค้าไม่ตายตอน deploy**: handler คืน `journal: {__token}` ให้ server เก็บลง journal · เล่นซ้ำใช้ token เดิม · ขอซ้ำได้ token เดิม · **หมดอายุ 14 วันบังคับจริง** (เปิดไม่ได้/ตอบได้ 410) และเซลล์ขอใหม่ได้ token ใหม่
+- **snapshot + ตัด journal**: `data/var/snapshot.json.gz` (ทั้งก้อน ~2 MB · เขียน atomic) · ทุกบรรทัด journal มีเลข `n` · บูตจาก snapshot แล้วเล่นเฉพาะบรรทัดที่ `n` เกิน · snapshot เองเมื่อครบ 300 รายการ / 2 MB / 6 ชม. / หลัง market-sync / ตอน SIGTERM · สั่งเองได้ `POST /api/admin/snapshot` (boss/admin)
+- **market-sync ไม่ค้างหน้าเว็บ**: จับคู่ชื่อสินค้าล่วงหน้าทีละ 150 ชื่อแบบปล่อย event loop แล้วค่อย sync (โดน cache) · ไม่เขียน feed ทั้งก้อนลง journal อีก (เคยโต 900 KB/ครั้ง) → snapshot แทน
+- **เลขรันต่อจากของเดิม** ทุกตาราง (events/alerts/คำขอ/รอบส่ง/…) — เปิดจาก snapshot แล้วไม่ชน id · fixture เดิมมี event id ซ้ำกันเองอยู่ก่อน (seq เคยเริ่ม 0) ยังไม่ได้ล้าง
+- fetch LINE/feed มี timeout 15/30 วิ · access log JSON บรรทัดละคำขอ (ปิดด้วย `FH_ACCESS_LOG=0`) · error 500 ไม่ส่งข้อความภายในให้ผู้ใช้ · เหตุการณ์ login ลง journal (หลักฐานข้ามรีสตาร์ท)
+- `npm run reset` ลบทั้ง journal และ snapshot · ทดสอบใน `test/durability.test.js` (รวม server จริง: บันทึก → รีสตาร์ท → snapshot → รีสตาร์ท → SIGTERM)
 
 ## ต้นแบบนี้ต่างจากระบบจริงตรงไหน
 
