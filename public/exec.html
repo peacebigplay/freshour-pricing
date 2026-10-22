@@ -811,16 +811,16 @@ function xcard(cls,href,label,value,sub){ return '<a class="ex-sum-card'+(cls?' 
 function xwait(t){ return '<div class="card"><h3>'+t+'</h3><p class="hint">'+(EXC_ERR?'โหลดไม่ได้ — '+esc(EXC_ERR):'กำลังโหลด…')+'</p></div>'; }
 /* 1 · AI Pricing Performance — automation ช่วยได้จริงแค่ไหน (ต้องเห็นก่อนทุกอย่าง) */
 function aiPricingPanel(){
-  if(!EXC) return xwait('AI Pricing Performance');
+  if(!EXC) return xwait('ผลงาน AI ตั้งราคา');
   var A=EXC.ai, rs=A.review.reasons, rt=A.review.reasonText;
   var why=Object.keys(rs).filter(function(k){return rs[k]>0;}).sort(function(a,b){return rs[b]-rs[a];}).map(function(k){return esc(rt[k])+' <strong>'+rs[k]+'</strong>';}).join(' · ');
   var acc=A.acceptance;
-  return '<div class="ex-section"><div class="ex-hierarchy"><span>AI Pricing Performance</span><b>automation ช่วยได้จริงแค่ไหน — ทำเองได้กี่ SKU · คนต้องดูกี่ตัว · คนยอมรับไหม · มีตลาดรองรับไหม · ลดเวลาไปเท่าไหร่</b></div>'+
+  return '<div class="ex-section"><div class="ex-hierarchy"><span>ผลงาน AI ตั้งราคา</span><b>automation ช่วยได้จริงแค่ไหน — ทำเองได้กี่ SKU · คนต้องดูกี่ตัว · คนยอมรับไหม · มีตลาดรองรับไหม · ลดเวลาไปเท่าไหร่</b></div>'+
     '<div class="ex-summary-grid">'+
-    xcard('lead','/pricing','Automation Coverage', A.coverage.auto+' / '+A.coverage.total+' SKU', xp(A.coverage.pct)+' ทำเองได้ทั้งสาย · ไม่ติดด่านทุนผิดปกติ / Floor / ขยับเกินทุน')+
-    xcard(A.review.n?'warn':'good','/pricing','Human Review Rate', A.review.n+' SKU', (why||'ไม่มี — AI มั่นใจทุกตัว'))+
-    xcard(acc.decided?(acc.pct>=70?'good':acc.pct>=40?'warn':'bad'):'','/pricing','Recommendation Acceptance', acc.decided?xp(acc.pct):'—', acc.decided?('ยอมรับตรง '+acc.accepted+'/'+acc.decided+' · Override '+acc.overrides+' (ขึ้น '+acc.up+' / ลง '+acc.down+(acc.avgDelta!=null?' · เฉลี่ย '+(acc.avgDelta>0?'+':'')+acc.avgDelta+' ฿':'')+')'+(acc.direction?'<br>'+esc(acc.direction):'')):('ยังไม่มีคนยืนยันราคารอบนี้ · ยืนยันโดยระบบ '+acc.autoApproved+' SKU ไม่นับ · ต่ำกว่า 40% = ลอจิก AI ยังไม่ตรงวิธีทำงานจริง'))+
-    xcard(A.market.confidentPct>=60?'good':A.market.confidentPct>0?'warn':'bad','/costs?tab=sources','Market Coverage / Confidence', (A.market.fresh+A.market.usable)+' / '+A.market.total+' SKU', 'สด '+A.market.fresh+' · ใช้ได้ '+A.market.usable+' · เก่า '+A.market.stale+' · ไม่มี '+A.market.blind+(A.market.note?'<br><span style="color:var(--amber);font-weight:600">'+esc(A.market.note)+'</span>':''))+
+    xcard('lead','/pricing','ระบบทำเองได้', A.coverage.auto+' / '+A.coverage.total+' SKU', xp(A.coverage.pct)+' ทำเองได้ทั้งสาย · ไม่ติดด่านทุนผิดปกติ / Floor / ขยับเกินทุน')+
+    xcard(A.review.n?'warn':'good','/pricing','คนต้องตัดสิน', A.review.n+' SKU', (why||'ไม่มี — AI มั่นใจทุกตัว'))+
+    xcard(acc.decided?(acc.pct>=70?'good':acc.pct>=40?'warn':'bad'):'','/pricing','คนยอมรับราคาที่ระบบเสนอ', acc.decided?xp(acc.pct):'—', acc.decided?('ยอมรับตรง '+acc.accepted+'/'+acc.decided+' · Override '+acc.overrides+' (ขึ้น '+acc.up+' / ลง '+acc.down+(acc.avgDelta!=null?' · เฉลี่ย '+(acc.avgDelta>0?'+':'')+acc.avgDelta+' ฿':'')+')'+(acc.direction?'<br>'+esc(acc.direction):'')):('ยังไม่มีคนยืนยันราคารอบนี้ · ยืนยันโดยระบบ '+acc.autoApproved+' SKU ไม่นับ · ต่ำกว่า 40% = ลอจิก AI ยังไม่ตรงวิธีทำงานจริง'))+
+    xcard(A.market.confidentPct>=60?'good':A.market.confidentPct>0?'warn':'bad','/costs?tab=sources','ราคาตลาดรองรับ', (A.market.fresh+A.market.usable)+' / '+A.market.total+' SKU', 'สด '+A.market.fresh+' · ใช้ได้ '+A.market.usable+' · เก่า '+A.market.stale+' · ไม่มี '+A.market.blind+(A.market.note?'<br><span style="color:var(--amber);font-weight:600">'+esc(A.market.note)+'</span>':''))+
     '</div></div>';
 }
 /* 2 · Pricing Flow Health — ตกจากขั้นไหนไปขั้นไหน (ใช้ .ex-flow เดิม) */
@@ -848,13 +848,13 @@ function decisionPanel(){
 }
 /* 4 · Commercial — จากใบราคา/ดีล ยังไม่ใช่ยอดขายจริง */
 function commercialPanel(){
-  if(!EXC) return xwait('Commercial Performance');
+  if(!EXC) return xwait('ผลการขาย');
   var C=EXC.commercial;
-  return '<div class="ex-section"><div class="ex-hierarchy"><span>Commercial Performance</span><b>มูลค่าในรอบ → ส่งราคาแล้ว → ปิดได้/เสีย — ตัวเลขจากใบราคาและดีล (ยังไม่ใช่ยอดขายจริง)</b></div><div class="ex-summary-grid">'+
-    xcard('lead','/sales','Portfolio Value (รอบนี้)', xv(C.portfolio), C.customers+' ลูกค้าในรอบ')+
-    xcard('','/sales','Quoted Value', xv(C.quoted), 'ส่งราคาออกไปแล้ว '+(C.quoted.known+C.quoted.unknown)+' เจ้า')+
-    xcard(C.won.n?'good':'','/sales','Won / Lost', C.won.n+' / '+C.lost.n, 'Won '+xb(C.won.value)+' · Lost '+xb(C.lost.value))+
-    xcard('','/sales','Win Rate · ราย / มูลค่า', xp(C.winRate)+' · '+xp(C.valueWinRate), 'Customer win rate · Value win rate (ลูกค้าขนาดไม่เท่ากัน) · ตอบกลับ '+xp(C.responsePct))+
+  return '<div class="ex-section"><div class="ex-hierarchy"><span>ผลการขาย</span><b>มูลค่าในรอบ → ส่งราคาแล้ว → ปิดได้/เสีย — ตัวเลขจากใบราคาและดีล (ยังไม่ใช่ยอดขายจริง)</b></div><div class="ex-summary-grid">'+
+    xcard('lead','/sales','มูลค่าพอร์ต (รอบนี้)', xv(C.portfolio), C.customers+' ลูกค้าในรอบ')+
+    xcard('','/sales','มูลค่าที่เสนอไป', xv(C.quoted), 'ส่งราคาออกไปแล้ว '+(C.quoted.known+C.quoted.unknown)+' เจ้า')+
+    xcard(C.won.n?'good':'','/sales','ปิดได้ / เสีย', C.won.n+' / '+C.lost.n, 'ปิดได้ '+xb(C.won.value)+' · เสีย '+xb(C.lost.value))+
+    xcard('','/sales','อัตราปิดดีล · ราย / มูลค่า', xp(C.winRate)+' · '+xp(C.valueWinRate), 'นับราย · นับมูลค่า (ลูกค้าขนาดไม่เท่ากัน) · ตอบกลับ '+xp(C.responsePct))+
     '</div><p class="hint">ที่มา: '+esc(C.basis)+'</p></div>';
 }
 /* 6 · Margin by product group — Target ต่างกันแต่ละกลุ่ม */
@@ -870,13 +870,13 @@ function marginGroupPanel(){
 function customerPanel(){
   if(!EXC) return '';
   var L=EXC.customers.largest, R=EXC.customers.atRisk, SQ={};
-  return '<div class="ex-business-grid"><div class="card"><h3>Largest Opportunities</h3>'+(L.length?'<table class="ex-fin-table" style="width:100%"><tbody>'+L.map(function(x){ return '<tr><td><b>'+esc(x.name)+'</b><br><small style="color:var(--tx-3)">'+esc(x.owner||'')+'</small></td><td>'+(x.value!=null?xb(x.value)+'/เดือน':x.lines+' รายการ')+'</td><td><span class="ex-kpi-badge">'+esc(x.stateText)+'</span></td></tr>'; }).join('')+'</tbody></table>'+(L[0]&&L[0].value==null?'<p class="hint">ยังไม่ได้นำเข้ามูลค่าลูกค้า — เรียงตามจำนวนรายการในสัญญาแทน</p>':''):'<p class="hint">—</p>')+'</div>'+
+  return '<div class="ex-business-grid"><div class="card"><h3>ดีลใหญ่สุดที่ยังเปิด</h3>'+(L.length?'<table class="ex-fin-table" style="width:100%"><tbody>'+L.map(function(x){ return '<tr><td><b>'+esc(x.name)+'</b><br><small style="color:var(--tx-3)">'+esc(x.owner||'')+'</small></td><td>'+(x.value!=null?xb(x.value)+'/เดือน':x.lines+' รายการ')+'</td><td><span class="ex-kpi-badge">'+esc(x.stateText)+'</span></td></tr>'; }).join('')+'</tbody></table>'+(L[0]&&L[0].value==null?'<p class="hint">ยังไม่ได้นำเข้ามูลค่าลูกค้า — เรียงตามจำนวนรายการในสัญญาแทน</p>':''):'<p class="hint">—</p>')+'</div>'+
     '<div class="card"><h3>At Risk</h3>'+(R.length?'<table class="ex-fin-table" style="width:100%"><tbody>'+R.map(function(x){ return '<tr><td><b>'+esc(x.name)+'</b><br><small style="color:var(--tx-3)">'+esc(x.why)+'</small></td><td>'+(x.value!=null?xb(x.value):'—')+'</td><td><span class="ex-kpi-badge '+(x.kind==='below_min'?'red':x.kind==='silent'?'amber':'')+'">'+(x.kind==='silent'?'เงียบ':x.kind==='below_min'?'ต่ำกว่า Min':'Lost')+'</span></td></tr>'; }).join('')+'</tbody></table>':'<p class="hint">ไม่มีลูกค้าเสี่ยงตอนนี้ — ดีลไหนควรลงมาช่วยเองจะขึ้นที่นี่</p>')+'</div></div>';
 }
 /* 8 · Sales — ขนาดพอร์ต + ความสามารถในการปิด */
 function salesPanel(){
   if(!EXC) return '';
-  return '<div class="card"><h3>Sales Performance <span class="sub">ไม่ ranking ด้วยจำนวนที่ปิดได้อย่างเดียว</span></h3><table class="ex-fin-table" style="width:100%"><thead><tr><th>Sales</th><th>ลูกค้า</th><th>Portfolio</th><th>Won Value</th><th>Win Rate</th><th>Value Win Rate</th><th>Follow-up SLA</th><th>เปิดอยู่</th></tr></thead><tbody>'+
+  return '<div class="card"><h3>ผลงานทีมขาย <span class="sub">ไม่ ranking ด้วยจำนวนที่ปิดได้อย่างเดียว</span></h3><table class="ex-fin-table" style="width:100%"><thead><tr><th>Sales</th><th>ลูกค้า</th><th>Portfolio</th><th>Won Value</th><th>Win Rate</th><th>Value Win Rate</th><th>Follow-up SLA</th><th>เปิดอยู่</th></tr></thead><tbody>'+
     EXC.sales.map(function(s){ return '<tr><td><b>'+esc(s.name)+'</b></td><td>'+s.customers+'</td><td>'+(s.portfolioKnown?xb(s.portfolio):'—')+'</td><td>'+(s.won?xb(s.wonValue):'—')+'</td><td>'+xp(s.winRate)+'</td><td>'+xp(s.valueWinRate)+'</td><td>'+xp(s.slaPct)+'</td><td>'+s.open+'</td></tr>'; }).join('')+
     '</tbody></table><p class="hint">— = ยังไม่มีเหตุการณ์ให้วัด (ยังไม่มี deal ปิด / ยังไม่ครบ SLA) · Portfolio ต้องนำเข้ามูลค่าลูกค้าต่อเดือนก่อน</p></div>';
 }
@@ -884,15 +884,15 @@ function salesPanel(){
 function intelPanel(){
   if(!EXC) return '';
   var I=EXC.intel;
-  return '<div class="card"><h3>Market Intelligence Accuracy <span class="sub">AI เตือนแม่นไหม — ไม่ใช่กล่องดำ</span></h3><div class="ex-summary-grid">'+
+  return '<div class="card"><h3>ความแม่นของสัญญาณตลาด <span class="sub">AI เตือนแม่นไหม — ไม่ใช่กล่องดำ</span></h3><div class="ex-summary-grid">'+
     xcard(I.pct==null?'':I.pct>=70?'good':'warn','/costs?tab=trend','Accuracy (ครบกำหนดแล้ว)', xp(I.pct), 'เตือน '+I.total30+' · ถูก '+I.correct+' · ถูกบางส่วน '+I.partial+' · ผิด '+I.wrong+' · รอผล '+I.open)+
     '<div class="ex-sum-card" style="grid-column:span 3"><span>AI เคยเตือนอะไร แล้วเกิดอะไรจริง</span>'+(I.list.length?'<table class="ex-fin-table" style="width:100%">'+I.list.map(function(p){ return '<tr><td style="color:var(--tx-3);font-size:11px">'+esc(String(p.at||'').slice(0,10))+'</td><td>'+esc(p.text)+'</td><td><span class="ex-kpi-badge '+(p.result==='hit'?'green':p.result==='miss'?'red':p.result==='partial'?'amber':'')+'">'+(p.result==='hit'?'ถูก':p.result==='miss'?'ผิด':p.result==='partial'?'บางส่วน':'รอผล')+'</span></td></tr>'; }).join('')+'</table>':'<em>'+esc(I.note||'ยังไม่มี')+'</em>')+'</div></div></div>';
 }
 /* 10 · Automation Health — ปกติ = บรรทัดเดียว · มีปัญหาค่อยขยาย */
 function automationPanel(){
-  if(!EXC) return xwait('Automation Health');
+  if(!EXC) return xwait('ระบบอัตโนมัติ');
   var A=EXC.automation;
-  return '<div class="card"><h3>Automation Health</h3>'+(A.ok?'<p style="margin:0;color:var(--green);font-weight:600">✓ All automations healthy</p><p class="hint">'+A.jobs.map(function(j){return esc(j.label)+' · '+esc(j.status);}).join(' · ')+(A.lineConfigured?'':' · LINE OA ยังไม่ต่อ token (เซลล์ส่งเองได้)')+(A.customersNoLine?' · ลูกค้าที่มีใบแล้วแต่ยังไม่ผูก LINE '+A.customersNoLine+' เจ้า':'')+'</p>'
+  return '<div class="card"><h3>ระบบอัตโนมัติ</h3>'+(A.ok?'<p style="margin:0;color:var(--green);font-weight:600">✓ งานที่เปิดใช้ทำงานปกติ'+(function(){var off=(A.jobs||[]).filter(function(j){return j.status==='off'||j.status==='never';}).length;return off?' · ยังไม่ได้เปิดใช้ '+off+' งาน':'';})()+'</p><p class="hint">'+A.jobs.map(function(j){return esc(j.label)+' · '+esc(j.status);}).join(' · ')+(A.lineConfigured?'':' · LINE OA ยังไม่ต่อ token (เซลล์ส่งเองได้)')+(A.customersNoLine?' · ลูกค้าที่มีใบแล้วแต่ยังไม่ผูก LINE '+A.customersNoLine+' เจ้า':'')+'</p>'
     :'<p style="margin:0 0 8px;color:var(--red);font-weight:600">'+A.issues.length+' issue</p><table class="ex-fin-table" style="width:100%"><thead><tr><th>ปัญหา</th><th>รายละเอียด</th><th>Retry แล้ว?</th><th>Owner</th></tr></thead><tbody>'+A.issues.map(function(i){ return '<tr><td><b>'+esc(i.title)+'</b></td><td>'+esc(i.detail||'')+'</td><td>'+(i.retried==null?'—':i.retried?'แล้ว':'ยัง')+'</td><td>'+esc(i.owner)+'</td></tr>'; }).join('')+'</tbody></table><p class="hint"><a href="/log">ดู log เหตุการณ์ →</a></p>')+'</div>';
 }
 function pricingPerformancePanel(){

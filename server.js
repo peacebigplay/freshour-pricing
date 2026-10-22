@@ -65,7 +65,7 @@ function loadSnapshot() {
 const snap = loadSnapshot();
 if (snap) snapMeta = { at: snap.at, upto: snap.upto || 0 };
 const store = createStore(snap ? snap.docs : loadDocs(), { devOpen: auth.mode === 'open', lineConfigured: !!LINE_TOKEN, lineStaff: LINE_STAFF, dataNote: DATA_NOTE, sampleMarket: SAMPLE_MARKET });
-if (!MARKET_FEED_URL && !SAMPLE_MARKET) { const mj = store.docs.jobs['market-sync']; if (mj && mj.status === 'never') { mj.status = 'off'; mj.detail = 'ยังไม่ต่อ connector ราคาตลาด (ตั้ง MARKET_FEED_URL) — ไม่นับเป็นระบบล้ม'; } }   /* ไม่มี connector = ปิด ไม่ใช่ล้ม — แถบแดง "ขาดรอบ" ทุกวันคือเสียงรบกวน */
+if (!MARKET_FEED_URL && !SAMPLE_MARKET) { const mj = store.docs.jobs['market-sync']; if (mj && mj.status === 'never') { mj.status = 'off'; mj.detail = 'ยังไม่ต่อแหล่งราคาตลาดออนไลน์ — ใช้สำรวจหน้าร้าน/ใบราคา B2B แทน (ผู้ดูแลตั้งค่าได้)'; } }   /* ไม่มี connector = ปิด ไม่ใช่ล้ม — แถบแดง "ขาดรอบ" ทุกวันคือเสียงรบกวน */
 let replayed = 0, skipped = 0, journalN = snapMeta ? snapMeta.upto : 0, journalSince = 0;   /* journalN = เลขรายการล่าสุด · journalSince = จำนวนรายการหลัง snapshot */
 if (JOURNAL && fs.existsSync(JOURNAL)) {
   for (const line of fs.readFileSync(JOURNAL, 'utf8').split('\n')) {
@@ -185,7 +185,7 @@ async function tick() {
     const n = await store.ext.drainOutbox(lineTransport);
     if (n) journal({ method: 'POST', url: '/api/_drain', body: {}, role: 'system', at: new Date().toISOString(), system: true });
     const j = store.docs.jobs['market-sync'], age = j.last_run ? (Date.now() - Date.parse(j.last_run + '+07:00')) / 36e5 : 99;
-    if (age > 24) { if (MARKET_FEED_URL || SAMPLE_MARKET) await runMarketSync('ครบรอบ 24 ชม.'); else { j.status = 'off'; j.detail = 'ยังไม่ต่อ connector ราคาตลาด (ตั้ง MARKET_FEED_URL) — ใช้สำรวจหน้าร้านแทน'; } }
+    if (age > 24) { if (MARKET_FEED_URL || SAMPLE_MARKET) await runMarketSync('ครบรอบ 24 ชม.'); else { j.status = 'off'; j.detail = 'ยังไม่ต่อแหล่งราคาตลาดออนไลน์ — ใช้สำรวจหน้าร้าน/ใบราคา B2B แทน (ผู้ดูแลตั้งค่าได้)'; } }
     scanInbox();
     const fj = store.docs.jobs['followup-check'], fage = fj.last_run ? (Date.now() - Date.parse(fj.last_run + '+07:00')) / 36e5 : 99;
     if (fage > 24) { const fr = store.ext.followupTick(); journal({ method: 'POST', url: '/api/followups/tick', body: {}, role: 'system', at: new Date().toISOString(), system: true }); console.log('[freshour] followup-check:', JSON.stringify(fr).slice(0, 160)); }
@@ -270,7 +270,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/connectors/test' && req.method === 'POST') { if (!role || store.LVL[role] < 2) return json(res, { status: 403, body: { error: 'ไม่มีสิทธิ์' } }); const b = (await readBody(req)).body || {}; const r = await testConnector(b.competitor_id); return json(res, { status: 200, body: r }); }
     if (p === '/api/line/content') {   /* รูป/ไฟล์ที่ส่งเข้า LINE OA → ดึงมาอ่านในเบราว์เซอร์ (OCR) — เฉพาะ Pricing ขึ้นไป */
       if (!role || store.LVL[role] < 2) return json(res, { status: 403, body: { error: 'ไม่มีสิทธิ์' } });
-      if (!LINE_TOKEN) return json(res, { status: 503, body: { error: 'ยังไม่ตั้ง LINE_CHANNEL_TOKEN' } });
+      if (!LINE_TOKEN) return json(res, { status: 503, body: { error: 'ยังไม่ได้ต่อ LINE OA — ให้ผู้ดูแลตั้งค่าก่อน' } });
       const mid = String(u.searchParams.get('id') || '').replace(/[^0-9A-Za-z_-]/g, ''); if (!mid) return json(res, { status: 400, body: { error: 'ไม่มี id' } });
       const lr = await fetch('https://api-data.line.me/v2/bot/message/' + mid + '/content', { headers: { authorization: 'Bearer ' + LINE_TOKEN } });
       if (!lr.ok) return json(res, { status: 502, body: { error: 'LINE ' + lr.status } });

@@ -272,13 +272,22 @@ window.Dash = (function () {
   function copyLink(cid) {
     return PX.post('/api/quote-links', { customer_id: cid, silent: true }).then(function (x) {
       var url = x.url && x.url.indexOf('http') === 0 ? x.url : (location.origin + x.url);
+      COPIED[cid] = true;
       var done = function () { PX.toast('คัดลอกลิงก์แล้ว · ใช้ได้ถึง ' + esc(x.expires_at || '') + ' — วางในแชตลูกค้าแล้วกด "ส่งเองแล้ว"'); };
       if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(url).then(done, function () { window.prompt('คัดลอกลิงก์นี้', url); });
       window.prompt('คัดลอกลิงก์นี้', url);
     }).catch(function (e) { PX.toast('สร้างลิงก์ไม่ได้ — ' + esc(e.message), 'bad'); });
   }
+  var COPIED = {};
   function manualSent(cid, name) {
-    return act(PX.post('/api/quote-sent', { customer_id: cid, channel: 'manual' }).then(function () { return refresh('บันทึกว่าส่งใบให้ ' + esc(name || '') + ' แล้ว — เริ่มนับเวลารอคำตอบ'); }));
+    /* กดทีเดียวแล้วนับว่าส่ง = บอทจะไปทวงลูกค้าที่ไม่เคยได้ลิงก์ → ต้องคัดลอกลิงก์ก่อน และบอกว่าส่งทางไหน */
+    if (!COPIED[cid]) { PX.toast('คัดลอกลิงก์ใบราคาไปวางให้ลูกค้าก่อน แล้วค่อยกด "ส่งเองแล้ว"', 'bad'); return; }
+    PX.modal({ title: 'ส่งใบราคาให้ ' + (name || '') + ' แล้ว?', okText: 'ใช่ ส่งแล้ว', sub: 'ระบบจะเริ่มนับเวลารอคำตอบและตามให้เอง — กดเฉพาะเมื่อลูกค้าได้ลิงก์แล้วจริง',
+      fields: [{ k: 'how', label: 'ส่งทางไหน', ph: 'LINE ส่วนตัว / โทรบอก / อีเมล', value: 'LINE ส่วนตัว' }],
+      onOk: function (v, close) { if (!String(v.how || '').trim()) { PX.toast('บอกช่องทางที่ส่งด้วย', 'bad'); return; } close(); return manualSentNow(cid, name, String(v.how).trim()); } });
+  }
+  function manualSentNow(cid, name, how) {
+    return act(PX.post('/api/quote-sent', { customer_id: cid, channel: 'manual', note: how }).then(function () { return refresh('บันทึกว่าส่งใบให้ ' + esc(name || '') + ' แล้ว — เริ่มนับเวลารอคำตอบ'); }));
   }
   /* เงียบเกิน 7 วัน: ตามต่อ (บันทึกการตาม) หรือ ปิด Lost เหตุผล "ไม่ตอบ" */
   function decide(cid, name) {

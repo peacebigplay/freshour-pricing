@@ -93,6 +93,15 @@ function autoShow(res) {
       (!c.need.length && !u.exceptions.length ? '<p class="hint">ไม่มี — รอบนี้ระบบทำให้ครบ</p>' : '') + '</div>' });
 }
 function autoRun() {
+  if (AUTO_BUSY) return;
+  var a = AUTOP || {}, c = a.central || { auto: 0 }, u = a.customers || { done: [] };
+  /* ยืนยันก่อน — ปุ่มนี้ออกใบจริงและส่งถึงเซลล์ทันที (เคยกดทีเดียวแล้วใบ 11 เจ้าวิ่งไปหาเซลล์โดยไม่ได้ตั้งใจ) */
+  PX.modal({ title: 'ให้ระบบทำรอบนี้?', okText: 'ทำเลย', sub: 'ทำแล้วใบรายเจ้าจะไปอยู่ในคิวเซลล์ทันที',
+    html: '<ul style="margin:0 0 6px 18px;line-height:1.7"><li>ยืนยันราคากลาง <b>' + c.auto + '</b> SKU (ตามราคาแนะนำ)</li><li>ออกใบรายเจ้า + ส่งเซลล์ <b>' + u.done.length + '</b> เจ้า' + (u.done.length ? ': ' + esc(u.done.slice(0, 6).map(function (x) { return x.name; }).join(', ')) + (u.done.length > 6 ? ' …' : '') : '') + '</li>' +
+      (c.need && c.need.length ? '<li>ระบบ<b>ไม่แตะ</b> ' + c.need.length + ' SKU ที่คนต้องตัดสิน</li>' : '') + '</ul>',
+    onOk: function (v, close) { close(); autoRunNow(); } });
+}
+function autoRunNow() {
   if (AUTO_BUSY) return; AUTO_BUSY = true;
   PX.post('/api/auto-round', {}).then(function (j) { AUTO_BUSY = false; AUTOP = null; return load('ระบบทำให้แล้ว: ราคากลาง ' + (j.central ? j.central.saved : 0) + ' SKU · ใบรายเจ้า ' + (j.customers ? j.customers.done.length : 0) + ' เจ้า').then(function () { autoShow(j); }); })
     .catch(function (e) { AUTO_BUSY = false; PX.toast('ทำไม่สำเร็จ — ' + esc(e.message), 'bad'); });
@@ -268,15 +277,20 @@ function formatStamp(){
   var z=function(n){return String(n).padStart(2,'0');};
   return z(d.getDate())+'/'+z(d.getMonth()+1)+'/'+d.getFullYear()+' · '+z(d.getHours())+':'+z(d.getMinutes());
 }
+/* แถวที่ "ต้องบันทึก" = ยืนยันบนจอแล้ว และยังไม่ตรงกับที่ server มี (แก้ราคา · ยังไม่เคยยืนยัน · บริบทเปลี่ยน) */
+function unsavedRows(rows) {
+  return rows.filter(function (r) { if (!CONF[r.id]) return false; if (EDIT[r.id] != null || staleRow(r)) return true; var ap = approvedPrice(r); return ap == null || ap !== priceOf(r); });
+}
 function saveSheet(){
-  var rows = rowsInView().filter(function (r) { return V(r).goals; });   /* ไม่รู้ทุน = ยืนยันไม่ได้ */
-  var ok = confirmedCount(rows);
-  if (ok < rows.length) {
-    PX.toast('ยังยืนยันราคาไม่ครบ — เหลือ <b>' + (rows.length - ok) + '</b> รายการ', 'bad');
-    var miss = rows.filter(function (r) { return !CONF[r.id]; })[0];
-    if (miss) { var el = document.querySelector('[data-row="' + miss.id + '"]'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  var all = rowsInView().filter(function (r) { return V(r).goals; });   /* ไม่รู้ทุน = ยืนยันไม่ได้ */
+  var ok = confirmedCount(all), pending = unsavedRows(all);
+  /* บันทึกเท่าที่ยืนยันแล้วได้เลย (เดิมต้องครบ 100% ในนั่งเดียว ปิดแท็บ = หายหมด) — ใบรายเจ้า/ส่ง Sales ยังมีด่านครบถ้วนที่ server เหมือนเดิม */
+  if (!pending.length) {
+    if (ok < all.length) { PX.toast('ยังไม่มีแถวใหม่ที่ยืนยัน — เหลือ <b>' + (all.length - ok) + '</b> รายการรอยืนยัน', 'bad'); var miss = all.filter(function (r) { return !CONF[r.id]; })[0]; if (miss) { var el = document.querySelector('[data-row="' + miss.id + '"]'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } }
+    else PX.toast('บันทึกครบแล้ว ไม่มีอะไรเปลี่ยน');
     return;
   }
+  var rows = pending, leftAfter = all.length - ok;
   /* Goal ที่บันทึก = Goal ที่แถวนั้นเลือกจริง (rowGoal) — รีวิว Codex 30 ก.ย.: เดิมกดปุ่ม "ยืนราคาเดิม" แล้วบันทึก
      ได้ 'manual' เพราะนับทุกราคาที่แก้บนจอเป็นพิมพ์เอง → เหตุผลของราคาหาย และโหลดใหม่ไม่ไฮไลต์ Goal ที่เลือก */
   var payload = rows.map(function (r) {
@@ -290,7 +304,7 @@ function saveSheet(){
     .then(function (res) {
       SAVING = false;
       LASTSAVE = formatStamp(); EDIT = {}; EDITR = {}; EDIT5 = {}; EDIT10 = {}; SEL = {}; EXC = {};
-      return load((CUST ? 'บันทึกใบราคา' : 'บันทึกราคากลาง') + 'แล้ว ' + res.saved + ' รายการ' +
+      return load((CUST ? 'บันทึกใบราคา' : 'บันทึกราคากลาง') + 'แล้ว ' + res.saved + ' รายการ' + (leftAfter ? ' · เหลือรอยืนยันอีก ' + leftAfter : '') +
         (res.exceptions ? ' · ข้อยกเว้น ' + res.exceptions : '') + (res.handoffReset ? ' · ราคาเปลี่ยนหลังส่งต่อ → กดส่งต่อ Sales ใหม่' : '') + (CUST ? ' · ส่ง Sales ได้แล้ว' : ' · เป็นฐานของราคารายเจ้าแล้ว'));
     })
     .catch(function (e) {
@@ -1099,5 +1113,18 @@ function dataAudit() {
   }).catch(function (e) { PX.toast('ตรวจไม่ได้ — ' + esc(e.message), 'bad'); });
 }
 Dash.mount('pricing');   /* หน้าสรุปตามบทบาท (dash.js) — วางบนหน้าแรก วาดซ้ำเมื่อหน้าแม่วาดใหม่ */
+/* ── ออกจากหน้าทั้งที่ยืนยันราคาไว้แต่ยังไม่บันทึก → เตือนก่อน ── */
+addEventListener('beforeunload', function (e) { try { if (D && unsavedRows(rowsInView().filter(function (r) { return V(r).goals; })).length) { e.preventDefault(); e.returnValue = ''; } } catch (x) {} });
+/* ── ปุ่ม Back ของเบราว์เซอร์ = ย้อนมุมมองในหน้านี้ ไม่ใช่หลุดออกจากแอป ── */
+(function () {
+  var wrap = function (name, state) { var f = window[name]; if (typeof f !== 'function') return; window[name] = function () { var r = f.apply(this, arguments); try { history.pushState({ view: VIEW, cust: CUST }, ''); } catch (x) {} return r; }; };
+  ['openBoard', 'openCustomerList', 'pick'].forEach(wrap);
+  try { history.replaceState({ view: VIEW, cust: CUST }, ''); } catch (x) {}
+  addEventListener('popstate', function (e) {
+    var st = e.state; if (!st || !st.view) return;
+    if (st.view === 'home') { VIEW = 'home'; CUST = ''; } else if (st.view === 'customer-detail' && st.cust) { VIEW = 'customer-detail'; CUST = st.cust; } else { VIEW = st.view; CUST = ''; }
+    EDIT = {}; SEL = {}; CONF = {}; Q = ''; G = 'ทั้งหมด'; PAGE = 0; if (VIEW === 'board') { ALL = true; } load();
+  });
+})();
 </script>
 </body></html>

@@ -6,6 +6,7 @@ const fs = require('fs'), path = require('path'), zlib = require('zlib');
 const { createStore } = require('../src/store');
 function loadDocs() { const dir = path.join(__dirname, '..', 'data', 'fixtures'); const idx = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')); const d = {}; for (const k of Object.keys(idx)) d[k] = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(dir, idx[k]))).toString('utf8')); return d; }
 const store = createStore(loadDocs(), { devOpen: true, lineStaff: ['Ustaff9'] });
+const FIX = Date.parse('2026-10-16T05:00:00Z');   /* บางชุดอิงวันที่ของ feed ตัวอย่าง (สด 7 วัน · ย้อนหลัง 12 เดือน) — ตรึงนาฬิกาเฉพาะชุดนั้น */
 const PID = name => (store.docs.pricelist.rows.find(r => r.name === name) || {}).id;
 const MAN = PID('มันแข็งหมู'), BONE = PID('กระดูกข้อขา');
 const call = (role, method, url, body) => store.handle({ role, method, url, body, origin: 'http://t' });
@@ -53,6 +54,7 @@ test('1 ทุนเข้า: อ่านไฟล์ AL จับคู่ช
 });
 
 test('2 เทียบตลาด: connector จับคู่ SKU · แนวโน้ม · คำทำนาย+คะแนน', () => {
+  store.setClock(FIX);   /* ตรึงเวลาเฉพาะชุดนี้ · ชุดถัดไปปลดเอง */
   /* เล่นย้อนหลังทีละสัปดาห์เหมือนงานรายวันที่สะสมมา เพื่อให้มีคำทำนายครบกำหนดให้ตรวจ */
   /* feed ย้อนหลัง 1 ปี — ครั้งแรกระบบเล่นทีละสัปดาห์เองเพื่อให้คำทำนายเก่ามีของจริงให้ตรวจ */
   const last = okj(call('system', 'POST', '/api/market-sync/run', { observations: FEED }));
@@ -88,6 +90,7 @@ function prepareHandedSheet(CID) {
 }
 
 test('3+4 LINE → กระดานสถานะ → ตามเจ้าที่เงียบ → ปิดดีล', async () => {
+  store.setClock(null);
   const CID = 'cd6f5', n = prepareHandedSheet(CID);
   let b = okj(call('sale', 'GET', '/api/sales-board'));
   assert.equal(b.rows.find(r => r.id === CID).stage, 'ready');
@@ -163,6 +166,7 @@ test('6 Dashboard แยกตามคน', () => {
 });
 
 test('รอบ 3 · แหล่งข้อมูล: สำรวจหน้าร้าน (พิมพ์/พูด/รูป) · โหมดสำรวจเมื่อดึงออนไลน์ไม่ได้ · LINE ทุน/ตลาด · mini dashboard', () => {
+  store.setClock(FIX);   /* ตรึงเวลาเฉพาะชุดนี้ · ชุดถัดไปปลดเอง */
   const pr = store.ext.parseSurvey('สามชั้น 189\nสันคอหมู 178 บาท\nกระดูกซุป 45/กก\nหมูยอ 90\n135 บาท สันนอก\nอะไรก็ไม่รู้');
   assert.equal(pr.filter(r => r.ok).length, 4); assert.equal(pr.find(r => r.raw === 'หมูยอ 90').reason, 'จับคู่ SKU ไม่ได้'); assert.ok(pr.find(r => r.raw === 'หมูยอ 90').alts.length, 'เสนอตัวเลือกให้คนเลือก');
   assert.equal(pr.find(r => /สันคอหมู/.test(r.raw)).how, 'exact');
@@ -202,6 +206,7 @@ test('รอบ 3 · แหล่งข้อมูล: สำรวจหน้
 });
 
 test('ใบราคาขาย+ทุน AL ของจริง (PDF 01-07/10/69): อ่านครบ 195 แถว · จับคู่ด้วยเลขลำดับ+ชื่อ 100% · ทุนเท่าเดิม = ไม่มีอะไรให้คนตรวจ', () => {
+  store.setClock(null);
   const AL = require('../public/alparse.js');
   const pages = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'al-01-07-10-69-items.json'), 'utf8'));
   const t = AL.parse(pages); const rows = t.slice(1);

@@ -1517,3 +1517,6 @@ table.g tr:hover td{background:#EFF6FF}
 
 @media(max-width:1250px){.app{grid-template-columns:212px minmax(0,1fr)}.main{padding:18px 20px 40px}.card,.k{padding:19px}.k .v{font-size:36px}}
 @media(max-width:860px){.app{grid-template-columns:1fr}.side{position:relative;min-height:0;max-height:none;height:auto;border-right:0;border-bottom:1px solid var(--line)}.main{padding:14px 14px 30px}.top{margin:0 0 6px;justify-content:flex-start}.px-greet{padding-right:0}}
+
+/* ── มือถือ: การ์ด KPI ย่อเป็น 2 คอลัมน์เตี้ย ๆ ให้ตารางราคาอยู่ใกล้มือ (เซลล์ใช้บนโทรศัพท์) ── */
+@media(max-width:700px){.kpi,.kpi4,.kpi3{grid-template-columns:1fr 1fr!important;gap:10px}.k{min-height:0;padding:12px 14px;border-radius:14px}.k .lb{font-size:12.5px;padding-right:0;min-height:0}.k .kt{position:static;margin:0 0 4px;justify-content:flex-start}.k .v{font-size:24px;margin-top:4px;letter-spacing:-.6px}.k .c{display:none}.k .pill{font-size:10px;padding:3px 8px}.btn,.mini{min-height:36px}}

@@ -129,7 +129,7 @@ window.Intake = (function () {
         '<p>' + (s.source ? 'ที่มา: ' + esc(s.source) : '<b>ยังไม่ระบุที่มา</b>') + '<br>ออนไลน์ล่าสุด ' + (s.lastOnline ? esc(s.lastOnline) + ' (' + s.onlineAge + ' วันก่อน)' : '—') + ' · สำรวจล่าสุด ' + (s.lastSurvey ? esc(s.lastSurvey) : '—') + ' · ' + s.skus + ' SKU' + (s.last_error ? '<br><span style="color:var(--red)">ดึงไม่ได้: ' + esc(s.last_error) + ' (' + s.fails + ' ครั้ง)</span>' : '') + '</p>' +
         '<div class="act"><button onclick="Intake.testConn(\'' + s.id + '\')">ทดสอบดึงออนไลน์</button><button class="pri" onclick="Intake.survey(\'' + s.id + '\')">บันทึกจากการสำรวจ</button><button onclick="Intake.editSource(\'' + s.id + '\')">แก้ที่มา</button></div></div>';
     });
-    h += '</div><p class="hint" style="margin-top:10px">กติกา: ออนไลน์ต้องเป็น feed/API ที่ได้รับสิทธิ์ (ตั้ง <code>MARKET_FEED_URL</code>) · ดึงไม่ได้ 2 ครั้งติด ระบบสลับร้านนั้นเป็นโหมดสำรวจเอง · ราคาจากการสำรวจเข้าตารางเดียวกับออนไลน์ (ติดป้าย "survey")</p></div>';
+    h += '</div><p class="hint" style="margin-top:10px">กติกา: ออนไลน์ต้องเป็น feed/API ที่ได้รับสิทธิ์ (ผู้ดูแลตั้งค่าแหล่ง feed) · ดึงไม่ได้ 2 ครั้งติด ระบบสลับร้านนั้นเป็นโหมดสำรวจเอง · ราคาจากการสำรวจเข้าตารางเดียวกับออนไลน์ (ติดป้าย "survey")</p></div>';
     /* แผนสำรวจ */
     var pl = PLAN;
     /* ใบราคาคู่แข่ง — เราสมัครเป็นลูกค้า B2B ของเขาเอง ใบราคาจึงส่งมาถึงเราทุกรอบ (ไม่ขอจากลูกค้า) */

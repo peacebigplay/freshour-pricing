@@ -590,11 +590,11 @@
       });
       var saved = 0, error = null;
       if (!preview && okRows.length) { var nBefore = (S.price_versions || []).length, r1x = X.savePriceSheet(role, { goal: 'rec', rows: okRows }); if (r1x.status === 200) { saved = r1x.body.saved; var nNew = S.price_versions.length - nBefore; for (var vi = 0; vi < nNew; vi++) S.price_versions[vi].auto = true; } else error = r1x.body.error; }   /* ติดธง auto: ยืนยันโดยระบบ ไม่นับเป็น "คนยอมรับ" */
-      return { auto: okRows.length, saved: saved, need: need, error: error, already: already };
+      return { auto: okRows.length, saved: saved, need: need, error: error, already: already, ids: okRows.map(function (x) { return x.product_id; }) };
     }
     function autoSheets(role, body) {
       body = body || {};
-      var only = Array.isArray(body.customers) && body.customers.length ? body.customers : null, preview = !!body.preview, jumpB = CFG.jump_baht || 8;
+      var only = Array.isArray(body.customers) && body.customers.length ? body.customers : null, preview = !!body.preview, jumpB = CFG.jump_baht || 8, assume = body.assume || {};   /* assume = ราคากลางที่ระบบจะยืนยันในคลิกเดียวกัน (preview ต้องนับให้ตรงกับที่จะทำจริง) */
       var done = [], exceptions = [], skipped = [];
       D.desk.customers.forEach(function (c) {
         if (only && only.indexOf(c.id) < 0) return;
@@ -606,7 +606,7 @@
         rows.forEach(function (r) {
           var v = r.v21 || {};
           if (!v.goals) { why.noCost++; return; }
-          var cen = D.desk.rows.filter(function (q) { return q.id === r.id; })[0], cenOk = !!(cen && cen.v21 && cen.v21.central && cen.v21.central.state === 'approved');
+          var cen = D.desk.rows.filter(function (q) { return q.id === r.id; })[0], cenOk = !!(cen && cen.v21 && cen.v21.central && cen.v21.central.state === 'approved') || !!assume[r.id];
           if (!cenOk) why.noBase++;
           var fresh = v.saved && !(v.baseChanged || v.costChanged);
           var px = fresh ? Math.round(v.saved.price) : (v.rec && v.rec.price > 0 ? Math.round(v.rec.price) : Math.round(r.cust.price || r.w2));
@@ -636,7 +636,7 @@
       body = body || {};
       var preview = !!body.preview, step = body.step || 'all', jumpB = CFG.jump_baht || 8, out = { preview: preview, step: step, jumpBaht: jumpB };
       if (step === 'all' || step === 'central') out.central = autoCentral(role, preview, jumpB);
-      if (step === 'all' || step === 'customers') out.customers = autoSheets(role, body);
+      if (step === 'all' || step === 'customers') { var assume = {}; if (preview && out.central) out.central.ids.forEach(function (id) { assume[id] = true; }); out.customers = autoSheets(role, Object.assign({}, body, { assume: assume })); }
       if (!preview) logEvent({ actor: role, kind: 'human', action: 'auto-round', detail: (out.central ? 'ราคากลางยืนยันเอง ' + out.central.saved + ' · ต้องคนดู ' + out.central.need.length : '') + (out.customers ? ' · ใบรายเจ้าออกเอง ' + out.customers.done.length + ' · ต้องคนดู ' + out.customers.exceptions.length : ''), status: 'ok' });
       out.rule = 'ระบบทำให้เองเมื่อ: ไม่ต่ำกว่า Floor · ราคาขยับไม่เกินที่ทุนอธิบายได้ (เกิน ' + jumpB + ' ฿ และ 5%) · ราคากลางของทุกแถวยืนยันแล้ว — นอกนั้นส่งให้คนตัดสิน';
       return ok(out);

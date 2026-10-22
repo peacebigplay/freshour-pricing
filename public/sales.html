@@ -285,13 +285,13 @@ function lineText() {
 function quoteLink(){
   if(!SH || QL_BUSY) return;
   QL_BUSY = true;
-  PX.post('/api/quote-links', { customer_id: SHEETID }).then(function (x) {
+  PX.post('/api/quote-links', { customer_id: SHEETID, silent: true }).then(function (x) {   /* สร้างลิงก์ ≠ ส่งแล้ว — ต้องกด "ส่งเองแล้ว" หลังวางในแชตจริง */
     QL_BUSY = false;
     PX.modal({ title: 'ลิงก์ใบเสนอราคา · ' + SH.customer.name, sub: 'ลิงก์เดียวใช้ตลอด · ลูกค้าไม่ต้องล็อกอิน · รอบ ' + esc(x.label),
       html: '<div class="warn2" style="background:var(--blue-l);border-color:var(--blue-b);color:var(--tx)"><b>ลูกค้าเห็น:</b> สินค้า · ราคารอบก่อน · ราคาใหม่ · ส่วนต่าง · ปุ่มยืนยัน/ขอต่อรอง<br>' +
         '<b>ไม่ส่งออก:</b> ทุน · margin · ราคาขั้นต่ำ · ราคาคู่แข่ง · โน้ตภายใน</div>' +
         '<label class="fld"><span>ลิงก์สำหรับส่ง LINE</span><input id="publicQuoteLink" value="' + esc(x.url) + '" readonly>' +
-        '<em>' + (x.opened_at ? 'ลูกค้าเปิดล่าสุด ' + esc(String(x.opened_at).replace('T', ' ').slice(0, 16)) : 'ลูกค้ายังไม่เคยเปิด') + ' · บันทึกว่า "ส่งรอบนี้แล้ว" ให้อัตโนมัติ</em></label>' +
+        '<em>' + (x.opened_at ? 'ลูกค้าเปิดล่าสุด ' + esc(String(x.opened_at).replace('T', ' ').slice(0, 16)) : 'ลูกค้ายังไม่เคยเปิด') + ' · วางในแชตลูกค้าแล้วกด "ส่งเองแล้ว" ระบบจึงเริ่มนับเวลารอคำตอบ</em></label>' +
         '<a class="btn" style="width:100%;justify-content:center" href="' + esc(x.url) + '" target="_blank" rel="noopener">👁 เปิดดูแบบที่ลูกค้าเห็น</a>',
       okText: '📋 คัดลอกลิงก์',
       onOk: function (v, close) {

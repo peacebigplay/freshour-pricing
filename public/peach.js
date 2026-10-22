@@ -377,6 +377,9 @@ window.PX = (function () {
           esc(opt.okText || 'บันทึก') + '</button>') + '</div></div>';
     document.body.appendChild(wrap);
     requestAnimationFrame(function () { wrap.classList.add('on'); });
+    /* Esc = ยกเลิก (เหมือนกด X) — ผูกจนกว่า modal จะหายจากหน้า */
+    var onKey = function (e) { if (!document.body.contains(wrap)) return document.removeEventListener('keydown', onKey); if (e.key === 'Escape') { e.preventDefault(); var c = wrap.querySelector('.mdl-c'); if (c) c.click(); } };
+    document.addEventListener('keydown', onKey);
     /* opt.onClose ทำงานทุกทางที่ปิด (X · ยกเลิก · คลิกพื้นหลัง · ปุ่มยืนยัน) และครั้งเดียว —
        ฟอร์มที่บันทึกระหว่างเปิดอยู่ (เช่นแก้เป้ารายตัว) ต้องบอกหน้าแม่ให้โหลดใหม่ ไม่ว่าจะปิดด้วยปุ่มไหน */
     var closed = false;
