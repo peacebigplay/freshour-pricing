@@ -20,6 +20,7 @@ const zlib = require('zlib');
 const crypto = require('crypto');
 const { createStore } = require('./src/store');
 const { createAuth } = require('./src/auth');
+const { createSettings } = require('./src/settings');
 const QuotePage = require('./src/quote-page');
 
 const ROOT = __dirname;
@@ -44,13 +45,18 @@ function loadDocs() {
 }
 
 const t0 = Date.now();
-const LINE_TOKEN = process.env.LINE_CHANNEL_TOKEN || '';
-const LINE_ADMIN = process.env.LINE_ADMIN_USER_ID || '';
-const MARKET_FEED_URL = process.env.MARKET_FEED_URL || '';
+/* การเชื่อมต่อ (LINE · feed ตลาด): ค่าจากหน้าตั้งค่าระบบ (settings.json) ก่อน แล้วค่อย env — แก้แล้วมีผลทันที ไม่ต้องรีสตาร์ท */
+const SET = createSettings(VAR);
+let LINE_TOKEN = SET.get('line_token'), LINE_ADMIN = SET.get('line_admin'), MARKET_FEED_URL = SET.get('market_feed_url');
 const SAMPLE_MARKET = process.env.FH_SAMPLE_MARKET === '1';   /* ราคาตลาดตัวอย่าง (ไม่ใช่ของจริง) — เปิดเฉพาะตอนทดสอบ UI */
 const DATA_NOTE = 'สินค้า/ทุน/ราคาจากใบราคาขาย+ทุน AL 01-07/10/69 · ลูกค้า/สัญญา/ยอดขายจากระบบเดิม (ก.ย. 69) · ราคาตลาด: ' + (MARKET_FEED_URL ? 'connector ' + MARKET_FEED_URL : SAMPLE_MARKET ? 'ตัวอย่างสมมติ (ไม่ใช่ของจริง)' : 'ยังไม่ต่อ connector — ใช้สำรวจหน้าร้าน');
-const LINE_SECRET = process.env.LINE_CHANNEL_SECRET || '';
-const LINE_STAFF = (process.env.LINE_STAFF_USER_IDS || '').split(',').map(x => x.trim()).filter(Boolean);
+let LINE_SECRET = SET.get('line_secret');
+const LINE_STAFF = SET.staff();   /* แก้ในที่ (ไม่สร้างอาร์เรย์ใหม่) เพราะ store ถือ reference เดียวกันนี้ */
+function applySettings() {
+  LINE_TOKEN = SET.get('line_token'); LINE_ADMIN = SET.get('line_admin'); MARKET_FEED_URL = SET.get('market_feed_url'); LINE_SECRET = SET.get('line_secret');
+  LINE_STAFF.length = 0; SET.staff().forEach(x => LINE_STAFF.push(x)); storeOpts.lineConfigured = !!LINE_TOKEN;
+  const mj = store.docs.jobs['market-sync']; if (mj && MARKET_FEED_URL && mj.status === 'off') { mj.status = 'never'; mj.detail = ''; }
+}
 const auth = createAuth({ varDir: VAR, usersJson: process.env.FH_USERS_JSON, devOpen: DEV_OPEN, log: m => console.error('[freshour] auth:', m) });
 if (auth.mode === 'locked') console.error('[freshour] ยังไม่มีบัญชีผู้ใช้ — ประตูปิดอยู่ · สร้างด้วย: node tools/users.js add <id> --role admin --name "ชื่อ"  (หรือ FH_DEV_OPEN=1 เฉพาะเครื่องพัฒนา)');
 if (auth.mode === 'open') console.error('[freshour] FH_DEV_OPEN=1 — ไม่ต้องใส่รหัส ใช้เฉพาะเครื่องพัฒนาเท่านั้น');
@@ -64,7 +70,8 @@ function loadSnapshot() {
 }
 const snap = loadSnapshot();
 if (snap) snapMeta = { at: snap.at, upto: snap.upto || 0 };
-const store = createStore(snap ? snap.docs : loadDocs(), { devOpen: auth.mode === 'open', lineConfigured: !!LINE_TOKEN, lineStaff: LINE_STAFF, dataNote: DATA_NOTE, sampleMarket: SAMPLE_MARKET });
+const storeOpts = { devOpen: auth.mode === 'open', lineConfigured: !!LINE_TOKEN, lineStaff: LINE_STAFF, dataNote: DATA_NOTE, sampleMarket: SAMPLE_MARKET };
+const store = createStore(snap ? snap.docs : loadDocs(), storeOpts);
 if (!MARKET_FEED_URL && !SAMPLE_MARKET) { const mj = store.docs.jobs['market-sync']; if (mj && mj.status === 'never') { mj.status = 'off'; mj.detail = 'ยังไม่ต่อแหล่งราคาตลาดออนไลน์ — ใช้สำรวจหน้าร้าน/ใบราคา B2B แทน (ผู้ดูแลตั้งค่าได้)'; } }   /* ไม่มี connector = ปิด ไม่ใช่ล้ม — แถบแดง "ขาดรอบ" ทุกวันคือเสียงรบกวน */
 let replayed = 0, skipped = 0, journalN = snapMeta ? snapMeta.upto : 0, journalSince = 0;   /* journalN = เลขรายการล่าสุด · journalSince = จำนวนรายการหลัง snapshot */
 if (JOURNAL && fs.existsSync(JOURNAL)) {
@@ -82,6 +89,7 @@ if (JOURNAL && fs.existsSync(JOURNAL)) {
   }
 }
 console.log(`[freshour] โหลดข้อมูล ${Object.keys(store.docs).length} ก้อน${snapMeta ? ' จาก snapshot ' + snapMeta.at : ''} · เล่นซ้ำ ${replayed} รายการ${skipped ? ' (ข้าม ' + skipped + ' ที่อยู่ใน snapshot แล้ว)' : ''} · ${Date.now() - t0} ms`);
+let lastBackupAt = null;
 let lastSnapAt = snapMeta ? Date.parse(snapMeta.at) : Date.now();
 /* เขียน snapshot แบบ atomic แล้วค่อยตัด journal — ถ้าล้มระหว่างทาง รายการใน journal มีเลข n กำกับ จึงไม่ถูกเล่นซ้ำสองรอบ */
 function writeSnapshot(reason) {
@@ -92,9 +100,22 @@ function writeSnapshot(reason) {
     fs.writeFileSync(SNAPSHOT + '.tmp', payload); fs.renameSync(SNAPSHOT + '.tmp', SNAPSHOT);
     fs.writeFileSync(JOURNAL, '');
     snapMeta = { at: new Date().toISOString(), upto: journalN }; journalSince = 0; lastSnapAt = Date.now();
+    copyBackup(payload);
     console.log(`[freshour] snapshot (${reason}) ${(payload.length / 1024).toFixed(0)} KB · ${Date.now() - t} ms`);
     return true;
   } catch (e) { console.error('[freshour] เขียน snapshot ไม่ได้:', e.message); return false; }
+}
+/* สำเนา snapshot ไปโฟลเดอร์สำรอง (FH_BACKUP_DIR — mount เป็น volume/ดิสก์คนละก้อน หรือโฟลเดอร์ที่ sync ขึ้นคลาวด์) · วันละไฟล์ เก็บ 14 วัน */
+function copyBackup(payload) {
+  const dir = process.env.FH_BACKUP_DIR; if (!dir) return;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const name = 'snapshot-' + new Date(Date.now() + 7 * 36e5).toISOString().slice(0, 10) + '.json.gz';
+    fs.writeFileSync(path.join(dir, name + '.tmp'), payload); fs.renameSync(path.join(dir, name + '.tmp'), path.join(dir, name));
+    for (const f of ['users.json', 'settings.json']) { try { fs.copyFileSync(path.join(VAR, f), path.join(dir, f)); } catch (e) { /* ยังไม่มี */ } }
+    const old = fs.readdirSync(dir).filter(f => /^snapshot-\d{4}-\d{2}-\d{2}\.json\.gz$/.test(f)).sort().slice(0, -14); old.forEach(f => { try { fs.unlinkSync(path.join(dir, f)); } catch (e) { /* ข้าม */ } });
+    lastBackupAt = new Date().toISOString();
+  } catch (e) { console.error('[freshour] สำรองข้อมูลไม่ได้:', e.message); store.ext.alert('bad', 'สำรองข้อมูลไม่สำเร็จ', e.message, 'backup'); }
 }
 function maybeSnapshot() {
   if (!JOURNAL || !journalSince) return;
@@ -241,7 +262,7 @@ function journal(entry) {
 /* access log บรรทัดละคำขอ (JSON) — อ่านด้วย grep/jq ได้ · ไม่มี body */
 function accessLog(req, status, t, role) { if (process.env.FH_ACCESS_LOG === '0') return; console.log(JSON.stringify({ t: new Date().toISOString(), m: req.method, p: (req.url || '').split('?')[0], s: status, ms: Date.now() - t, role: role || 'anon', ip: ipOf(req) })); }
 const HOME = { boss: '/exec', admin: '/exec', ops: '/pricing', sale: '/sales' };
-const MOVED = { '/price': '/pricing', '/market': '/costs', '/trend': '/costs?tab=trend', '/index': '/' };
+const MOVED = { '/price': '/pricing', '/market': '/costs', '/trend': '/costs?tab=trend', '/index': '/', '/wiring': '/settings' };
 
 const server = http.createServer(async (req, res) => {
   const tReq = Date.now();
@@ -275,6 +296,67 @@ const server = http.createServer(async (req, res) => {
       const lr = await fetch('https://api-data.line.me/v2/bot/message/' + mid + '/content', { headers: { authorization: 'Bearer ' + LINE_TOKEN } });
       if (!lr.ok) return json(res, { status: 502, body: { error: 'LINE ' + lr.status } });
       const buf = Buffer.from(await lr.arrayBuffer()); res.writeHead(200, { 'content-type': lr.headers.get('content-type') || 'application/octet-stream', 'cache-control': 'private, max-age=300' }); return res.end(buf);
+    }
+    if (p.startsWith('/api/admin/') && p !== '/api/admin/snapshot') {
+      /* หน้าตั้งค่าระบบ: ดูได้ boss/admin · แก้ได้เฉพาะ admin · ไม่คืนความลับกลับไปหน้าเว็บเลย */
+      if (!role) return json(res, { status: 401, body: { error: 'กรุณาเข้าระบบ' } });
+      if (store.LVL[role] < 3) return json(res, { status: 403, body: { error: 'ไม่มีสิทธิ์' } });
+      const write = req.method !== 'GET';
+      if (write && role !== 'admin') return json(res, { status: 403, body: { error: 'เฉพาะผู้ดูแลระบบแก้ได้' } });
+      const rb = write ? await readBody(req) : { body: {} };
+      if (rb.__bad || rb.__big) return json(res, { status: 400, body: { error: 'อ่าน JSON ไม่ได้' } });
+      const b = rb.body || {}, rec = (action, detail) => { const e = { method: 'POST', url: '/api/log', role, rep: null, body: { action, detail }, at: new Date().toISOString() }; store.handle(e); journal(e); };
+      const bad = (m, s2) => json(res, { status: s2 || 400, body: { error: m } });
+      const randPw = () => { const A = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from(crypto.randomBytes(12)).map(x => A[x % A.length]).join(''); };
+      const activeAdmins = () => auth.list().filter(u => u.active && (u.role === 'admin'));
+      if (p === '/api/admin/system' && req.method === 'GET') {
+        let sz = {}; for (const f of ['journal.jsonl', 'snapshot.json.gz', 'users.json', 'settings.json']) { try { sz[f] = fs.statSync(path.join(VAR, f)).size; } catch (e) { sz[f] = null; } }
+        const hh = store.handle({ method: 'GET', url: '/api/health', role, rep: null, body: {} }).body || {};
+        return json(res, { status: 200, body: { auth: { mode: auth.mode, users: auth.list().length }, uptime_s: Math.round(process.uptime()), node: process.version, snapshot_at: snapMeta ? snapMeta.at : null, journal: { since_snapshot: journalSince, last: journalN }, storage: sz,
+          backup: { configured: !!process.env.FH_BACKUP_DIR, dir: process.env.FH_BACKUP_DIR ? 'ตั้งแล้ว' : '', last: lastBackupAt }, line: { webhook_path: '/api/line/webhook', token: !!LINE_TOKEN, secret: !!LINE_SECRET, admin: !!LINE_ADMIN, staff: LINE_STAFF.length },
+          feed: { configured: !!MARKET_FEED_URL || SAMPLE_MARKET }, settings: SET.view(), health: { ok: hh.ok, jobs: (hh.jobs || []).map(j => ({ key: j.key, label: j.label, status: j.status, stale: j.stale, last_run: j.last_run, detail: j.detail })), outbox: hh.outbox, alerts: (hh.alerts || []).slice(0, 8).map(a => ({ level: a.level, title: a.title, at: a.at })) } } });
+      }
+      if (p === '/api/admin/users' && req.method === 'GET') return json(res, { status: 200, body: { mode: auth.mode, users: auth.list(), reps: (store.docs.state.sales_reps || []).map(r => ({ id: r.id, name: r.name })) } });
+      if (auth.mode !== 'users' && p.startsWith('/api/admin/users')) return bad('โหมดเครื่องพัฒนาไม่มีบัญชีผู้ใช้ — สร้างบัญชีแรกด้วย node tools/users.js แล้วเริ่มระบบใหม่', 409);
+      if (p === '/api/admin/users' && req.method === 'POST') {
+        try {
+          const id = String(b.id || '').trim().toLowerCase(); if (!/^[a-z0-9._-]{2,24}$/.test(id)) return bad('ชื่อผู้ใช้ใช้ตัวอังกฤษ/ตัวเลข 2–24 ตัว ไม่มีช่องว่าง');
+          if (!auth.ROLES[b.role]) return bad('เลือกบทบาท');
+          if (b.role === 'sale' && !String(b.rep || '').trim()) return bad('บัญชีเซลล์ต้องระบุรหัสเซลล์ (เช่น s1)');
+          const cur = auth.userById(id), pw = b.password ? String(b.password) : (cur ? '' : randPw());
+          if (pw && pw.length < 8) return bad('รหัสผ่านอย่างน้อย 8 ตัว');
+          if (cur && cur.role === 'admin' && b.role !== 'admin' && activeAdmins().length <= 1) return bad('ต้องมีผู้ดูแลระบบอย่างน้อย 1 คน', 409);
+          const u = auth.upsert({ id, role: b.role, name: String(b.name || id).trim(), rep: b.role === 'sale' ? String(b.rep).trim() : null, active: cur ? cur.active : true }, pw || null);
+          rec(cur ? 'user-edit' : 'user-add', (u.name || u.id) + ' (' + u.role + ')');
+          return json(res, { status: 200, body: { ok: true, user: { id: u.id, name: u.name, role: u.role, rep: u.rep }, password: cur ? undefined : pw } });
+        } catch (e) { return bad(e.message); }
+      }
+      if (p === '/api/admin/users/passwd' && req.method === 'POST') {
+        const u = auth.userById(b.id); if (!u) return bad('ไม่พบบัญชี', 404);
+        const pw = b.password ? String(b.password) : randPw(); if (pw.length < 8) return bad('รหัสผ่านอย่างน้อย 8 ตัว');
+        try { auth.upsert(u, pw); } catch (e) { return bad(e.message); }
+        rec('user-passwd', 'ตั้งรหัสใหม่ให้ ' + u.name); return json(res, { status: 200, body: { ok: true, password: b.password ? undefined : pw } });
+      }
+      if (p === '/api/admin/users/active' && req.method === 'POST') {
+        const u = auth.userById(b.id); if (!u) return bad('ไม่พบบัญชี', 404);
+        const on = !!b.active; if (!on && u.role === 'admin' && activeAdmins().length <= 1) return bad('ปิดไม่ได้ — ต้องมีผู้ดูแลระบบที่ใช้งานอยู่อย่างน้อย 1 คน', 409);
+        if (!on && sess && u.id === sess.uid) return bad('ปิดบัญชีที่กำลังใช้อยู่ไม่ได้', 409);
+        try { auth.upsert(Object.assign({}, u, { active: on })); } catch (e) { return bad(e.message); }
+        rec('user-active', (on ? 'เปิด' : 'ปิด') + 'บัญชี ' + u.name); return json(res, { status: 200, body: { ok: true } });
+      }
+      if (p === '/api/admin/settings' && req.method === 'POST') {
+        try {
+          const changed = SET.update(b); applySettings();
+          if (changed.length) rec('settings', 'แก้การเชื่อมต่อ: ' + changed.map(k => ({ line_token: 'LINE token', line_secret: 'LINE secret', line_admin: 'ผู้ดูแลรับแจ้งเตือน', line_staff: 'ทีมงาน LINE', market_feed_url: 'feed ราคาตลาด' }[k] || k)).join(', '));
+          return json(res, { status: 200, body: { ok: true, changed, settings: SET.view() } });
+        } catch (e) { return bad(e.message); }
+      }
+      if (p === '/api/admin/test-line' && req.method === 'POST') {
+        if (!LINE_TOKEN) return bad('ยังไม่ได้ใส่ Channel access token'); if (!LINE_ADMIN) return bad('ยังไม่ได้ใส่ LINE userId ของผู้ดูแลที่จะรับข้อความทดสอบ');
+        try { await lineTransport(LINE_ADMIN, '✅ ทดสอบจาก Freshour — ถ้าเห็นข้อความนี้ แปลว่า LINE ต่อติดแล้ว'); rec('line-test', 'ส่งข้อความทดสอบถึงผู้ดูแล สำเร็จ'); return json(res, { status: 200, body: { ok: true } }); }
+        catch (e) { rec('line-test', 'ส่งข้อความทดสอบไม่สำเร็จ: ' + String(e.message).slice(0, 100)); return bad('ส่งไม่สำเร็จ — ' + String(e.message).slice(0, 160), 502); }
+      }
+      return bad('ไม่มีเส้นทางนี้', 404);
     }
     if (p === '/api/market-feed-sample') { if (!role) return json(res, { status: 401, body: { error: 'กรุณาเข้าระบบ' } }); return send(res, 200, fs.readFileSync(path.join(DATA, 'market-feed-sample.json'))); }
     if (p.startsWith('/api/')) {

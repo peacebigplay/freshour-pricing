@@ -1520,3 +1520,8 @@ table.g tr:hover td{background:#EFF6FF}
 
 /* ── มือถือ: การ์ด KPI ย่อเป็น 2 คอลัมน์เตี้ย ๆ ให้ตารางราคาอยู่ใกล้มือ (เซลล์ใช้บนโทรศัพท์) ── */
 @media(max-width:700px){.kpi,.kpi4,.kpi3{grid-template-columns:1fr 1fr!important;gap:10px}.k{min-height:0;padding:12px 14px;border-radius:14px}.k .lb{font-size:12.5px;padding-right:0;min-height:0}.k .kt{position:static;margin:0 0 4px;justify-content:flex-start}.k .v{font-size:24px;margin-top:4px;letter-spacing:-.6px}.k .c{display:none}.k .pill{font-size:10px;padding:3px 8px}.btn,.mini{min-height:36px}}
+
+/* ── มือถือ: คอลัมน์หลักต้องหดได้ (เดิม 1fr = min-content ทำให้ตัวหน้ากว้างเกินจอแล้วโดนตัด · การ์ด/ปุ่มขอบขวาหาย) ── */
+@media(max-width:860px){.app{grid-template-columns:minmax(0,1fr)}.main{min-width:0;max-width:100vw}.sc,.tw2{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .px-greet .g-hi{font-size:22px}.px-greet{padding-right:0}.top{margin:0 0 6px}}
+@media(max-width:700px){.zt th:first-child,.zt td:first-child{width:128px;min-width:128px;max-width:128px;white-space:normal;word-break:break-word;font-size:12.5px;padding-left:10px;padding-right:8px}.zt td small{display:block}}

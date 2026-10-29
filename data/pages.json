@@ -66,10 +66,10 @@
   "title": "Logic"
  },
  {
-  "id": "wiring",
-  "who": "พี่จุ๋ม",
-  "role": "ops",
-  "title": "การเชื่อมต่อ"
+  "id": "settings",
+  "who": "อิ๊บ",
+  "role": "admin",
+  "title": "ตั้งค่าระบบ"
  },
  {
   "id": "log",

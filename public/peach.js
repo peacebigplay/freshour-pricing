@@ -35,7 +35,7 @@ window.PX = (function () {
     { id: 'memory', href: '/memory', ic: '🗂', t: 'ความจำ', s: 'ย้อนดูทุกอย่าง' },
     { id: 'logic', href: '/logic', ic: '📜', t: 'หลักการ', s: 'กฎที่ระบบใช้จริง' },
     { id: 'guard', href: '/guard', ic: '⚙️', t: 'ตั้งค่า Margin Guard', s: 'เกณฑ์ + เพดานต่อรอง' },
-    { id: 'wire', href: '/wiring', ic: '🔌', t: 'การต่อ', s: 'ต่อติดจริงไหม' },
+    { id: 'wire', href: '/settings', ic: '⚙️', t: 'ตั้งค่าระบบ', s: 'ผู้ใช้ · LINE · สำรองข้อมูล' },
     { id: 'trend', href: '/costs?tab=trend', ic: '📈', t: 'แนวโน้มตลาด', s: 'ดึงเองทุกวัน · เตือนถูกกี่ครั้ง' },
     { id: 'log', href: '/log', ic: '🧾', t: 'บันทึกเหตุการณ์', s: 'คน + ระบบ · ล้มแล้วรู้' }
   ];
@@ -76,8 +76,8 @@ window.PX = (function () {
   /* บทบาทไหนเห็นเมนูอะไร — ต้องตรงกับสิทธิ์จริงที่ API บังคับ
      ให้เห็นเมนูที่กดแล้วเจอ "ไม่มีสิทธิ์" คือหลอกให้เสียเวลา */
   var CAN = { sale: ['sale'],
-              ops:   ['pricing','cust','sale','cost','docs','flow','memory','logic','guard','wire','trend','log'],
-              boss:  ['exec','brain','pricing','cust','sale','cost','docs','flow','memory','logic','guard','wire','trend','log'],
+              ops:   ['pricing','cust','sale','cost','docs','flow','memory','logic','guard','trend','log'],
+              boss:  ['exec','brain','pricing','cust','sale','cost','docs','flow','memory','logic','guard','trend','log'],
               admin: ['exec','brain','pricing','cust','sale','cost','docs','flow','memory','logic','guard','wire','trend','log'] };
 
   function applyRole(role) {

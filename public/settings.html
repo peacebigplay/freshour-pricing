@@ -1,0 +1,165 @@
+<!doctype html><html lang="th"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ตั้งค่าระบบ · Freshour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/peach.css">
+<style>
+.ctabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:4px 0 16px;overflow-x:auto}.ctabs button{font-family:var(--ff);flex:0 0 auto;border:0;background:none;padding:11px 18px 9px;border-bottom:3px solid transparent;margin-bottom:-1px;cursor:pointer;font-size:14px;font-weight:600;color:var(--tx-2)}.ctabs button.on{color:var(--blue-t);border-bottom-color:var(--blue)}.ctabs button:hover{color:var(--ink)}
+.st-row{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,.9fr) auto;gap:12px;align-items:center;padding:13px 4px;border-top:1px solid var(--line-2)}
+.st-row:first-child{border-top:0}
+.st-row b{display:block;font-size:14px}.st-row small{display:block;color:var(--tx-2);font-size:12px;margin-top:2px}
+.st-row .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.st-empty{color:var(--green-t);font-size:14px;font-weight:500;padding:10px 0}.st-row .pill2{white-space:nowrap}
+.st-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.st-step{display:flex;gap:10px;align-items:flex-start;padding:9px 0;font-size:13.5px;color:var(--tx-2)}
+.st-step i{font-style:normal;flex:0 0 22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;background:var(--line-2);color:var(--tx-2)}
+.st-step.ok i{background:var(--green-l);color:var(--green-t)}.st-step.no i{background:var(--red-l);color:var(--red-t)}
+.st-step b{color:var(--ink);display:block;font-size:14px}
+.st-code{font-family:var(--ff);background:var(--blue-l);color:var(--blue-t);border-radius:8px;padding:2px 9px;font-size:12.5px;user-select:all;word-break:break-all}
+.st-pw{font-size:22px;font-weight:700;letter-spacing:1px;background:var(--blue-l);color:var(--blue-t);border-radius:12px;padding:12px 16px;text-align:center;user-select:all;margin:10px 0}
+@media(max-width:700px){.st-row{grid-template-columns:1fr}.st-row .acts{justify-content:flex-start}}
+</style>
+</head><body>
+<script src="/peach.js"></script>
+<script>
+var esc = PX.esc, TAB = 'users', U = null, SYS = null, ME0 = null;
+PX.shell('wire', '<div class="float"><div class="ic">⚙️</div><b>ตั้งค่าระบบ</b><span id="floatSub">กำลังอ่าน…</span></div>');
+var ROLE = { boss: 'ผู้บริหาร', admin: 'ผู้ดูแลระบบ', ops: 'Pricing', sale: 'เซลล์' };
+function jsq(s) { return "'" + String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'"; }
+function isAdmin() { return ME0 && ME0.role === 'admin'; }
+function ago(iso) { return iso ? PX.ago(iso) : '—'; }
+function kb(n) { return n == null ? '—' : n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
+function upt(s) { return s < 3600 ? Math.round(s / 60) + ' นาที' : s < 86400 ? Math.round(s / 360) / 10 + ' ชม.' : Math.round(s / 8640) / 10 + ' วัน'; }
+
+function load() {
+  return Promise.all([
+    fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.json(); }),
+    PX.get('/api/admin/system'),
+    PX.get('/api/admin/users').catch(function () { return null; })
+  ]).then(function (a) { ME0 = a[0]; SYS = a[1]; U = a[2]; draw(); }).catch(PX.fail);
+}
+function setTab(t) { TAB = t; draw(); }
+
+function draw() {
+  var h = PX.head('ตั้งค่าระบบ', '', ['ผด', 'ผู้ดูแลระบบ', isAdmin() ? 'แก้ได้' : 'ดูอย่างเดียว']);
+  var line = SYS.line, okLine = line.token && line.secret;
+  var bad = [];
+  if (!okLine) bad.push('LINE ยังไม่ต่อ'); if (!SYS.backup.configured) bad.push('ยังไม่ได้ตั้งที่สำรองข้อมูล'); if (!SYS.snapshot_at) bad.push('ยังไม่เคยสำรองภายในเครื่อง');
+  h += '<div class="kpi kpi4">' +
+    '<div class="k ' + (SYS.health.ok ? 'good' : 'bad') + '"><div class="kt"><span class="pill ' + (SYS.health.ok ? 'g' : 'r') + '">' + (SYS.health.ok ? 'ปกติ' : 'มีปัญหา') + '</span></div><div class="lb">สุขภาพระบบ</div><div class="v">' + (SYS.health.ok ? '✓' : '!') + '</div><div class="c">เปิดมาแล้ว ' + upt(SYS.uptime_s) + '</div></div>' +
+    '<div class="k ' + (okLine ? 'good' : 'warn') + '"><div class="kt"><span class="pill ' + (okLine ? 'g' : 'a') + '">' + (okLine ? 'ต่อแล้ว' : 'ยังไม่ต่อ') + '</span></div><div class="lb">LINE OA</div><div class="v">' + (okLine ? '✓' : '—') + '</div><div class="c">ส่งใบราคา · ตามลูกค้า · แจ้งเตือน</div></div>' +
+    '<div class="k ' + (SYS.backup.configured ? 'good' : 'warn') + '"><div class="kt"><span class="pill ' + (SYS.backup.configured ? 'g' : 'a') + '">' + (SYS.backup.configured ? 'ตั้งแล้ว' : 'ยังไม่ตั้ง') + '</span></div><div class="lb">สำรองข้อมูล</div><div class="v">' + (SYS.backup.last ? '✓' : '—') + '</div><div class="c">' + (SYS.backup.last ? 'สำเนาล่าสุด ' + ago(SYS.backup.last) : 'ยังไม่มีสำเนานอกเครื่อง') + '</div></div>' +
+    '<div class="k lead"><div class="kt"><span class="pill b">' + (U ? U.users.length : 0) + ' บัญชี</span></div><div class="lb">ผู้ใช้ระบบ</div><div class="v">' + (U ? U.users.filter(function (u) { return u.active; }).length : 0) + '</div><div class="c">ที่ใช้งานอยู่</div></div></div>';
+  h += '<div class="ctabs" role="tablist">' +
+    ['users:ผู้ใช้', 'conn:การเชื่อมต่อ', 'sys:ระบบและสำรองข้อมูล'].map(function (x) { var p = x.split(':'); return '<button class="' + (TAB === p[0] ? 'on' : '') + '" onclick="setTab(\'' + p[0] + '\')">' + p[1] + '</button>'; }).join('') + '</div>';
+  h += TAB === 'users' ? usersTab() : TAB === 'conn' ? connTab() : sysTab();
+  document.getElementById('main').innerHTML = h; PX.bindTips();
+  var fs = document.getElementById('floatSub'); if (fs) fs.textContent = bad.length ? bad.join(' · ') : 'พร้อมใช้งานจริง';
+}
+
+/* ── ผู้ใช้ ── */
+function usersTab() {
+  if (!U) return '<div class="card"><p class="hint">อ่านรายชื่อผู้ใช้ไม่ได้</p></div>';
+  if (U.mode !== 'users') return '<div class="card"><h3>โหมดเครื่องพัฒนา</h3><p class="hint">ตอนนี้ระบบเปิดโล่งไม่มีบัญชี (FH_DEV_OPEN=1) — บนระบบจริงให้สร้างบัญชีแรกด้วย <span class="st-code">node tools/users.js add admin1 --role admin --name "ชื่อ"</span> แล้วเริ่มระบบใหม่ จากนั้นเพิ่มคนอื่นที่หน้านี้</p></div>';
+  var rows = U.users.map(function (u) {
+    return '<div class="st-row"><div><b>' + esc(u.name) + (u.active ? '' : ' <span class="pill2 n">ปิดอยู่</span>') + '</b><small>ชื่อผู้ใช้ ' + esc(u.id) + '</small></div>' +
+      '<div><span class="pill2 ' + (u.role === 'sale' ? 'a' : u.role === 'ops' ? 'b' : 'g') + '">' + ROLE[u.role] + '</span>' + (u.rep ? ' <small style="display:inline">เซลล์ ' + esc(repName(u.rep)) + '</small>' : '') + '</div>' +
+      '<div class="acts">' + (isAdmin() ? '<button class="btn" onclick="editUser(' + jsq(u.id) + ')">แก้ไข</button><button class="btn" onclick="resetPw(' + jsq(u.id) + ')">ตั้งรหัสใหม่</button><button class="btn" onclick="toggleUser(' + jsq(u.id) + ',' + (u.active ? 'false' : 'true') + ')">' + (u.active ? 'ปิดบัญชี' : 'เปิดบัญชี') + '</button>' : '') + '</div></div>';
+  }).join('');
+  return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">ผู้ใช้ระบบ</h3>' + (isAdmin() ? '<button class="btn pri" onclick="editUser()">+ เพิ่มผู้ใช้</button>' : '') + '</div>' +
+    '<p class="hint" style="margin:8px 0 6px">แต่ละคนเข้าด้วยชื่อผู้ใช้+รหัสของตัวเอง · เปลี่ยนรหัสหรือปิดบัญชี = คนนั้นหลุดจากระบบทันที · เซลล์เห็นเฉพาะลูกค้าของตัวเอง ไม่เห็นทุน</p>' + rows + '</div>';
+}
+function repName(id) { var r = (U.reps || []).filter(function (x) { return x.id === id; })[0]; return r ? r.name : id; }
+function editUser(id) {
+  var cur = id ? U.users.filter(function (u) { return u.id === id; })[0] : null;
+  var roleSel = '<label class="fld"><span>บทบาท</span><select data-k="role" id="fRole" onchange="document.getElementById(\'fRepW\').style.display=this.value===\'sale\'?\'block\':\'none\'">' + ['ops', 'sale', 'boss', 'admin'].map(function (r) { return '<option value="' + r + '"' + (cur && cur.role === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select><em>ผู้บริหาร = เห็นทุกอย่าง+ตัดสินใจ · Pricing = ตั้งราคา/รับทุน · เซลล์ = เห็นเฉพาะลูกค้าตัวเอง · ผู้ดูแล = ตั้งค่าระบบ</em></label>';
+  var repSel = '<div id="fRepW" style="display:' + (cur && cur.role === 'sale' || (!cur && false) ? 'block' : 'none') + '"><label class="fld"><span>เซลล์ในทีมขาย</span><select data-k="rep">' + (U.reps || []).map(function (r) { return '<option value="' + esc(r.id) + '"' + (cur && cur.rep === r.id ? ' selected' : '') + '>' + esc(r.name) + ' (' + esc(r.id) + ')</option>'; }).join('') + '</select><em>ผูกบัญชีนี้กับรหัสเซลล์ — ใช้กำหนดว่าเห็นลูกค้าคนไหน</em></label></div>';
+  PX.modal({ title: cur ? 'แก้ผู้ใช้ · ' + cur.name : 'เพิ่มผู้ใช้', okText: cur ? 'บันทึก' : 'สร้างบัญชี',
+    fields: [{ k: 'name', label: 'ชื่อที่แสดง', value: cur ? cur.name : '', ph: 'เช่น พี่จุ๋ม' }, { k: 'id', label: 'ชื่อผู้ใช้ (ตัวอังกฤษ ไม่มีช่องว่าง)', value: cur ? cur.id : '', ph: 'เช่น jum', hint: cur ? 'เปลี่ยนชื่อผู้ใช้ไม่ได้' : '' }],
+    html: roleSel + repSel,
+    onOk: function (v, close) {
+      v.id = cur ? cur.id : v.id; if (!v.name) { PX.toast('ใส่ชื่อที่แสดง', 'bad'); return; }
+      return PX.post('/api/admin/users', v).then(function (res) { return load().then(function () { if (res.password) showPw(res.user.name, res.user.id, res.password); else PX.toast('บันทึกแล้ว'); }); });
+    } });
+  if (cur) { var f = document.querySelector('.mdl [data-k="id"]'); if (f) f.readOnly = true; var r = document.getElementById('fRole'); if (r) r.dispatchEvent(new Event('change')); }
+}
+function showPw(name, id, pw) {
+  PX.modal({ title: 'รหัสผ่านของ ' + name, ok: false, html: '<p class="hint">ชื่อผู้ใช้ <b>' + esc(id) + '</b> · ส่งรหัสนี้ให้เจ้าตัวทางช่องทางส่วนตัว <b>ระบบจะไม่แสดงอีก</b> (ลืมแล้วตั้งใหม่ได้)</p><div class="st-pw">' + esc(pw) + '</div><button class="btn" onclick="navigator.clipboard&&navigator.clipboard.writeText(' + jsq(pw) + ').then(function(){PX.toast(\'คัดลอกแล้ว\')},function(){PX.toast(\'เลือกข้อความแล้วคัดลอกเอง\')})">📋 คัดลอกรหัส</button>' });
+}
+function resetPw(id) {
+  var u = U.users.filter(function (x) { return x.id === id; })[0];
+  PX.modal({ title: 'ตั้งรหัสใหม่ · ' + u.name, okText: 'ตั้งรหัสใหม่', sub: 'รหัสเดิมใช้ไม่ได้ทันที และคนนี้จะหลุดจากระบบ',
+    fields: [{ k: 'password', label: 'รหัสผ่านใหม่ (เว้นว่าง = ให้ระบบสุ่มให้)', ph: 'อย่างน้อย 8 ตัว' }],
+    onOk: function (v, close) { return PX.post('/api/admin/users/passwd', { id: id, password: v.password }).then(function (res) { if (res.password) showPw(u.name, u.id, res.password); else PX.toast('ตั้งรหัสใหม่แล้ว'); }); } });
+}
+function toggleUser(id, on) {
+  var u = U.users.filter(function (x) { return x.id === id; })[0];
+  PX.modal({ title: (on ? 'เปิด' : 'ปิด') + 'บัญชี ' + u.name + '?', okText: on ? 'เปิดบัญชี' : 'ปิดบัญชี', sub: on ? '' : 'คนนี้จะเข้าระบบไม่ได้และหลุดทันที ข้อมูลที่เคยทำยังอยู่ครบ',
+    onOk: function (v, close) { return PX.post('/api/admin/users/active', { id: id, active: on }).then(function () { return load().then(function () { PX.toast('บันทึกแล้ว'); }); }); } });
+}
+
+/* ── การเชื่อมต่อ ── */
+function step(ok, title, body) { return '<div class="st-step ' + (ok ? 'ok' : 'no') + '"><i>' + (ok ? '✓' : '!') + '</i><div><b>' + title + '</b>' + body + '</div></div>'; }
+function connTab() {
+  var S = SYS.settings, line = SYS.line, hook = location.origin + line.webhook_path;
+  var from = function (k) { return S[k].from ? ' <span class="pill2 n">' + S[k].from + '</span>' : ''; };
+  var sec = function (k) { return S[k].set ? 'ตั้งแล้ว ' + esc(S[k].hint) + from(k) : 'ยังไม่ตั้ง'; };
+  return '<div class="st-grid">' +
+    '<div class="card"><h3>LINE Official Account</h3>' +
+      step(line.token, 'Channel access token', sec('line_token')) +
+      step(line.secret, 'Channel secret', sec('line_secret')) +
+      step(line.admin, 'ผู้ดูแลที่รับแจ้งเตือนเมื่อระบบมีปัญหา', S.line_admin.set ? '<span class="st-code">' + esc(S.line_admin.value) + '</span>' + from('line_admin') : 'ยังไม่ตั้ง') +
+      step(line.staff > 0, 'ทีมงานที่พิมพ์ "ทุน …" / "ตลาด …" เข้า OA ได้', line.staff ? line.staff + ' คน' + from('line_staff') : 'ยังไม่ตั้ง — ไม่มีใครส่งทุนทาง LINE ได้ (ปลอดภัยไว้ก่อน)') +
+      '<div class="st-step"><i>↳</i><div><b>Webhook URL (ใส่ใน LINE Developers → Messaging API)</b><span class="st-code">' + esc(hook) + '</span><br><small>ต้องเป็น https และกด Verify ใน LINE Developers หลังบันทึก</small></div></div>' +
+      (isAdmin() ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn pri" onclick="editLine()">ตั้งค่า LINE</button><button class="btn" onclick="testLine()">ส่งข้อความทดสอบถึงผู้ดูแล</button></div>' : '') + '</div>' +
+    '<div class="card"><h3>ราคาตลาดออนไลน์ (feed)</h3>' +
+      step(SYS.feed.configured, 'ที่อยู่ feed', S.market_feed_url.set ? '<span class="st-code">' + esc(S.market_feed_url.value) + '</span>' + from('market_feed_url') : 'ยังไม่ตั้ง — ใช้ใบราคา B2B และสำรวจหน้าร้านแทน (ตั้งใจไว้ ไม่ใช่ปัญหา)') +
+      '<p class="st-note" style="margin:8px 0;font-size:12.5px;color:var(--tx-2)">ต้องเป็น feed ที่ได้รับสิทธิ์จากเจ้าของข้อมูล ระบบดึงวันละครั้ง ถ้าดึงไม่ได้ 2 ครั้งจะสลับเป็นโหมดสำรวจหน้าร้านเอง</p>' +
+      (isAdmin() ? '<button class="btn pri" style="margin-top:6px" onclick="editFeed()">ตั้งค่า feed</button>' : '') + '</div></div>';
+}
+function editLine() {
+  var S = SYS.settings;
+  PX.modal({ title: 'ตั้งค่า LINE', okText: 'บันทึก', sub: 'ช่องที่เว้นว่างจะไม่ถูกแก้ · พิมพ์ - เพื่อล้างค่า',
+    fields: [
+      { k: 'line_token', label: 'Channel access token (long-lived)', ph: S.line_token.set ? 'ตั้งแล้ว ' + S.line_token.hint + ' — เว้นว่างถ้าไม่เปลี่ยน' : 'วางจาก LINE Developers' },
+      { k: 'line_secret', label: 'Channel secret', ph: S.line_secret.set ? 'ตั้งแล้ว ' + S.line_secret.hint + ' — เว้นว่างถ้าไม่เปลี่ยน' : 'วางจาก LINE Developers' },
+      { k: 'line_admin', label: 'LINE userId ของผู้ดูแลที่รับแจ้งเตือน', value: S.line_admin.value || '', ph: 'U + 32 ตัว', hint: 'ดู userId ได้จากหน้าเหตุการณ์หลังผู้ดูแลทักเข้า OA หนึ่งครั้ง' },
+      { k: 'line_staff', label: 'LINE userId ทีมงานที่ส่งทุน/ตลาดเข้า OA ได้ (คั่นด้วย ,)', value: S.line_staff.value || '', type: 'area', rows: 3 }],
+    onOk: function (v, close) {
+      var p = {}; Object.keys(v).forEach(function (k) { if (v[k] === '-') p[k] = ''; else if (v[k] !== '' || k === 'line_admin' || k === 'line_staff') p[k] = v[k]; });
+      return PX.post('/api/admin/settings', p).then(function (res) { return load().then(function () { PX.toast(res.changed.length ? 'บันทึกแล้ว มีผลทันที' : 'ไม่มีอะไรเปลี่ยน'); }); });
+    } });
+}
+function editFeed() {
+  PX.modal({ title: 'ตั้งค่า feed ราคาตลาด', okText: 'บันทึก', sub: 'เว้นว่าง = ไม่ใช้ feed (ล้างค่าที่ตั้งไว้)',
+    fields: [{ k: 'market_feed_url', label: 'ที่อยู่ feed (https://…)', value: SYS.settings.market_feed_url.value || '', ph: 'https://' }],
+    onOk: function (v, close) { return PX.post('/api/admin/settings', { market_feed_url: v.market_feed_url }).then(function () { return load().then(function () { PX.toast('บันทึกแล้ว ระบบจะดึงในรอบถัดไป'); }); }); } });
+}
+function testLine() {
+  PX.toast('กำลังส่งข้อความทดสอบ…');
+  PX.post('/api/admin/test-line', {}).then(function () { PX.toast('ส่งแล้ว — เช็ค LINE ของผู้ดูแล'); }).catch(function (e) { PX.toast(esc(e.message), 'bad'); });
+}
+
+/* ── ระบบและสำรองข้อมูล ── */
+function sysTab() {
+  var s = SYS, st = s.storage;
+  var jobs = s.health.jobs.map(function (j) { var on = j.status === 'off' || j.status === 'never'; return '<div class="st-row"><div><b>' + esc(j.label) + '</b><small>' + esc(j.detail || '') + '</small></div><div><span class="pill2 ' + (j.status === 'fail' || j.stale ? 'r' : on ? 'n' : 'g') + '">' + (j.status === 'fail' ? 'ล้ม' : j.stale ? 'ขาดรอบ' : on ? 'ยังไม่ได้เปิดใช้' : 'ปกติ') + '</span></div><div><small>รอบล่าสุด ' + esc(j.last_run ? PX.ago(j.last_run) : '—') + '</small></div></div>'; }).join('');
+  var als = s.health.alerts.length ? s.health.alerts.map(function (a) { return '<div class="st-row"><div><b>' + esc(a.title) + '</b></div><div><span class="pill2 ' + (a.level === 'bad' ? 'r' : 'a') + '">' + (a.level === 'bad' ? 'ร้ายแรง' : 'เตือน') + '</span></div><div><small>' + esc(a.at || '') + '</small></div></div>'; }).join('') : '<div class="st-empty">✓ ไม่มีเรื่องค้าง ระบบปกติ</div>';
+  return '<div class="st-grid">' +
+    '<div class="card"><h3>สำรองข้อมูล</h3>' +
+      step(!!s.snapshot_at, 'สำเนาในเครื่อง (snapshot)', s.snapshot_at ? 'ล่าสุด ' + esc(PX.ago(s.snapshot_at)) + ' · ไฟล์ ' + kb(st['snapshot.json.gz']) : 'ยังไม่เคย') +
+      step(s.backup.configured, 'สำเนานอกเครื่อง (ดิสก์/โฟลเดอร์สำรอง)', s.backup.configured ? (s.backup.last ? 'สำเนาล่าสุด ' + esc(PX.ago(s.backup.last)) + ' · เก็บย้อนหลัง 14 วัน' : 'ตั้งแล้ว รอสำเนาแรก') : 'ยังไม่ตั้ง — ผู้ดูแลตั้งตัวแปร FH_BACKUP_DIR ชี้ไปดิสก์อีกก้อน แล้วระบบสำเนาให้ทุกครั้งที่มีการเปลี่ยนแปลง') +
+      '<p class="st-note" style="margin:6px 0 10px;font-size:12.5px;color:var(--tx-2)">รายการที่เปลี่ยนหลัง snapshot ล่าสุด ' + s.journal.since_snapshot + ' รายการ (journal ' + kb(st['journal.jsonl']) + ') · ระบบทำ snapshot เองทุก 300 รายการ/6 ชม./ตอนปิดเครื่อง</p>' +
+      (isAdmin() ? '<button class="btn pri" onclick="snapNow()">สำรองตอนนี้</button>' : '') + '</div>' +
+    '<div class="card"><h3>งานอัตโนมัติ</h3>' + jobs + '</div>' +
+    '<div class="card"><h3>เรื่องที่ระบบแจ้งไว้</h3>' + als + '</div>' +
+    '<div class="card"><h3>ข้อมูลเครื่อง</h3><div class="st-row"><div><b>โหมดเข้าระบบ</b></div><div>' + (s.auth.mode === 'users' ? 'บัญชีรายคน' : s.auth.mode === 'open' ? 'เครื่องพัฒนา (เปิดโล่ง)' : 'ปิดประตู') + '</div><div></div></div><div class="st-row"><div><b>เปิดมาแล้ว</b></div><div>' + upt(s.uptime_s) + '</div><div></div></div><div class="st-row"><div><b>เวอร์ชัน Node</b></div><div>' + esc(s.node) + '</div><div></div></div></div></div>';
+}
+function snapNow() {
+  PX.post('/api/admin/snapshot', {}).then(function () { return load().then(function () { PX.toast('สำรองแล้ว'); }); }).catch(function (e) { PX.toast(esc(e.message), 'bad'); });
+}
+load();
+</script>
+</body></html>
